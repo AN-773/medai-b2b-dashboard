@@ -1,0 +1,7 @@
+{
+  "name": "MSAi Educator Dashboard",
+  "description": "A comprehensive real-time intelligence system for medical educators to monitor question bank health, student mastery, curriculum alignment, and AI agent insights.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
