@@ -120,7 +120,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         </div>
         <button 
           onClick={onCreateClick}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
+          className="flex items-center gap-2 bg-primary-gradient text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
         >
           <Plus size={16} />
           Create {config.singular}
@@ -149,7 +149,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
             <h3 className="font-black text-slate-900 uppercase tracking-tight">Recent {config.plural}</h3>
             <button 
               onClick={onViewAllClick}
-              className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 transition"
+              className="text-[10px] font-black uppercase tracking-widest text-[#1BD183] hover:text-[#17a76d] transition"
             >
               View all {config.plural.toLowerCase()}
             </button>

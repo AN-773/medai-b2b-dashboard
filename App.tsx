@@ -80,17 +80,17 @@ const App: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-['Inter']">
+    <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 hidden lg:flex flex-col shrink-0">
-        <div className="p-8 flex-grow overflow-y-auto">
+      <aside className="w-72 bg-[#0F1110] border-r border-slate-800 hidden lg:flex flex-col shrink-0">
+        <div className="p-8 flex-grow overflow-y-auto aside-custom-scrollbar">
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-xl shadow-indigo-200">
+            <div className="w-12 h-12 bg-[#1BD183] rounded-2xl flex items-center justify-center text-slate-900 font-black text-2xl shadow-xl shadow-black/30">
               M
             </div>
             <div>
-              <h1 className="font-black text-slate-900 tracking-tight text-xl">MSAi®</h1>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Intelligence Suite</p>
+              <h1 className="font-black text-white tracking-tight text-xl">MSAi®</h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Intelligence Suite</p>
             </div>
           </div>
 
@@ -101,11 +101,11 @@ const App: React.FC = () => {
                 onClick={() => setActiveView(item.id as View)}
                 className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-bold transition-all relative ${
                   activeView === item.id 
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  ? 'bg-[#1BD183] text-[#0F1110] shadow-lg shadow-black/30' 
+                  : 'text-[#848E8A] hover:bg-slate-800 hover:text-slate-200'
                 }`}
               >
-                <item.icon size={20} className={activeView === item.id ? 'text-white' : 'text-slate-400'} />
+                <item.icon size={20} className={activeView === item.id ? 'text-[#0F1110]' : 'text-[#848E8A]'} />
                 {item.label}
                 {item.id === 'WORKBENCH' && (
                   <span className="absolute right-4 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></span>
@@ -115,12 +115,12 @@ const App: React.FC = () => {
           </nav>
         </div>
 
-        <div className="p-8 space-y-4 border-t border-slate-100">
-           <div className="flex items-center gap-3 p-4 bg-slate-900 rounded-3xl">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        <div className="p-8 space-y-4 border-t border-slate-800">
+           <div className="flex items-center gap-3 p-4 bg-slate-800 rounded-3xl">
+              <div className="h-2 w-2 rounded-full bg-[#1BD183] animate-pulse"></div>
               <span className="text-[10px] font-black text-white uppercase tracking-widest">Sena: Live</span>
            </div>
-          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-slate-400 hover:text-slate-900 transition">
+          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-whitespace transition">
             <Settings size={18} /> System Config
           </button>
         </div>
@@ -135,7 +135,7 @@ const App: React.FC = () => {
               <input 
                 type="text" 
                 placeholder="Query QIDs, Objectives, or Syndromes..." 
-                className="w-full pl-12 pr-6 py-3 bg-slate-100 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-inner"
+                className="w-full pl-12 pr-6 py-3 bg-slate-100 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-[#1BD183] outline-none transition shadow-inner"
               />
             </div>
           </div>
@@ -170,11 +170,11 @@ const App: React.FC = () => {
             <div className="flex gap-4">
               <button 
                 onClick={() => setIsAuditMapOpen(true)}
-                className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 transition border-b-4 hover:border-b-2 active:translate-y-1"
+                className="px-6 py-3 bg-[#191A19] rounded-[8px] text-sm text-white shadow-sm hover:bg-[##232524] transition active:translate-y-1"
               >
                 Audit Map
               </button>
-              <button className="px-6 py-3 bg-indigo-600 rounded-2xl text-sm font-black text-white shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition border-b-4 border-indigo-800 hover:border-b-2 active:translate-y-1">
+              <button className="px-6 py-3 primary-button rounded-[8px] text-sm font-black text-white transition active:translate-y-1">
                 Trigger Auditor
               </button>
             </div>

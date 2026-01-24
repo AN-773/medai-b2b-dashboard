@@ -11,18 +11,18 @@ interface CurriculumAuditMapProps {
 }
 
 const SYSTEMS_METRICS = [
-  { id: 'ORG-ENDO', coverage: 92, count: 245, status: 'Optimal', color: 'bg-indigo-500' },
-  { id: 'ORG-CARDIO', coverage: 88, count: 412, status: 'Optimal', color: 'bg-indigo-500' },
+  { id: 'ORG-ENDO', coverage: 92, count: 245, status: 'Optimal', color: 'bg-[#1BD183]' },
+  { id: 'ORG-CARDIO', coverage: 88, count: 412, status: 'Optimal', color: 'bg-[#1BD183]' },
   { id: 'ORG-RENAL', coverage: 42, count: 88, status: 'Critical', color: 'bg-rose-500' },
   { id: 'ORG-RESP', coverage: 65, count: 156, status: 'Under', color: 'bg-amber-500' },
-  { id: 'ORG-NEURO', coverage: 78, count: 198, status: 'Acceptable', color: 'bg-indigo-400' },
-  { id: 'ORG-GI', coverage: 81, count: 210, status: 'Optimal', color: 'bg-indigo-500' },
+  { id: 'ORG-NEURO', coverage: 78, count: 198, status: 'Acceptable', color: 'bg-[#1BD183]' },
+  { id: 'ORG-GI', coverage: 81, count: 210, status: 'Optimal', color: 'bg-[#1BD183]' },
   { id: 'ORG-HEME', coverage: 35, count: 45, status: 'Critical', color: 'bg-rose-500' },
-  { id: 'ORG-SKIN', coverage: 95, count: 120, status: 'Optimal', color: 'bg-indigo-500' },
+  { id: 'ORG-SKIN', coverage: 95, count: 120, status: 'Optimal', color: 'bg-[#1BD183]' },
   { id: 'ORG-MSK', coverage: 58, count: 92, status: 'Under', color: 'bg-amber-500' },
-  { id: 'ORG-REPRO', coverage: 72, count: 144, status: 'Acceptable', color: 'bg-indigo-400' },
-  { id: 'ORG-SOC', coverage: 98, count: 85, status: 'Optimal', color: 'bg-indigo-500' },
-  { id: 'ORG-BIOSTAT', coverage: 88, count: 110, status: 'Optimal', color: 'bg-indigo-500' },
+  { id: 'ORG-REPRO', coverage: 72, count: 144, status: 'Acceptable', color: 'bg-[#1BD183]' },
+  { id: 'ORG-SOC', coverage: 98, count: 85, status: 'Optimal', color: 'bg-[#1BD183]' },
+  { id: 'ORG-BIOSTAT', coverage: 88, count: 110, status: 'Optimal', color: 'bg-[#1BD183]' },
 ];
 
 const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose, onNavigate }) => {
@@ -48,7 +48,7 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose, onNavi
         <div className="p-8 lg:p-12 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <LayoutGrid className="text-indigo-600" size={24} />
+              <LayoutGrid className="text-black" size={24} />
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">Curriculum Audit Map</h1>
             </div>
             <p className="text-slate-500 font-medium italic">Global spatial overview of educational assets vs USMLE Outline.</p>
@@ -56,7 +56,7 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose, onNavi
           <div className="flex items-center gap-4">
              <div className="flex flex-col items-end">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Coverage</span>
-                <span className="text-2xl font-black text-indigo-600">74.2%</span>
+                <span className="text-2xl font-black text-black">74.2%</span>
              </div>
              <button 
                onClick={onClose}
@@ -89,7 +89,7 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose, onNavi
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-xs font-bold">
                     <span className="text-slate-500 uppercase">Coverage</span>
-                    <span className="text-indigo-600">{sys.coverage}%</span>
+                    <span className="text-black">{sys.coverage}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <div 
@@ -100,8 +100,8 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose, onNavi
                 </div>
 
                 <div className="mt-6 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                   <span className="text-[10px] font-black text-indigo-600 uppercase">View Details</span>
-                   <ChevronRight size={14} className="text-indigo-600" />
+                   <span className="text-[10px] font-black text-black uppercase">View Details</span>
+                   <ChevronRight size={14} className="text-black" />
                 </div>
               </div>
             ))}

@@ -74,13 +74,13 @@ const ExamBlueprintView: React.FC = () => {
                  }}
                  className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group ${
                    selectedBlueprintId === bp.id 
-                   ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-100' 
-                   : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-200'
+                   ? 'bg-[#1BD183] text-black' 
+                   : 'bg-white border-slate-100 text-slate-600 hover:border-[#1BD183]'
                  }`}
                >
                  <div>
                     <p className="text-xs font-black uppercase tracking-tight">{bp.name}</p>
-                    <p className={`text-[10px] mt-1 font-medium ${selectedBlueprintId === bp.id ? 'text-indigo-100' : 'text-slate-400'}`}>
+                    <p className={`text-[10px] mt-1 font-medium ${selectedBlueprintId === bp.id ? 'text-black' : 'text-slate-400'}`}>
                       {bp.totalItems} Items • {bp.organSystemWeights.length} Systems
                     </p>
                  </div>
@@ -95,7 +95,7 @@ const ExamBlueprintView: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Question Count</label>
-                <span className="text-sm font-black text-indigo-600">{itemCount} Qs</span>
+                <span className="text-sm font-black text-[#1BD183]">{itemCount} Qs</span>
               </div>
               <input 
                 type="range" 
@@ -104,7 +104,7 @@ const ExamBlueprintView: React.FC = () => {
                 step="5" 
                 value={itemCount}
                 onChange={(e) => setItemCount(parseInt(e.target.value))}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1BD183]"
               />
             </div>
 
@@ -115,17 +115,17 @@ const ExamBlueprintView: React.FC = () => {
                   <div key={sys.organSystemId} className="space-y-1">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter">
                        <span className="text-slate-600 truncate max-w-[180px]">{getSystemName(sys.organSystemId)}</span>
-                       <span className="text-indigo-600">{sys.weightPercent}%</span>
+                       <span className="text-[#1BD183]">{sys.weightPercent}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                       <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${sys.weightPercent}%` }}></div>
+                       <div className="h-full bg-[#1BD183] transition-all duration-1000" style={{ width: `${sys.weightPercent}%` }}></div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <button className="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 transition shadow-xl shadow-slate-200 active:translate-y-1">
+            <button className="w-full py-4 bg-primary-gradient hover:bg-primary-gradient-hover text-white rounded-[1.5rem] text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition shadow-xl shadow-slate-200 active:translate-y-1">
               <Zap size={16} className="text-yellow-400" /> Assemble Form
             </button>
           </div>
@@ -152,14 +152,14 @@ const ExamBlueprintView: React.FC = () => {
            </div>
            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-100 pb-8 mb-8">
               <div>
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-2 block">Blueprint DNA Matrix</span>
+                <span className="text-[10px] font-black text-[#1BD183] uppercase tracking-[0.2em] mb-2 block">Blueprint DNA Matrix</span>
                 <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedBlueprint.name}</h2>
                 <p className="text-sm text-slate-500 font-medium mt-1 italic">"{selectedBlueprint.description}"</p>
               </div>
               <div className="flex gap-4">
-                 <div className="bg-indigo-50 px-6 py-4 rounded-3xl text-center border border-indigo-100">
-                    <p className="text-[9px] font-black text-indigo-400 uppercase mb-1">Items</p>
-                    <p className="text-3xl font-black text-indigo-600">{itemCount}</p>
+                 <div className="bg-[#1BD183]/10 px-6 py-4 rounded-3xl text-center border border-[#1BD183]/20">
+                    <p className="text-[9px] font-black text-[#1BD183] uppercase mb-1">Items</p>
+                    <p className="text-3xl font-black text-[#1BD183]">{itemCount}</p>
                  </div>
                  <div className="bg-slate-900 px-6 py-4 rounded-3xl text-center">
                     <p className="text-[9px] font-black text-slate-500 uppercase mb-1">KR-20</p>
@@ -171,7 +171,7 @@ const ExamBlueprintView: React.FC = () => {
            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
               <div className="space-y-6">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                   <Target size={14} className="text-indigo-400" /> Psychometric Difficulty Curve
+                   <Target size={14} className="text-[#1BD183]" /> Psychometric Difficulty Curve
                 </h3>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -194,7 +194,7 @@ const ExamBlueprintView: React.FC = () => {
                       <Tooltip 
                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} 
                       />
-                      <Area type="monotone" dataKey="weight" stroke="#6366f1" strokeWidth={4} fill="url(#curveGrad)" />
+                      <Area type="monotone" dataKey="weight" stroke="#1BA6D1" strokeWidth={4} fill="url(#curveGrad)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -202,7 +202,7 @@ const ExamBlueprintView: React.FC = () => {
 
               <div className="space-y-6">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                   <LayoutTemplate size={14} className="text-indigo-400" /> Bloom's Taxonomy Weights
+                   <LayoutTemplate size={14} className="text-[#1BD183]" /> Bloom's Taxonomy Weights
                 </h3>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">

@@ -156,13 +156,13 @@ const CurriculumHealthView: React.FC = () => {
         </div>
         <div className="flex gap-4 relative z-10">
            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center min-w-[120px]">
-              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Outline Page</p>
+              <p className="text-[9px] font-black text-[#1BA6D1] uppercase tracking-widest mb-1">Outline Page</p>
               <p className="text-4xl font-black">{usmleCategory?.page || '--'}</p>
            </div>
            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center min-w-[120px]">
-              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Coverage</p>
+              <p className="text-[9px] font-black text-[#1BD183] uppercase tracking-widest mb-1">Coverage</p>
               <div className="flex items-center justify-center gap-2">
-                <Sparkles size={24} className="text-emerald-500" />
+                <Sparkles size={24} className="text-[#1BD183]" />
                 <span className="text-sm font-black uppercase">84%</span>
               </div>
            </div>
@@ -183,7 +183,7 @@ const CurriculumHealthView: React.FC = () => {
                     onClick={() => setSelectedSystemId(sys.id)}
                     className={`w-full text-left px-5 py-4 rounded-2xl text-[10px] font-black transition-all flex items-center justify-between group ${
                       selectedSystemId === sys.id 
-                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' 
+                      ? 'bg-[#1BD183] text-black shadow-xl' 
                       : 'text-slate-500 hover:bg-slate-50'
                     }`}
                   >
@@ -220,7 +220,7 @@ const CurriculumHealthView: React.FC = () => {
               onClick={() => setAuditMode('USMLE_STANDARD')}
               className={`flex items-center gap-2 px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all ${
                 auditMode === 'USMLE_STANDARD' 
-                ? 'bg-slate-900 text-white shadow-lg' 
+                ? 'bg-primary-gradient text-white' 
                 : 'text-slate-500 hover:bg-slate-200'
               }`}
             >
@@ -230,7 +230,7 @@ const CurriculumHealthView: React.FC = () => {
               onClick={() => setAuditMode('OBJECTIVES')}
               className={`flex items-center gap-2 px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all ${
                 auditMode === 'OBJECTIVES' 
-                ? 'bg-slate-900 text-white shadow-lg' 
+                ? 'bg-primary-gradient text-white' 
                 : 'text-slate-500 hover:bg-slate-200'
               }`}
             >
@@ -241,12 +241,12 @@ const CurriculumHealthView: React.FC = () => {
           {auditMode === 'USMLE_STANDARD' ? (
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {usmleCategory?.topics.map(topic => (
-                   <div key={topic.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 hover:border-indigo-200 transition-colors group flex flex-col">
+                   <div key={topic.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 hover:border-[#1BD183]/60 transition-colors group flex flex-col">
                       <div className="flex justify-between items-start mb-6">
-                         <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:scale-110 transition-transform">
+                         <div className="p-3 bg-[#1BD183]/10 text-[#1BD183] rounded-2xl group-hover:scale-110 transition-transform">
                             <Activity size={20} />
                          </div>
-                         <div className="flex items-center gap-2 text-[10px] font-black text-emerald-600 uppercase">
+                         <div className="flex items-center gap-2 text-[10px] font-black text-[#1BA6D1] uppercase">
                             <CheckCircle2 size={14} /> Coverage Met
                          </div>
                       </div>
@@ -264,7 +264,7 @@ const CurriculumHealthView: React.FC = () => {
                             <div className="w-8 h-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-indigo-600">32Q</div>
                             <div className="w-8 h-8 rounded-full bg-emerald-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-emerald-600">4L</div>
                          </div>
-                         <button className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all">
+                         <button className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all">
                             Audit Assets <ChevronRight size={14} />
                          </button>
                       </div>
@@ -291,8 +291,8 @@ const CurriculumHealthView: React.FC = () => {
                           contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} 
                        />
                        <Legend verticalAlign="top" align="right" />
-                       <Bar name="Current Items" dataKey="current" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
-                       <Bar name="Target Items" dataKey="target" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={40} />
+                       <Bar name="Current Items" dataKey="current" fill="#1BA6D1" radius={[4, 4, 0, 0]} barSize={40} />
+                       <Bar name="Target Items" dataKey="target" fill="#7F5CD3" radius={[4, 4, 0, 0]} barSize={40} />
                      </BarChart>
                    </ResponsiveContainer>
                  </div>
@@ -321,9 +321,9 @@ const CurriculumHealthView: React.FC = () => {
             <div className="p-8">
                <div className="grid grid-cols-1 gap-4">
                   {USMLE_2024_OUTLINE.filter(cat => cat.name.toLowerCase().includes(searchQuery.toLowerCase())).map(cat => (
-                    <div key={cat.id} className="p-6 border border-slate-100 rounded-[2rem] hover:border-indigo-200 transition bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div key={cat.id} className="p-6 border border-slate-100 rounded-[2rem] hover:border-[#1BA6D1]/60 transition bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-6">
                        <div className="flex items-center gap-6 flex-1">
-                          <div className="w-14 h-14 bg-indigo-600 rounded-2xl border border-indigo-500 shadow-xl shadow-indigo-100 flex items-center justify-center text-white font-black text-lg">
+                          <div className="w-14 h-14 bg-[#1BD183]/90 rounded-2xl border border-[#1BD183] shadow-xl shadow-[#1BD183]/20 flex items-center justify-center text-white font-black text-lg">
                              {cat.page}
                           </div>
                           <div>
@@ -331,13 +331,13 @@ const CurriculumHealthView: React.FC = () => {
                              <div className="flex items-center gap-4 mt-1">
                                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{cat.topics.length} Key Sub-categories</span>
                                 <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                <span className="text-[10px] text-indigo-600 font-black uppercase tracking-widest">Section {cat.id.split('-').pop()}</span>
+                                <span className="text-[10px] text-[#1BA6D1] font-black uppercase tracking-widest">Section {cat.id.split('-').pop()}</span>
                              </div>
                           </div>
                        </div>
                        <button 
                         onClick={() => setSelectedSystemId(cat.id)}
-                        className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition shadow-sm active:translate-y-1"
+                        className="px-6 py-3 bg-black border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black/80 transition shadow-sm active:translate-y-1"
                        >
                           Analyze Coverage
                        </button>

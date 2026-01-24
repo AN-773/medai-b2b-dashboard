@@ -66,14 +66,14 @@ const BankExplorerView: React.FC = () => {
       </div>
 
       <div className="space-y-6">
-        <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[2rem] w-fit shadow-inner">
+        <div className="flex gap-4 p-1.5 bg-white rounded-[2rem] w-fit ">
           {tabItems.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all ${
                 activeTab === tab.id 
-                ? 'bg-indigo-600 text-white shadow-xl' 
+                ? 'bg-primary-gradient text-white' 
                 : 'text-slate-500 hover:bg-slate-200'
               }`}
             >
@@ -111,13 +111,13 @@ const BankExplorerView: React.FC = () => {
                     <tr key={item.id} className="hover:bg-slate-50/80 transition group">
                       <td className="py-7 px-8">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-black text-[11px] shadow-sm">
+                          <div className="w-12 h-12 bg-[#1BD183]/20 text-[#1BD183] rounded-2xl flex items-center justify-center font-black text-[11px] shadow-sm">
                             {item.id.replace('QID-', '')}
                           </div>
                           <div>
                             <p className="text-sm font-black text-slate-900 leading-snug">{item.itemTagline || 'Untitled Item'}</p>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-tight">
+                              <span className="text-[10px] font-black text-black/50 uppercase tracking-tight">
                                   {getOrganSystemName(item.taxonomy.organSystemId)}
                               </span>
                               <span className="text-[9px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-lg font-black uppercase tracking-tighter">
@@ -132,15 +132,15 @@ const BankExplorerView: React.FC = () => {
                           <div className="flex flex-wrap items-center gap-1">
                             {syndrome.path.map((step, idx) => (
                               <React.Fragment key={idx}>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">{step}</span>
+                                <span className="text-[9px] font-bold text-black/50 uppercase">{step}</span>
                                 {idx < syndrome.path.length - 1 && <ChevronRight size={10} className="text-slate-200" />}
                               </React.Fragment>
                             ))}
                           </div>
                            <span className="inline-flex items-center gap-2 text-[10px] font-black text-slate-800 uppercase">
-                              <BookMarked size={12} className="text-indigo-400" /> {syndrome.name}
+                              <BookMarked size={12} className="text-[#1BD183]" /> {syndrome.name}
                            </span>
-                           <span className="inline-flex items-center gap-2 text-[9px] font-bold text-slate-300">
+                           <span className="inline-flex items-center gap-2 text-[9px] font-bold text-black/50">
                               <Tag size={10} /> {item.taxonomy.usmleContentId}
                            </span>
                         </div>
@@ -158,7 +158,7 @@ const BankExplorerView: React.FC = () => {
                       </td>
                       <td className="py-7 px-8 text-right">
                         <div className="flex justify-end gap-2">
-                          <button className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-100 rounded-2xl transition shadow-sm">
+                          <button className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-[#1BD183] hover:border-[#1BD183] rounded-2xl transition shadow-sm">
                             <ExternalLink size={18} />
                           </button>
                         </div>

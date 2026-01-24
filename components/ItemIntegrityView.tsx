@@ -20,6 +20,26 @@ interface ItemIntegrityViewProps {
 const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }) => {
   const [auditingId, setAuditingId] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<any | null>(null);
+  /* 
+  {
+    integrityScore: 58,
+    flaws: [
+      'Stem contains ambiguous clinical language.',
+      'Distractor options lack plausibility.',
+      'Item shows significant performance drift over time.'
+    ],
+    reconstructedItem: {
+      stem: 'A 45-year-old male presents with chest pain and shortness of breath. Which of the following is the most likely diagnosis?',
+      options: [
+        { text: 'Myocardial Infarction', isCorrect: true },
+        { text: 'Gastroesophageal Reflux Disease', isCorrect: false },
+        { text: 'Panic Attack', isCorrect: false },
+        { text: 'Pneumonia', isCorrect: false }
+      ]
+    },
+
+  }
+  */
   const [selectedItem, setSelectedItem] = useState<BackendItem | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
@@ -100,7 +120,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
               }`}
             >
               <div className="flex justify-between items-start mb-2">
-                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em]">{item.id}</span>
+                <span className="text-[9px] font-black text-[#1BD183] uppercase tracking-[0.2em]">{item.id}</span>
                 <div className="flex items-center gap-1.5">
                    <TrendingDown size={12} className="text-rose-400" />
                    <span className="text-[8px] font-black text-rose-500 uppercase">P-Drift</span>
@@ -263,7 +283,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                   <button 
                     onClick={applyRemedy}
                     disabled={isApplying}
-                    className="w-full md:w-auto px-12 py-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-[2rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-4 active:scale-95"
+                    className="w-full md:w-auto px-12 py-5 bg-primary-gradient disabled:opacity-50 text-white rounded-[2rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-4 active:scale-95"
                   >
                     {isApplying ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
                     {isApplying ? 'COMMITTING TO BANK...' : 'Deploy Reconstruction'}

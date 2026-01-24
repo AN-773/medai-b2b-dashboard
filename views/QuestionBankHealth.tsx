@@ -29,11 +29,11 @@ const QuestionBankHealth: React.FC = () => {
   }, []);
 
   const pValueDist = [
-    { range: '<0.3', label: 'Too Hard', count: mcqItems.filter(i => i.pValue < 0.3).length, color: '#ef4444' },
-    { range: '0.3-0.5', label: 'Acceptable', count: mcqItems.filter(i => i.pValue >= 0.3 && i.pValue < 0.5).length, color: '#fbbf24' },
-    { range: '0.5-0.6', label: 'Ideal', count: mcqItems.filter(i => i.pValue >= 0.5 && i.pValue <= 0.6).length, color: '#10b981' },
-    { range: '0.6-0.7', label: 'Acceptable', count: mcqItems.filter(i => i.pValue > 0.6 && i.pValue <= 0.7).length, color: '#fbbf24' },
-    { range: '>0.7', label: 'Too Easy', count: mcqItems.filter(i => i.pValue > 0.7).length, color: '#3b82f6' }
+    { range: '<0.3', label: 'Too Hard', count: mcqItems.filter(i => i.pValue < 0.3).length, color: '#7F5CD3' },
+    { range: '0.3-0.5', label: 'Acceptable', count: mcqItems.filter(i => i.pValue >= 0.3 && i.pValue < 0.5).length, color: '#7F5CD3' },
+    { range: '0.5-0.6', label: 'Ideal', count: mcqItems.filter(i => i.pValue >= 0.5 && i.pValue <= 0.6).length, color: '#5D1AEC' },
+    { range: '0.6-0.7', label: 'Acceptable', count: mcqItems.filter(i => i.pValue > 0.6 && i.pValue <= 0.7).length, color: '#7F5CD3' },
+    { range: '>0.7', label: 'Too Easy', count: mcqItems.filter(i => i.pValue > 0.7).length, color: '#5D1AEC' }
   ];
 
   const scatterData = mcqItems.map(i => ({
@@ -55,7 +55,7 @@ const QuestionBankHealth: React.FC = () => {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-500 uppercase mb-1">Bank Strength Score</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-indigo-600">72%</span>
+            <span className="text-3xl font-black text-[#1BD183]">72%</span>
             <span className="text-xs text-green-600 font-bold">+2.4%</span>
           </div>
         </div>
@@ -78,10 +78,10 @@ const QuestionBankHealth: React.FC = () => {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-500 uppercase mb-1">Revision Required</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-red-600">
+            <span className="text-3xl font-black text-[#FF5353]">
                {mcqItems.filter(i => i.dIndex < 0.2 || i.statsDistractors.some(d => d.flaggedNonFunctional)).length}
             </span>
-            <span className="text-xs text-red-500 font-bold">Items</span>
+            <span className="text-xs text-[#FF5353]/80 font-bold">Items</span>
           </div>
         </div>
       </div>
@@ -131,7 +131,7 @@ const QuestionBankHealth: React.FC = () => {
       <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
            <h3 className="font-black text-slate-900 uppercase tracking-tight">Per-Item Psychometric Audit</h3>
-           <button onClick={() => setIsStandardsModalOpen(true)} className="text-indigo-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+           <button onClick={() => setIsStandardsModalOpen(true)} className="text-[#1BD183] text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
               <Info size={14} /> See Standards
            </button>
         </div>
@@ -155,7 +155,7 @@ const QuestionBankHealth: React.FC = () => {
                     <td className="py-5 px-6 font-bold text-slate-900">{item.id}</td>
                     <td className="py-5 px-6 text-center text-xs font-bold text-slate-500">{item.sampleSize}</td>
                     <td className="py-5 px-6 text-center font-black text-slate-800">{item.pValue.toFixed(2)}</td>
-                    <td className="py-5 px-6 text-center font-black text-indigo-600">{item.dIndex.toFixed(2)}</td>
+                    <td className="py-5 px-6 text-center font-black text-[#5D1AEC]">{item.dIndex.toFixed(2)}</td>
                     <td className="py-5 px-6">
                        {nfdCount > 0 ? (
                          <div className="flex items-center gap-2 text-[10px] font-bold text-rose-500 bg-rose-50 px-3 py-1 rounded-full w-fit">

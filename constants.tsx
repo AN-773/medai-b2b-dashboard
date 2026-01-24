@@ -237,6 +237,28 @@ export const MOCK_EXAM_BLUEPRINTS: ExamBlueprint[] = [
       { bloomLevel: 'Analyze', proportion: 0.10 },
     ],
   },
+  {
+    id: 'sBLUEPRINT-STEP1-BLOCK-40-DEFAULT',
+    name: 'Step 1-style 40-question General Block',
+    description: 'Balanced block approximating Step 1 content distribution.',
+    totalItems: 40,
+    organSystemWeights: [
+      { organSystemId: 'USMLE-CARDIO', weightPercent: 16 },
+      { organSystemId: 'USMLE-RENAL', weightPercent: 10 },
+      { organSystemId: 'USMLE-ENDO', weightPercent: 12 },
+    ],
+    difficultyDistribution: [
+      { label: 'Easy', proportion: 0.25 },
+      { label: 'Moderate', proportion: 0.50 },
+      { label: 'Hard', proportion: 0.25 },
+    ],
+    bloomDistribution: [
+      { bloomLevel: 'Recall', proportion: 0.25 },
+      { bloomLevel: 'Understand', proportion: 0.35 },
+      { bloomLevel: 'Apply', proportion: 0.30 },
+      { bloomLevel: 'Analyze', proportion: 0.10 },
+    ],
+  },
 ];
 
 export const MOCK_RELIABILITY_TARGETS: ReliabilityTarget[] = [

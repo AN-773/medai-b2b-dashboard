@@ -39,7 +39,7 @@ const StudentMasteryView: React.FC = () => {
                 <PolarGrid />
                 <PolarAngleAxis dataKey="subject" />
                 <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                <Radar name="Cohort Avg" dataKey="A" stroke="#4f46e5" fill="#4f46e5" fillOpacity={0.4} />
+                <Radar name="Cohort Avg" dataKey="A" stroke="#1BD183" fill="#1BD183" fillOpacity={0.4} />
               </RadarChart>
             </ResponsiveContainer>
           </div>
@@ -58,7 +58,7 @@ const StudentMasteryView: React.FC = () => {
                 <XAxis dataKey="range" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#5D1AEC" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

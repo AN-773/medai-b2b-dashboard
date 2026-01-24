@@ -195,18 +195,18 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="bg-slate-100 p-1 rounded-lg flex gap-1 mr-4">
-            <button onClick={() => setViewMode('edit')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${viewMode === 'edit' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <div className="bg-[#F3F6F3] p-1 rounded-[40px] flex gap-1 mr-4">
+            <button onClick={() => setViewMode('edit')} className={`px-3 py-1.5 rounded-[40px] text-xs font-medium transition-all flex items-center gap-2 ${viewMode === 'edit' ? 'bg-primary-gradient text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <Layout size={16} /> Edit
             </button>
-            <button onClick={() => setViewMode('preview')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${viewMode === 'preview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <button onClick={() => setViewMode('preview')} className={`px-3 py-1.5 rounded-[40px] text-xs font-medium transition-all flex items-center gap-2 ${viewMode === 'preview' ? 'bg-primary-gradient text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <Eye size={16} /> Preview
             </button>
           </div>
-          <button onClick={() => handleSave('Draft')} className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+          <button onClick={() => handleSave('Draft')} className="flex items-center gap-2 text-sm bg-[#191A19] border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <FileText size={18} /> Save Draft
           </button>
-          <button onClick={() => handleSave('Published')} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+          <button onClick={() => handleSave('Published')} className="flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <Save size={18} /> Publish
           </button>
         </div>
@@ -215,7 +215,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
         <div className={`bg-white flex flex-col overflow-y-auto flex-shrink-0 ${viewMode === 'preview' ? 'hidden md:flex' : 'flex'}`} style={{ width: sidebarWidth }}>
           <div className="p-5 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-              <Sparkles className="text-purple-500" size={18} /> AI Generator
+              <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
             </h3>
             <div className="space-y-4">
               <div>
@@ -228,7 +228,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                   {Object.values(BloomsLevel).map(level => (<option key={level} value={level}>{level}</option>))}
                 </select>
               </div>
-              <button onClick={handleGenerate} disabled={isGenerating || !topic} className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white py-2.5 rounded-lg font-medium transition-all shadow-sm">
+              <button onClick={handleGenerate} disabled={isGenerating || !topic} className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm">
                 {isGenerating ? "Generating..." : "Generate Draft"}
               </button>
             </div>
@@ -236,7 +236,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           
           <div className="p-5 border-b border-slate-100">
              <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-                <ImageIcon className="text-emerald-500" size={18} /> Clinical Visuals
+                <ImageIcon className="text-[#1BD183]" size={18} /> Clinical Visuals
              </h3>
              <div className="space-y-4">
                 {attachedImage ? (

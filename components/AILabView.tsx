@@ -17,8 +17,28 @@ interface AILabViewProps {
 const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
   const [prompt, setPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [generatedResult, setGeneratedResult] = useState<any>(null);
-  const [selectedItem, setSelectedItem] = useState<BackendItem | null>(null);
+  const [generatedResult, setGeneratedResult] = useState<any>({
+    newStem: 'a 45-year-old male presents with chest pain and shortness of breath. His ECG shows ST-elevation in leads II, III, and aVF. What is the most likely diagnosis?',
+    newOptions: [
+      { text: 'Anterior MI', isCorrect: false },
+      { text: 'Inferior MI', isCorrect: true },
+      { text: 'Lateral MI', isCorrect: false },
+    ],
+    explanation: 'The ECG findings of ST-elevation in leads II, III, and aVF indicate an inferior myocardial infarction (MI), which is typically caused by occlusion of the right coronary artery. Anterior MI would show changes in leads V1-V4, while lateral MI would affect leads I, aVL, V5, and V6.'
+
+  });
+  const [selectedItem, setSelectedItem] = useState<BackendItem | null>({
+    id: 'LAB-BASE-001',
+    type: 'MCQ',
+    stem: 'A 45-year-old male presents with chest pain and shortness of breath. His ECG shows ST-elevation in leads II, III, and aVF. What is the most likely diagnosis?',
+    options: [
+      { id: 'opt1', text: 'Anterior MI', isCorrect: false, label: 'A' },
+      { id: 'opt2', text: 'Inferior MI', isCorrect: true, label: 'B' },
+      { id: 'opt3', text: 'Lateral MI', isCorrect: false, label: 'C' },
+    ],
+    taxonomy: { bloomLevel: 'Apply' }
+    
+  });
   const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -114,22 +134,22 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
           </div>
 
           <div className="relative z-10 flex items-center gap-5">
-            <div className="p-4 bg-indigo-600 rounded-[1.5rem] shadow-2xl shadow-indigo-900/50">
+            <div className="p-4 bg-[#1BD183] rounded-[1.5rem] shadow-2xl shadow-indigo-900/50">
               <Brain size={32} />
             </div>
             <div>
               <h2 className="text-3xl font-black uppercase tracking-tight">Sena Lab</h2>
-              <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Generative R&D Sandbox</p>
+              <p className="text-[#1BD183] text-[10px] font-black uppercase tracking-[0.2em] mt-1">Generative R&D Sandbox</p>
             </div>
           </div>
 
           {/* Asset Selection */}
           <div className="relative z-10 space-y-3">
-             <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest px-1">Synthesis Base</label>
+             <label className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest px-1">Synthesis Base</label>
              {selectedItem ? (
                 <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex justify-between items-center group">
                   <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0">
+                    <div className="w-10 h-10 bg-[#1BD183]/20 text-[#1BD183] rounded-xl flex items-center justify-center font-black text-xs shrink-0">
                       {selectedItem.id.split('-').pop()}
                     </div>
                     <div className="truncate">
@@ -144,7 +164,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              ) : (
                 <button 
                   onClick={() => setIsItemPickerOpen(true)}
-                  className="w-full p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-2xl flex items-center justify-center gap-3 text-slate-400 hover:border-indigo-500 hover:text-white transition-all group"
+                  className="w-full p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-2xl flex items-center justify-center gap-3 text-slate-400 hover:border-[#1BD183] hover:text-white transition-all group"
                 >
                   <Search size={18} />
                   <span className="text-xs font-black uppercase tracking-widest">Select Repository Base</span>
@@ -157,9 +177,9 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <div className="space-y-4">
                 <div className="flex justify-between items-center">
                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Complexity Index</label>
-                   <span className="text-[10px] font-black text-indigo-400">{complexity}%</span>
+                   <span className="text-[10px] font-black text-[#1BD183]">{complexity}%</span>
                 </div>
-                <input type="range" value={complexity} onChange={e => setComplexity(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full appearance-none accent-indigo-500" />
+                <input type="range" value={complexity} onChange={e => setComplexity(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full appearance-none accent-[#1BD183]" />
              </div>
 
              <div className="space-y-4">
@@ -170,7 +190,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                         key={level}
                         onClick={() => setBloomTarget(level)}
                         className={`py-2.5 rounded-xl text-[8px] font-black uppercase tracking-tighter transition-all border ${
-                          bloomTarget === level ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white/5 border-white/5 text-slate-500 hover:bg-white/10'
+                          bloomTarget === level ? 'bg-[#1BD183] border-[#1BD183] text-black shadow-lg' : 'bg-white/5 border-white/5 text-slate-500 hover:bg-white/10'
                         }`}
                       >
                         {level}
@@ -182,7 +202,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <div className="space-y-4">
                 <div className="flex justify-between items-center">
                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Clinical Density</label>
-                   <span className="text-[10px] font-black text-emerald-400">{clinicalDensity}%</span>
+                   <span className="text-[10px] font-black text-[#1BD183]">{clinicalDensity}%</span>
                 </div>
                 <input type="range" value={clinicalDensity} onChange={e => setClinicalDensity(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full appearance-none accent-emerald-500" />
              </div>
@@ -191,7 +211,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
           {/* Directives */}
           <div className="relative z-10 flex-1 flex flex-col gap-4">
              <div className="flex-1 bg-white/5 border border-white/5 rounded-[2rem] p-6 space-y-4 flex flex-col shadow-inner">
-                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Synthesis Directives</label>
+                <label className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Synthesis Directives</label>
                 <textarea 
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -207,7 +227,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                      onClick={() => setPrompt(p.prompt)}
                      className="p-3 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-left text-slate-400 hover:text-white hover:bg-white/10 hover:border-indigo-500/30 transition-all flex items-center gap-2"
                    >
-                     <Zap size={10} className="text-indigo-500" /> {p.label}
+                     <Zap size={10} className="text-[#1BD183]" /> {p.label}
                    </button>
                 ))}
              </div>
@@ -215,7 +235,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <button 
                 onClick={handleRemaster}
                 disabled={isProcessing}
-                className="w-full py-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-[1.5rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-900/40 flex items-center justify-center gap-4 active:scale-95"
+                className="w-full py-6 bg-primary-gradient disabled:opacity-50 text-white rounded-[1.5rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-900/40 flex items-center justify-center gap-4 active:scale-95"
               >
                 {isProcessing ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
                 {isProcessing ? 'SYNTHESIZING ASSET...' : 'Execute Remaster'}
@@ -230,13 +250,13 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
           <div className="flex-1 bg-white rounded-[3.5rem] border border-slate-200 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right-10 duration-700">
              <div className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                  <div className="p-3 bg-[#1BD183] rounded-2xl text-white shadow-lg shadow-[#1BD183]/30">
                     <Sparkles size={24} />
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Remastered Synthesis</h3>
                     <div className="flex gap-2 mt-1">
-                       <span className="text-[9px] font-black px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-md uppercase">{bloomTarget} Level</span>
+                       <span className="text-[9px] font-black px-2 py-0.5 bg-[#1BA6D1]/20 text-[#1BA6D1] rounded-md uppercase">{bloomTarget} Level</span>
                        <span className="text-[9px] font-black px-2 py-0.5 bg-emerald-100 text-emerald-600 rounded-md uppercase">Vignette: {complexity}%</span>
                     </div>
                   </div>
@@ -251,7 +271,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <div className="flex-1 overflow-y-auto p-12 space-y-12 custom-scrollbar">
                 <div className="space-y-4">
                    <div className="flex items-center gap-3">
-                      <Stethoscope className="text-indigo-400" size={18} />
+                      <Stethoscope className="text-[#1BD183]/90" size={18} />
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Synthesized Clinical Stem</p>
                    </div>
                    <div className="p-10 bg-slate-50 border border-slate-100 rounded-[3rem] relative">
@@ -263,7 +283,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
 
                 <div className="space-y-6">
                    <div className="flex items-center gap-3">
-                      <Layout className="text-indigo-400" size={18} />
+                      <Layout className="text-[#1BD183]/90" size={18} />
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Homogeneous Distractors</p>
                    </div>
                    <div className="grid grid-cols-1 gap-4">
@@ -287,12 +307,12 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                    </div>
                 </div>
 
-                <div className="p-10 bg-indigo-50 border border-indigo-100 rounded-[2.5rem] flex gap-6 items-start">
-                   <div className="p-4 bg-white rounded-2xl text-indigo-600 shadow-sm border border-indigo-100 shrink-0">
+                <div className="p-10 bg-[#ebf4ff] rounded-[2.5rem] flex gap-6 items-start">
+                   <div className="p-4 bg-white rounded-2xl text-[#1BD183] shadow-sm border border-indigo-100 shrink-0">
                       <Activity size={28} />
                    </div>
                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Pedagogical Rationale</p>
+                      <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Pedagogical Rationale</p>
                       <p className="text-sm font-medium text-indigo-900/80 leading-relaxed">{generatedResult.explanation}</p>
                    </div>
                 </div>
@@ -307,7 +327,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 </button>
                 <button 
                   onClick={handleCommit}
-                  className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-slate-800 transition shadow-2xl shadow-slate-300 flex items-center gap-3 active:scale-95"
+                  className="px-12 py-4 text-white bg-primary-gradient rounded-2xl font-black uppercase tracking-widest text-[11px] transition shadow-2xl shadow-slate-300 flex items-center gap-3 active:scale-95"
                 >
                   <Save size={20} /> Commit to Bank
                 </button>

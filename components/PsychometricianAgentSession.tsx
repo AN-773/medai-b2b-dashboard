@@ -116,13 +116,13 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
       <div className="bg-white rounded-[3rem] w-full max-w-xl shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-500">
         <div className="p-10 text-center space-y-8">
           <div className="flex justify-end">
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition"><X size={24} /></button>
+            <button onClick={onClose} className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground h-8 w-8 hover:bg-gray-200"><X size={24} /></button>
           </div>
           
           <div className="flex flex-col items-center gap-6">
-            <div className={`w-32 h-32 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-2xl relative ${isActive && !isMuted ? 'animate-pulse' : ''}`}>
+            <div className={`w-32 h-32 rounded-full bg-[#1BD183] flex items-center justify-center text-white shadow-2xl relative ${isActive && !isMuted ? 'animate-pulse' : ''}`}>
                <Activity size={48} className={isActive && !isMuted ? 'animate-bounce' : ''} />
-               <div className="absolute inset-0 rounded-full border-4 border-indigo-400 animate-ping opacity-20"></div>
+               <div className="absolute inset-0 rounded-full border-4 border-[#1BD183] animate-ping opacity-20"></div>
             </div>
             <div>
               <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Vocal Consultation</h2>
@@ -137,10 +137,10 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
             >
               {isMuted ? <MicOff size={28} /> : <Mic size={28} />}
             </button>
-            <div className="bg-slate-100 p-6 rounded-3xl text-indigo-600 shadow-inner flex items-center gap-2">
+            <div className="bg-slate-100 p-6 rounded-3xl text-[#1BD183] shadow-inner flex items-center gap-2">
                <Volume2 size={28} />
                <span className="w-16 h-2 bg-slate-200 rounded-full relative overflow-hidden">
-                  <div className="absolute inset-0 bg-indigo-600 animate-shimmer"></div>
+                  <div className="absolute inset-0 bg-[#1BD183] animate-shimmer"></div>
                </span>
             </div>
           </div>
@@ -149,7 +149,7 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Establishing Secure Uplink...</p>
           ) : (
             <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
-               <p className="text-xs font-bold text-indigo-700 italic">"I'm reviewing the bank health data now. What specific area of discrimination or difficulty would you like to discuss?"</p>
+               <p className="text-xs font-bold text-black italic">"I'm reviewing the bank health data now. What specific area of discrimination or difficulty would you like to discuss?"</p>
             </div>
           )}
         </div>

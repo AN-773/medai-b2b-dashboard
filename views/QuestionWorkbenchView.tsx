@@ -181,19 +181,19 @@ const QuestionWorkbenchView: React.FC<QuestionWorkbenchViewProps> = ({ onNavigat
 
       {/* Global Type Selector */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="flex items-center gap-2 p-1.5 bg-slate-200/50 rounded-[2.5rem] w-fit shadow-inner">
+        <div className="flex items-center gap-2 p-1.5 bg-white rounded-[2.5rem] w-fit">
           {[ItemType.MCQ, ItemType.SAQ, ItemType.LECTURE].map(type => (
             <button
               key={type}
               onClick={() => { setActiveItemType(type as ItemType); setViewMode('DASHBOARD'); }}
-              className={`flex items-center gap-3 px-8 py-3.5 rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all ${activeItemType === type ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-300/50'}`}
+              className={`flex items-center gap-3 px-8 py-3.5 rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all ${activeItemType === type ? 'bg-primary-gradient text-white ' : 'text-slate-500 hover:bg-slate-300/50'}`}
             >
               {type === ItemType.MCQ ? <ClipboardCheck size={16} /> : type === ItemType.SAQ ? <FileText size={16} /> : <MonitorPlay size={16} />}
               {type}s
             </button>
           ))}
         </div>
-        <button onClick={() => onNavigate?.('BANK_EXPLORER')} className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition shadow-sm border-b-4 hover:border-b-2 active:translate-y-1"><Database size={14} /> Global Repository</button>
+        <button onClick={() => onNavigate?.('BANK_EXPLORER')} className="flex items-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "><Database size={14} /> Global Repository</button>
       </div>
 
       {/* Workbench Sub-Navigation */}
