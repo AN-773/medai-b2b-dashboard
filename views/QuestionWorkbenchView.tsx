@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MOCK_ITEMS, MOCK_ISSUES, MOCK_LECTURES } from '../constants';
 import { 
   Question, 
@@ -30,16 +31,12 @@ import {
   ShieldCheck,
   ChevronRight
 } from 'lucide-react';
-import { View } from '../App';
-
-interface QuestionWorkbenchViewProps {
-  onNavigate?: (view: View) => void;
-}
 
 type WorkbenchViewMode = 'DASHBOARD' | 'QUESTION_EDITOR' | 'LECTURE_WIZARD' | 'LECTURE_EDITOR' | 'LECTURE_DETAIL' | 'LECTURE_PLAYER';
 type WorkbenchTab = 'DASHBOARD' | 'INTEGRITY' | 'LAB';
 
-const QuestionWorkbenchView: React.FC<QuestionWorkbenchViewProps> = ({ onNavigate }) => {
+const QuestionWorkbenchView: React.FC = () => {
+  const navigate = useNavigate();
   const [activeItemType, setActiveItemType] = useState<ItemType>(ItemType.MCQ);
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('DASHBOARD');
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>('DASHBOARD');
@@ -193,7 +190,7 @@ const QuestionWorkbenchView: React.FC<QuestionWorkbenchViewProps> = ({ onNavigat
             </button>
           ))}
         </div>
-        <button onClick={() => onNavigate?.('BANK_EXPLORER')} className="flex items-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "><Database size={14} /> Global Repository</button>
+        <button onClick={() => navigate('/bank-explorer')} className="flex items-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "><Database size={14} /> Global Repository</button>
       </div>
 
       {/* Workbench Sub-Navigation */}
@@ -226,7 +223,7 @@ const QuestionWorkbenchView: React.FC<QuestionWorkbenchViewProps> = ({ onNavigat
         {activeTab === 'DASHBOARD' && (
           <ItemModuleDashboard 
             onCreateClick={handleCreateNew}
-            onViewAllClick={() => onNavigate?.('BANK_EXPLORER')}
+            onViewAllClick={() => navigate('/bank-explorer')}
             onEditClick={(q) => handleEditItem(allBackendItems.find(i => i.id === q.id) || allLectures.find(l => l.id === q.id))}
             onDelete={(id) => { 
               if (activeItemType === ItemType.LECTURE) {

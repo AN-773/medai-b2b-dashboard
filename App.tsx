@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Stethoscope, 
@@ -13,7 +14,8 @@ import {
   Search,
   ChevronRight,
   Database,
-  Wand2
+  Wand2,
+  LogOut
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import StudentMasteryView from './views/StudentMasteryView';
@@ -23,49 +25,58 @@ import CurriculumHealthView from './views/CurriculumHealthView';
 import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
+import Login from './components/Login';
+import ProtectedRoute from './components/ProtectedRoute';
+import { useAuth } from './contexts/AuthContext';
 
 export type View = 'DASHBOARD' | 'QB_HEALTH' | 'MASTERY' | 'CURRICULUM' | 'ASSESSMENT' | 'AGENTS' | 'BLUEPRINT' | 'BANK_EXPLORER' | 'WORKBENCH';
 
-const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<View>('DASHBOARD');
+const DashboardLayout: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
   const [isAuditMapOpen, setIsAuditMapOpen] = useState(false);
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'DASHBOARD':
-        return <AIAgentCenter />;
-      case 'QB_HEALTH':
-        return <QuestionBankHealth />;
-      case 'MASTERY':
-        return <StudentMasteryView />;
-      case 'CURRICULUM':
-        return <CurriculumHealthView />;
-      case 'BLUEPRINT':
-        return <ExamBlueprintView />;
-      case 'BANK_EXPLORER':
-        return <BankExplorerView />;
-      case 'WORKBENCH':
-        return <QuestionWorkbenchView onNavigate={setActiveView} />;
-      case 'AGENTS':
-        return <AIAgentCenter />;
-      case 'ASSESSMENT':
-        return (
-          <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-            <LineChart size={64} className="mb-4 opacity-20" />
-            <p className="text-xl font-bold">Assessment Quality Analytics</p>
-            <p className="text-sm mt-2">Integrating QID-specific psychometrics from USMLE Content Outline.</p>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-            <ClipboardList size={64} className="mb-4 opacity-20" />
-            <p className="text-xl">Module Implementation in Progress</p>
-            <p className="text-sm">This section is currently being architected by the MSAi Core Team.</p>
-          </div>
-        );
-    }
+  // Map routes to View types for active state
+  const getActiveView = (): View => {
+    const path = location.pathname;
+    if (path === '/' || path === '/dashboard') return 'DASHBOARD';
+    if (path.startsWith('/workbench')) return 'WORKBENCH';
+    if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
+    if (path.startsWith('/qb-health')) return 'QB_HEALTH';
+    if (path.startsWith('/mastery')) return 'MASTERY';
+    if (path.startsWith('/curriculum')) return 'CURRICULUM';
+    if (path.startsWith('/assessment')) return 'ASSESSMENT';
+    if (path.startsWith('/agents')) return 'AGENTS';
+    if (path.startsWith('/blueprint')) return 'BLUEPRINT';
+    return 'DASHBOARD';
   };
+
+  const activeView = getActiveView();
+
+  // Map View types to route paths
+  const getRoutePath = (view: View): string => {
+    const routes: Record<View, string> = {
+      DASHBOARD: '/dashboard',
+      WORKBENCH: '/workbench',
+      BANK_EXPLORER: '/bank-explorer',
+      QB_HEALTH: '/qb-health',
+      MASTERY: '/mastery',
+      CURRICULUM: '/curriculum',
+      ASSESSMENT: '/assessment',
+      AGENTS: '/agents',
+      BLUEPRINT: '/blueprint'
+    };
+    return routes[view];
+  };
+
+  const AssessmentPlaceholder = () => (
+    <div className="flex flex-col items-center justify-center h-96 text-slate-400">
+      <LineChart size={64} className="mb-4 opacity-20" />
+      <p className="text-xl font-bold">Assessment Quality Analytics</p>
+      <p className="text-sm mt-2">Integrating QID-specific psychometrics from USMLE Content Outline.</p>
+    </div>
+  );
 
   const navItems = [
     { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
@@ -75,7 +86,7 @@ const App: React.FC = () => {
     { id: 'MASTERY', label: 'Student Mastery', icon: Users },
     { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
     { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
-    { id: 'AGENTS', label: 'AI Agent Fleet', icon: Cpu },
+    // { id: 'AGENTS', label: 'AI Agent Fleet', icon: Cpu },
     { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList }
   ];
 
@@ -85,20 +96,18 @@ const App: React.FC = () => {
       <aside className="w-72 bg-[#0F1110] border-r border-slate-800 hidden lg:flex flex-col shrink-0">
         <div className="p-8 flex-grow overflow-y-auto aside-custom-scrollbar">
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-12 h-12 bg-[#1BD183] rounded-2xl flex items-center justify-center text-slate-900 font-black text-2xl shadow-xl shadow-black/30">
-              M
-            </div>
-            <div>
-              <h1 className="font-black text-white tracking-tight text-xl">MSAi®</h1>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Intelligence Suite</p>
-            </div>
+            <img 
+              src="/assets/Medical Student AI Horizontal Dark BG - Green.png" 
+              alt="MSAi Logo" 
+              className="h-10 w-auto"
+            />
           </div>
 
           <nav className="space-y-1.5">
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setActiveView(item.id as View)}
+                onClick={() => navigate(getRoutePath(item.id as View))}
                 className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-bold transition-all relative ${
                   activeView === item.id 
                   ? 'bg-[#1BD183] text-[#0F1110] shadow-lg shadow-black/30' 
@@ -120,6 +129,12 @@ const App: React.FC = () => {
               <div className="h-2 w-2 rounded-full bg-[#1BD183] animate-pulse"></div>
               <span className="text-[10px] font-black text-white uppercase tracking-widest">Sena: Live</span>
            </div>
+          <button 
+            onClick={() => logout()}
+            className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-red-400 transition"
+          >
+            <LogOut size={18} /> Sign Out
+          </button>
           <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-whitespace transition">
             <Settings size={18} /> System Config
           </button>
@@ -139,7 +154,7 @@ const App: React.FC = () => {
               />
             </div>
           </div>
-          <div className="flex items-center gap-8">
+          {/* <div className="flex items-center gap-8">
             <button className="relative p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition">
               <Bell size={22} />
               <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
@@ -153,7 +168,7 @@ const App: React.FC = () => {
                 <img src="https://picsum.photos/100/100?seed=dean" alt="Dean Avatar" className="w-full h-full object-cover" />
               </div>
             </div>
-          </div>
+          </div> */}
         </header>
 
         <div className="p-10 max-w-[1600px] mx-auto w-full">
@@ -181,7 +196,19 @@ const App: React.FC = () => {
           </div>
 
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-            {renderView()}
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<AIAgentCenter />} />
+              <Route path="/workbench" element={<QuestionWorkbenchView />} />
+              <Route path="/bank-explorer" element={<BankExplorerView />} />
+              <Route path="/qb-health" element={<QuestionBankHealth />} />
+              <Route path="/mastery" element={<StudentMasteryView />} />
+              <Route path="/curriculum" element={<CurriculumHealthView />} />
+              <Route path="/assessment" element={<AssessmentPlaceholder />} />
+              <Route path="/agents" element={<AIAgentCenter />} />
+              <Route path="/blueprint" element={<ExamBlueprintView />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
           </div>
         </div>
       </main>
@@ -189,14 +216,26 @@ const App: React.FC = () => {
       {/* Curriculum Audit Map Modal */}
       {isAuditMapOpen && (
         <CurriculumAuditMap 
-          onClose={() => setIsAuditMapOpen(false)} 
-          onNavigate={(view) => {
-            setActiveView(view);
-            setIsAuditMapOpen(false);
-          }}
+          onClose={() => setIsAuditMapOpen(false)}
         />
       )}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 };
 
