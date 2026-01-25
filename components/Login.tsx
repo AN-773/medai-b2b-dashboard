@@ -53,14 +53,12 @@ const Login: React.FC = () => {
         
         <div className="relative z-10 p-16 flex flex-col justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-[#1BD183] rounded-3xl flex items-center justify-center text-slate-900 font-black text-3xl shadow-2xl shadow-black/50">
-              M
-            </div>
-            <div>
-              <h1 className="font-black text-white tracking-tight text-3xl">MSAi®</h1>
-              <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Educator Intelligence Suite</p>
-            </div>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/assets/Medical Student AI Horizontal Dark BG - Green.png" 
+              alt="MSAi Logo" 
+              className="h-12 w-auto"
+            />
           </div>
 
           {/* Content */}
