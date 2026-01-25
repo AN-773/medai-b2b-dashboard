@@ -1,6 +1,5 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { GoogleGenAI, Modality } from '@google/genai';
 import { X, Mic, MicOff, Volume2, Activity } from 'lucide-react';
 
 interface PsychometricianAgentSessionProps {
@@ -44,7 +43,7 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
   };
 
   useEffect(() => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     audioContextRef.current = outputAudioContext;
@@ -52,59 +51,59 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
     let micStream: MediaStream;
     let scriptProcessor: ScriptProcessorNode;
 
-    const sessionPromise = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-      callbacks: {
-        onopen: () => {
-          setIsConnecting(false);
-          setIsActive(true);
-          navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            micStream = stream;
-            const source = inputAudioContext.createMediaStreamSource(stream);
-            scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-            scriptProcessor.onaudioprocess = (e) => {
-              if (isMuted) return;
-              const inputData = e.inputBuffer.getChannelData(0);
-              const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-              const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
-            };
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputAudioContext.destination);
-          });
-        },
-        onmessage: async (message: any) => {
-          if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-            const base64 = message.serverContent.modelTurn.parts[0].inlineData.data;
-            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContext.currentTime);
-            const audioBuffer = await decodeAudioData(decode(base64), outputAudioContext, 24000, 1);
-            const source = outputAudioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(outputAudioContext.destination);
-            source.start(nextStartTimeRef.current);
-            nextStartTimeRef.current += audioBuffer.duration;
-            sourcesRef.current.add(source);
-            source.onended = () => sourcesRef.current.delete(source);
-          }
-          if (message.serverContent?.interrupted) {
-            sourcesRef.current.forEach(s => s.stop());
-            sourcesRef.current.clear();
-            nextStartTimeRef.current = 0;
-          }
-        },
-        onclose: () => setIsActive(false),
-        onerror: (e) => console.error("Live Session Error:", e),
-      },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction: `You are a world-class psychometrician helping medical educators optimize their question bank. You have access to real-time bank health data: ${bankDataSummary}. Be direct, professional, and insightful.`,
-      }
-    });
+    // const sessionPromise = ai.live.connect({
+    //   model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+    //   callbacks: {
+    //     onopen: () => {
+    //       setIsConnecting(false);
+    //       setIsActive(true);
+    //       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    //         micStream = stream;
+    //         const source = inputAudioContext.createMediaStreamSource(stream);
+    //         scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+    //         scriptProcessor.onaudioprocess = (e) => {
+    //           if (isMuted) return;
+    //           const inputData = e.inputBuffer.getChannelData(0);
+    //           const int16 = new Int16Array(inputData.length);
+    //           for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+    //           const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
+    //           sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
+    //         };
+    //         source.connect(scriptProcessor);
+    //         scriptProcessor.connect(inputAudioContext.destination);
+    //       });
+    //     },
+    //     onmessage: async (message: any) => {
+    //       if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
+    //         const base64 = message.serverContent.modelTurn.parts[0].inlineData.data;
+    //         nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContext.currentTime);
+    //         const audioBuffer = await decodeAudioData(decode(base64), outputAudioContext, 24000, 1);
+    //         const source = outputAudioContext.createBufferSource();
+    //         source.buffer = audioBuffer;
+    //         source.connect(outputAudioContext.destination);
+    //         source.start(nextStartTimeRef.current);
+    //         nextStartTimeRef.current += audioBuffer.duration;
+    //         sourcesRef.current.add(source);
+    //         source.onended = () => sourcesRef.current.delete(source);
+    //       }
+    //       if (message.serverContent?.interrupted) {
+    //         sourcesRef.current.forEach(s => s.stop());
+    //         sourcesRef.current.clear();
+    //         nextStartTimeRef.current = 0;
+    //       }
+    //     },
+    //     onclose: () => setIsActive(false),
+    //     onerror: (e) => console.error("Live Session Error:", e),
+    //   },
+    //   config: {
+    //     responseModalities: [Modality.AUDIO],
+    //     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+    //     systemInstruction: `You are a world-class psychometrician helping medical educators optimize their question bank. You have access to real-time bank health data: ${bankDataSummary}. Be direct, professional, and insightful.`,
+    //   }
+    // });
 
     return () => {
-      sessionPromise.then(s => s.close());
+      // sessionPromise.then(s => s.close());
       micStream?.getTracks().forEach(t => t.stop());
       inputAudioContext.close();
       outputAudioContext.close();

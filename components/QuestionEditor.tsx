@@ -25,7 +25,7 @@ import {
   Wand2
 } from 'lucide-react';
 import { BloomsLevel, Question, QuestionOption, QuestionType, Reference } from '../types';
-import { generateQuestionWithAI, generateClinicalImage } from '../services/gemini';
+
 
 interface QuestionEditorProps {
   onBack: () => void;
@@ -120,13 +120,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     setIsGenerating(true);
     setError(null);
     try {
-      const generated = await generateQuestionWithAI({
-        topic,
-        bloomsLevel,
-        learningObjectives: genLearningObjectives,
-        additionalContext,
-        image: attachedImage || undefined
-      });
+      // const generated = await generateQuestionWithAI({
+      //   topic,
+      //   bloomsLevel,
+      //   learningObjectives: genLearningObjectives,
+      //   additionalContext,
+      //   image: attachedImage || undefined
+      // });
+      const generated = null;
       if (generated) {
         setQuestionText(generated.text || '');
         setExplanation(generated.explanation || '');
@@ -150,7 +151,8 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     setIsGeneratingImage(true);
     try {
       const prompt = topic || questionText.slice(0, 100);
-      const imageUrl = await generateClinicalImage(prompt);
+      // const imageUrl = await generateClinicalImage(prompt);
+      const imageUrl = null;
       if (imageUrl) setAttachedImage(imageUrl);
     } catch (e) {
       setError("Failed to generate clinical image.");

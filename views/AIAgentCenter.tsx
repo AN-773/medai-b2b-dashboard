@@ -6,7 +6,6 @@ import {
   MOCK_AUTHORS,
   MOCK_LEARNING_OBJECTIVES 
 } from '../constants';
-import { getDashboardSummaryStream, generateBriefingAudio } from '../services/geminiService';
 import DashboardCard from '../components/DashboardCard';
 import PsychometricianAgentSession from '../components/PsychometricianAgentSession';
 import { 
@@ -29,16 +28,16 @@ const AIAgentCenter: React.FC = () => {
   const startBriefingAudit = async () => {
     setBriefingText("");
     setIsStreaming(true);
-    const stream = getDashboardSummaryStream({ 
-      logs: MOCK_AI_INSIGHT_LOGS, 
-      status: MOCK_AGENT_STATUS 
-    });
+    // const stream = getDashboardSummaryStream({ 
+    //   logs: MOCK_AI_INSIGHT_LOGS, 
+    //   status: MOCK_AGENT_STATUS 
+    // });
     
     let fullText = "";
-    for await (const chunk of stream) {
-      fullText += chunk;
-      setBriefingText(fullText);
-    }
+    // for await (const chunk of stream) {
+    //   fullText += chunk;
+    //   setBriefingText(fullText);
+    // }
     setIsStreaming(false);
   };
 
@@ -72,7 +71,8 @@ const AIAgentCenter: React.FC = () => {
       return;
     }
     setIsAudioLoading(true);
-    const base64 = await generateBriefingAudio(briefingText);
+    // const base64 = await generateBriefingAudio(briefingText);
+    const base64 = null;
     if (base64) {
       if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       const ctx = audioContextRef.current;

@@ -7,7 +7,6 @@ import {
   Dna, ArrowRight, CheckCircle
 } from 'lucide-react';
 import { BackendItem, BloomsLevel } from '../types';
-import { remasterQuestion } from '../services/geminiService';
 import { MOCK_ITEMS } from '../constants';
 
 interface AILabViewProps {
@@ -72,7 +71,8 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
     `;
 
     try {
-      const result = await remasterQuestion(contextItem as BackendItem, directives);
+      // const result = await remasterQuestion(contextItem as BackendItem, directives);
+      const result = null;
       if (result) {
         setGeneratedResult(result);
       }

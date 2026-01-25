@@ -10,7 +10,6 @@ import {
   LineChart, Line
 } from 'recharts';
 import { BackendItem } from '../types';
-import { auditQuestionIntegrity } from '../services/geminiService';
 
 interface ItemIntegrityViewProps {
   items: BackendItem[];
@@ -55,7 +54,8 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
   const handleAudit = async (item: BackendItem) => {
     setAuditingId(item.id);
     setSelectedItem(item);
-    const result = await auditQuestionIntegrity(item);
+    // const result = await auditQuestionIntegrity(item);
+    const result = null;
     if (result) {
       setAuditResult(result);
     }

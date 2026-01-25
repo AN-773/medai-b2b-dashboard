@@ -11,7 +11,6 @@ import {
   MOCK_AI_INSIGHT_LOGS,
   USMLE_2024_OUTLINE
 } from '../constants';
-import { parseAndAuditObjectives, FileData } from '../services/geminiService';
 import DashboardCard from '../components/DashboardCard';
 import { 
   Target, 
@@ -86,14 +85,15 @@ const CurriculumHealthView: React.FC = () => {
     if (!ingestText.trim() && selectedFiles.length === 0) return;
     setIsIngesting(true);
     try {
-      let filePayload: FileData | undefined;
-      if (selectedFiles.length > 0) {
-        filePayload = {
-          data: selectedFiles[0].base64,
-          mimeType: selectedFiles[0].type
-        };
-      }
-      const results = await parseAndAuditObjectives(ingestText, filePayload);
+      // let filePayload: FileData | undefined;
+      // if (selectedFiles.length > 0) {
+      //   filePayload = {
+      //     data: selectedFiles[0].base64,
+      //     mimeType: selectedFiles[0].type
+      //   };
+      // }
+      // const results = await parseAndAuditObjectives(ingestText, filePayload);
+      const results = null;
       setParsedObjectives(results);
     } catch (e) {
       console.error("Ingest error", e);
