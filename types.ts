@@ -19,6 +19,7 @@ export interface USMLEStandardTopic {
   id: string;
   name: string;
   subTopics?: string[];
+  objectives?: LearningObjective[];
 }
 
 export interface USMLEStandardCategory {
@@ -77,6 +78,8 @@ export interface Taxonomy {
   disciplineId: string;
   bloomLevel: string;
   syndromeTopicId: string;
+  subTopicId?: string;
+  objectiveId?: string;
   usmleContentId: string;
 }
 
@@ -146,6 +149,9 @@ export interface LearningObjective {
   usmleContentId: string;
   targetItemCount: number;
   targetLectureCount: number;
+  subTopic?: string;
+  linkedLectureIds?: string[];
+  linkedItemIds?: string[];
 }
 
 export interface ObjectiveCoverage {
@@ -336,4 +342,141 @@ export interface AgentMetaData {
   load: number;
   metricLabel: string;
   metricValue: string;
+}
+
+export type View =
+  | 'DASHBOARD'
+  | 'QB_HEALTH'
+  | 'MASTERY'
+  | 'CURRICULUM'
+  | 'ASSESSMENT'
+  | 'AGENTS'
+  | 'BLUEPRINT'
+  | 'BANK_EXPLORER'
+  | 'WORKBENCH';
+
+export interface ApiChoice {
+  id: string;
+  content: string;
+  isCorrect: boolean;
+  multimediaId: string | null;
+  multimedia: any;
+  createdAt: string;
+  updatedAt: string;
+  questionId: string;
+  explanation: string;
+}
+
+export interface ApiQuestion {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  exam: string;
+  subjects: any;
+  metadata: any;
+  organSystemId: string;
+  difficultyId: string;
+  cognitiveSkillId: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  multimediaId: string | null;
+  multimedia: any;
+  choices: ApiChoice[];
+  organSystem: {
+    id: string;
+    title: string;
+    identifier: string;
+    createdAt: string;
+    updatedAt: string;
+    topics: any;
+    questions: any;
+  };
+  disciplines: {
+    id: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    blocks: any;
+    questions: any;
+  }[];
+  dbSubjects: any[];
+  competencies: any[];
+  learningObjectiveId: string;
+  learningObjective: {
+    id: string;
+    title: string;
+    identifier: string;
+    createdAt: string;
+    updatedAt: string;
+    syndromeId: string;
+    syndrome: any;
+    disciplines: any;
+    cognitiveSkillId: string;
+    cognitiveSkill: any;
+    blocks: any;
+    questions: any;
+  };
+  syndromeId: string;
+  syndrome: {
+    id: string;
+    title: string;
+    topicId: string;
+    topic: any;
+    identifier: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  topicId: string;
+  topic: {
+    id: string;
+    title: string;
+    identifier: string;
+    organSystemId: string;
+    organSystem: any;
+    organSystems: any;
+    syndromes: any;
+    createdAt: string;
+    updatedAt: string;
+  };
+  tags: any[];
+  feedbacks: any[];
+}
+
+export interface ApiResponse<T> {
+  items: T[];
+  page: number;
+  total: number;
+}
+export interface ApiOrganSystem {
+  id: string;
+  title: string;
+  identifier: string;
+  createdAt: string;
+  updatedAt: string;
+  topics: ApiTopic[];
+  questions: any;
+}
+
+export interface ApiTopic {
+  id: string;
+  title: string;
+  identifier: string;
+  organSystemId: string;
+  organSystem: ApiOrganSystem | null;
+  organSystems: any;
+  syndromes: ApiSyndrome[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiSyndrome {
+  id: string;
+  title: string;
+  identifier: string;
+  topicId: string;
+  topic: ApiTopic | null;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -33,161 +33,501 @@ export const USMLE_2024_OUTLINE: USMLEStandardCategory[] = [
     name: 'Human Development',
     page: 3,
     topics: [
-      { 
-        id: 'HD-01', 
+      {
+        id: 'HD-01',
         name: 'Normal age-related findings and care of the well patient',
-        subTopics: ['Infancy and childhood (0-12 years)', 'Adolescence (13-17 years)', 'Adulthood (18-64 years)', 'Older Adulthood (65+ years)']
-      }
-    ]
+        subTopics: [
+          'Infancy and childhood (0-12 years)',
+          'Adolescence (13-17 years)',
+          'Adulthood (18-64 years)',
+          'Older Adulthood (65+ years)',
+        ],
+      },
+    ],
   },
   {
     id: 'USMLE-IMMUNE',
     name: 'Immune System',
     page: 4,
     topics: [
-      { id: 'IM-01', name: 'Disorders associated with immunodeficiency', subTopics: ['Humoral immunity', 'Cell-mediated immunity', 'Complement deficiency', 'Phagocytic cells'] },
-      { id: 'IM-02', name: 'HIV/AIDS', subTopics: ['Complications', 'Immunology of AIDS', 'IRS'] },
-      { id: 'IM-03', name: 'Immunologically mediated disorders', subTopics: ['Hypersensitivity reactions', 'Transplantation'] },
-      { id: 'IM-04', name: 'Adverse effects of drugs', subTopics: ['Jarisch-Herxheimer', 'Immunosuppressants'] }
-    ]
+      {
+        id: 'IM-01',
+        name: 'Disorders associated with immunodeficiency',
+        subTopics: [
+          'Humoral immunity',
+          'Cell-mediated immunity',
+          'Complement deficiency',
+          'Phagocytic cells',
+        ],
+      },
+      {
+        id: 'IM-02',
+        name: 'HIV/AIDS',
+        subTopics: ['Complications', 'Immunology of AIDS', 'IRS'],
+      },
+      {
+        id: 'IM-03',
+        name: 'Immunologically mediated disorders',
+        subTopics: ['Hypersensitivity reactions', 'Transplantation'],
+      },
+      {
+        id: 'IM-04',
+        name: 'Adverse effects of drugs',
+        subTopics: ['Jarisch-Herxheimer', 'Immunosuppressants'],
+      },
+    ],
   },
   {
     id: 'USMLE-BLOOD',
     name: 'Blood & Lymphoreticular System',
     page: 5,
     topics: [
-      { id: 'BL-01', name: 'Infectious and immunologic disorders', subTopics: ['Bacterial', 'Viral', 'Parasitic'] },
-      { id: 'BL-02', name: 'Neoplasms', subTopics: ['Leukemia', 'Lymphomas', 'Multiple myeloma'] },
-      { id: 'BL-03', name: 'Anemia, cytopenias, and polycythemia', subTopics: ['Hemolysis', 'Hemoglobin disorders', 'Cytopenias'] },
-      { id: 'BL-04', name: 'Coagulation disorders', subTopics: ['Hypocoagulable', 'Hypercoagulable'] }
-    ]
+      {
+        id: 'BL-01',
+        name: 'Infectious and immunologic disorders',
+        subTopics: ['Bacterial', 'Viral', 'Parasitic'],
+      },
+      {
+        id: 'BL-02',
+        name: 'Neoplasms',
+        subTopics: ['Leukemia', 'Lymphomas', 'Multiple myeloma'],
+      },
+      {
+        id: 'BL-03',
+        name: 'Anemia, cytopenias, and polycythemia',
+        subTopics: ['Hemolysis', 'Hemoglobin disorders', 'Cytopenias'],
+      },
+      {
+        id: 'BL-04',
+        name: 'Coagulation disorders',
+        subTopics: ['Hypocoagulable', 'Hypercoagulable'],
+      },
+    ],
   },
   {
     id: 'USMLE-BEHAVIOR',
     name: 'Behavioral Health',
     page: 7,
     topics: [
-      { id: 'BH-01', name: 'Psychotic disorders', subTopics: ['Schizophrenia', 'Delusional disorder'] },
-      { id: 'BH-02', name: 'Anxiety disorders', subTopics: ['Panic disorder', 'OCD', 'PTSD'] },
-      { id: 'BH-03', name: 'Mood disorders', subTopics: ['Depressive disorder', 'Bipolar disorder'] },
-      { id: 'BH-04', name: 'Eating & Impulse-control', subTopics: ['Anorexia', 'Bulimia', 'Conduct disorders'] }
-    ]
+      {
+        id: 'BH-01',
+        name: 'Psychotic disorders',
+        subTopics: ['Schizophrenia', 'Delusional disorder'],
+      },
+      {
+        id: 'BH-02',
+        name: 'Anxiety disorders',
+        subTopics: ['Panic disorder', 'OCD', 'PTSD'],
+      },
+      {
+        id: 'BH-03',
+        name: 'Mood disorders',
+        subTopics: ['Depressive disorder', 'Bipolar disorder'],
+      },
+      {
+        id: 'BH-04',
+        name: 'Eating & Impulse-control',
+        subTopics: ['Anorexia', 'Bulimia', 'Conduct disorders'],
+      },
+    ],
   },
   {
     id: 'USMLE-NERVOUS',
     name: 'Nervous System & Special Senses',
     page: 9,
     topics: [
-      { id: 'NS-01', name: 'Infectious/Inflammatory', subTopics: ['Meningitis', 'Encephalitis', 'Myasthenia gravis'] },
-      { id: 'NS-02', name: 'Cerebrovascular disease', subTopics: ['TIA', 'Stroke', 'Hemorrhage'] },
-      { id: 'NS-03', name: 'Spine & Cord disorders', subTopics: ['Cauda equina', 'Spinal stenosis'] },
-      { id: 'NS-04', name: 'Cranial & Peripheral nerve', subTopics: ['Bell palsy', 'Horner syndrome'] },
-      { id: 'NS-05', name: 'Eye & Eyelid', subTopics: ['Retina', 'Structural', 'Structural'] },
-      { id: 'NS-06', name: 'Ear', subTopics: ['Hearing loss', 'Balance', 'Ménière'] }
-    ]
+      {
+        id: 'NS-01',
+        name: 'Infectious/Inflammatory',
+        subTopics: ['Meningitis', 'Encephalitis', 'Myasthenia gravis'],
+      },
+      {
+        id: 'NS-02',
+        name: 'Cerebrovascular disease',
+        subTopics: ['TIA', 'Stroke', 'Hemorrhage'],
+      },
+      {
+        id: 'NS-03',
+        name: 'Spine & Cord disorders',
+        subTopics: ['Cauda equina', 'Spinal stenosis'],
+      },
+      {
+        id: 'NS-04',
+        name: 'Cranial & Peripheral nerve',
+        subTopics: ['Bell palsy', 'Horner syndrome'],
+      },
+      {
+        id: 'NS-05',
+        name: 'Eye & Eyelid',
+        subTopics: ['Retina', 'Structural', 'Structural'],
+      },
+      {
+        id: 'NS-06',
+        name: 'Ear',
+        subTopics: ['Hearing loss', 'Balance', 'Ménière'],
+      },
+    ],
   },
   {
     id: 'USMLE-SKIN',
     name: 'Skin & Subcutaneous Tissue',
     page: 13,
     topics: [
-      { id: 'SK-01', name: 'Infectious/Inflammatory', subTopics: ['Bacterial/Cellulitis', 'Viral/Herpes', 'Fungal'] },
-      { id: 'SK-02', name: 'Neoplasms', subTopics: ['Benign', 'Malignant (Basal cell, Melanoma)'] },
-      { id: 'SK-03', name: 'Integumentary disorders', subTopics: ['Hair/Nails', 'Sweat glands'] }
-    ]
+      {
+        id: 'SK-01',
+        name: 'Infectious/Inflammatory',
+        subTopics: ['Bacterial/Cellulitis', 'Viral/Herpes', 'Fungal'],
+      },
+      {
+        id: 'SK-02',
+        name: 'Neoplasms',
+        subTopics: ['Benign', 'Malignant (Basal cell, Melanoma)'],
+      },
+      {
+        id: 'SK-03',
+        name: 'Integumentary disorders',
+        subTopics: ['Hair/Nails', 'Sweat glands'],
+      },
+    ],
   },
   {
     id: 'USMLE-MSK',
     name: 'Musculoskeletal System',
     page: 15,
     topics: [
-      { id: 'MS-01', name: 'Infectious/Inflammatory', subTopics: ['Osteomyelitis', 'Rheumatoid arthritis'] },
-      { id: 'MS-02', name: 'Degenerative/Metabolic', subTopics: ['Osteoporosis', 'Osteomalacia', 'Gout'] },
-      { id: 'MS-03', name: 'Traumatic/Mechanical', subTopics: ['Fractures', 'Dislocations'] }
-    ]
+      {
+        id: 'MS-01',
+        name: 'Infectious/Inflammatory',
+        subTopics: ['Osteomyelitis', 'Rheumatoid arthritis'],
+      },
+      {
+        id: 'MS-02',
+        name: 'Degenerative/Metabolic',
+        subTopics: ['Osteoporosis', 'Osteomalacia', 'Gout'],
+      },
+      {
+        id: 'MS-03',
+        name: 'Traumatic/Mechanical',
+        subTopics: ['Fractures', 'Dislocations'],
+      },
+    ],
   },
   {
     id: 'USMLE-CARDIO',
     name: 'Cardiovascular System',
     page: 17,
     topics: [
-      { id: 'CV-01', name: 'Dysrhythmias', subTopics: ['Fibrillation', 'Tachycardia', 'Heart block'] },
-      { id: 'CV-02', name: 'Heart failure', subTopics: ['Congestive', 'Diastolic/Systolic'] },
-      { id: 'CV-03', name: 'Ischemic heart disease', subTopics: ['MI', 'Angina'] },
-      { id: 'CV-04', name: 'Valvular heart disease', subTopics: ['Stenosis', 'Prolapse'] }
-    ]
+      {
+        id: 'CV-01',
+        name: 'Dysrhythmias',
+        subTopics: ['Fibrillation', 'Tachycardia', 'Heart block'],
+      },
+      {
+        id: 'CV-02',
+        name: 'Heart failure',
+        subTopics: ['Congestive', 'Diastolic/Systolic'],
+      },
+      {
+        id: 'CV-03',
+        name: 'Ischemic heart disease',
+        subTopics: ['MI', 'Angina'],
+        objectives: [
+          {
+            id: 'OBJ-CV-03-001',
+            text: 'Distinguish between stable angina, unstable angina, and NSTEMI based on ECG changes and cardiac biomarkers.',
+            subTopic: 'Angina',
+            organSystemId: 'USMLE-CARDIO',
+            disciplineId: 'DISC-PATH',
+            bloomLevel: 'Analyze',
+            usmleContentId: 'USMLE-CARDIO-IHD',
+            targetItemCount: 12,
+            targetLectureCount: 3,
+          },
+          {
+            id: 'OBJ-CV-03-002',
+            text: 'Describe the timeline of gross and microscopic changes in the myocardium following a myocardial infarction.',
+            subTopic: 'MI',
+            organSystemId: 'USMLE-CARDIO',
+            disciplineId: 'DISC-PATH',
+            bloomLevel: 'Remember',
+            usmleContentId: 'USMLE-CARDIO-MI',
+            targetItemCount: 15,
+            targetLectureCount: 2,
+          },
+        ],
+      },
+      {
+        id: 'CV-04',
+        name: 'Valvular heart disease',
+        subTopics: ['Stenosis', 'Prolapse'],
+      },
+    ],
   },
   {
     id: 'USMLE-RESP',
     name: 'Respiratory System',
     page: 19,
     topics: [
-      { id: 'RS-01', name: 'Infectious/Inflammatory', subTopics: ['Pneumonia', 'Sinusitis', 'Tuberculosis'] },
-      { id: 'RS-02', name: 'Obstructive airway disease', subTopics: ['Asthma', 'COPD', 'Bronchiectasis'] },
-      { id: 'RS-03', name: 'Pneumoconiosis/Interstitial', subTopics: ['Asbestosis', 'Silicosis'] }
-    ]
+      {
+        id: 'RS-01',
+        name: 'Infectious/Inflammatory',
+        subTopics: ['Pneumonia', 'Sinusitis', 'Tuberculosis'],
+      },
+      {
+        id: 'RS-02',
+        name: 'Obstructive airway disease',
+        subTopics: ['Asthma', 'COPD', 'Bronchiectasis'],
+        objectives: [
+          {
+            id: 'OBJ-RS-02-001',
+            text: 'Compare and contrast the pulmonary function test (PFT) findings in obstructive vs. restrictive lung diseases.',
+            subTopic: 'COPD',
+            organSystemId: 'USMLE-RESP',
+            disciplineId: 'DISC-PHYS',
+            bloomLevel: 'Analyze',
+            usmleContentId: 'USMLE-RESP-PFT',
+            targetItemCount: 12,
+            targetLectureCount: 2,
+          },
+          {
+            id: 'OBJ-RS-02-002',
+            text: 'Describe the immediate and late-phase immune responses in the pathophysiology of Asthma.',
+            subTopic: 'Asthma',
+            organSystemId: 'USMLE-RESP',
+            disciplineId: 'DISC-IMMUNO',
+            bloomLevel: 'Understand',
+            usmleContentId: 'USMLE-RESP-ASTHMA',
+            targetItemCount: 8,
+            targetLectureCount: 1,
+          },
+        ],
+      },
+      {
+        id: 'RS-03',
+        name: 'Pneumoconiosis/Interstitial',
+        subTopics: ['Asbestosis', 'Silicosis'],
+      },
+    ],
   },
   {
     id: 'USMLE-GI',
     name: 'Gastrointestinal System',
     page: 21,
     topics: [
-      { id: 'GI-01', name: 'Infectious/Inflammatory', subTopics: ['Enteritis', 'Peritonitis', 'Colitis'] },
-      { id: 'GI-02', name: 'Stomach/Intestine disorders', subTopics: ['Ulcers', 'Appendicitis', 'IBS'] },
-      { id: 'GI-03', name: 'Liver/Biliary system', subTopics: ['Cirrhosis', 'Hepatitis', 'Jaundice'] },
-      { id: 'GI-04', name: 'Pancreas', subTopics: ['Pancreatitis', 'Insufficiency'] }
-    ]
+      {
+        id: 'GI-01',
+        name: 'Infectious/Inflammatory',
+        subTopics: ['Enteritis', 'Peritonitis', 'Colitis'],
+      },
+      {
+        id: 'GI-02',
+        name: 'Stomach/Intestine disorders',
+        subTopics: ['Ulcers', 'Appendicitis', 'IBS'],
+      },
+      {
+        id: 'GI-03',
+        name: 'Liver/Biliary system',
+        subTopics: ['Cirrhosis', 'Hepatitis', 'Jaundice'],
+      },
+      {
+        id: 'GI-04',
+        name: 'Pancreas',
+        subTopics: ['Pancreatitis', 'Insufficiency'],
+      },
+    ],
   },
   {
     id: 'USMLE-RENAL',
     name: 'Renal & Urinary System',
     page: 24,
     topics: [
-      { id: 'RN-01', name: 'Infectious disorders', subTopics: ['Pyelonephritis', 'Cystitis'] },
-      { id: 'RN-02', name: 'Metabolic/Regulatory', subTopics: ['AKI', 'CKD', 'Calculi'] },
-      { id: 'RN-03', name: 'Vascular disorders', subTopics: ['Renal artery stenosis'] }
-    ]
+      {
+        id: 'RN-01',
+        name: 'Infectious disorders',
+        subTopics: ['Pyelonephritis', 'Cystitis'],
+      },
+      {
+        id: 'RN-02',
+        name: 'Metabolic/Regulatory',
+        subTopics: ['AKI', 'CKD', 'Calculi'],
+        objectives: [
+          {
+            id: 'OBJ-RN-02-001',
+            text: 'Differentiate between prerenal, intrinsic, and postrenal causes of Acute Kidney Injury (AKI) using BUN/Creatinine ratio.',
+            subTopic: 'AKI',
+            organSystemId: 'USMLE-RENAL',
+            disciplineId: 'DISC-PHYS',
+            bloomLevel: 'Apply',
+            usmleContentId: 'USMLE-RENAL-AKI',
+            targetItemCount: 10,
+            targetLectureCount: 2,
+          },
+          {
+            id: 'OBJ-RN-02-002',
+            text: 'Explain the mechanism of calcium oxalate stone formation and preventative dietary strategies.',
+            subTopic: 'Calculi',
+            organSystemId: 'USMLE-RENAL',
+            disciplineId: 'DISC-PATH',
+            bloomLevel: 'Understand',
+            usmleContentId: 'USMLE-RENAL-STONE',
+            targetItemCount: 6,
+            targetLectureCount: 1,
+          },
+        ],
+      },
+      {
+        id: 'RN-03',
+        name: 'Vascular disorders',
+        subTopics: ['Renal artery stenosis'],
+      },
+    ],
   },
   {
     id: 'USMLE-REPRO',
     name: 'Reproductive System',
     page: 26,
     topics: [
-      { id: 'RP-01', name: 'Pregnancy & Childbirth', subTopics: ['Prenatal care', 'Obstetric complications'] },
-      { id: 'RP-02', name: 'Female System & Breast', subTopics: ['Menopause', 'Menstrual disorders'] },
-      { id: 'RP-03', name: 'Male System', subTopics: ['Prostatic hyperplasia', 'Erectile dysfunction'] }
-    ]
+      {
+        id: 'RP-01',
+        name: 'Pregnancy & Childbirth',
+        subTopics: ['Prenatal care', 'Obstetric complications'],
+      },
+      {
+        id: 'RP-02',
+        name: 'Female System & Breast',
+        subTopics: ['Menopause', 'Menstrual disorders'],
+      },
+      {
+        id: 'RP-03',
+        name: 'Male System',
+        subTopics: ['Prostatic hyperplasia', 'Erectile dysfunction'],
+      },
+    ],
   },
   {
     id: 'USMLE-ENDO',
     name: 'Endocrine System',
     page: 31,
     topics: [
-      { id: 'EN-01', name: 'Diabetes mellitus', subTopics: ['Type 1', 'Type 2', 'Complications'] },
-      { id: 'EN-02', name: 'Thyroid disorders', subTopics: ['Hyper/Hypothyroidism', 'Thyroiditis'] },
-      { id: 'EN-03', name: 'Pituitary disorders', subTopics: ['Acromegaly', 'Proclactinoma'] }
-    ]
+      {
+        id: 'EN-01',
+        name: 'Diabetes mellitus',
+        subTopics: ['Type 1', 'Type 2', 'Complications'],
+        objectives: [
+          {
+            id: 'OBJ-EN-01-001',
+            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
+            subTopic: 'Type 1',
+            organSystemId: 'USMLE-ENDO',
+            disciplineId: 'DISC-PHYS',
+            bloomLevel: 'Understand',
+            usmleContentId: 'USMLE-ENDO-DM',
+            targetItemCount: 10,
+            targetLectureCount: 2,
+          },
+          {
+            id: 'OBJ-EN-01-022',
+            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
+            subTopic: 'Type 1',
+            organSystemId: 'USMLE-ENDO',
+            disciplineId: 'DISC-PHYS',
+            bloomLevel: 'Apply',
+            usmleContentId: 'USMLE-ENDO-DM',
+            targetItemCount: 10,
+            targetLectureCount: 2,
+          },
+          {
+            id: 'OBJ-EN-01-012',
+            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
+            subTopic: 'Type 1',
+            organSystemId: 'USMLE-ENDO',
+            disciplineId: 'DISC-PHYS',
+            bloomLevel: 'Understand',
+            usmleContentId: 'USMLE-ENDO-DM',
+            targetItemCount: 10,
+            targetLectureCount: 2,
+          },
+          {
+            id: 'OBJ-EN-01-002',
+            text: 'Identify the clinical presentation and diagnostic criteria for Diabetic Ketoacidosis (DKA).',
+            subTopic: 'Complications',
+            organSystemId: 'USMLE-ENDO',
+            disciplineId: 'DISC-PATH',
+            bloomLevel: 'Apply',
+            usmleContentId: 'USMLE-ENDO-DKA',
+            targetItemCount: 5,
+            targetLectureCount: 1,
+            linkedItemIds: ['QID-1001'],
+          },
+          {
+            id: 'OBJ-EN-01-003',
+            text: 'Explain the mechanism of action of metformin and its role in Type 2 Diabetes management.',
+            subTopic: 'Type 2',
+            organSystemId: 'USMLE-ENDO',
+            disciplineId: 'DISC-PHARM',
+            bloomLevel: 'Understand',
+            usmleContentId: 'USMLE-ENDO-RX',
+            targetItemCount: 8,
+            targetLectureCount: 1,
+          },
+        ],
+      },
+      {
+        id: 'EN-02',
+        name: 'Thyroid disorders',
+        subTopics: ['Hyper/Hypothyroidism', 'Thyroiditis'],
+      },
+      {
+        id: 'EN-03',
+        name: 'Pituitary disorders',
+        subTopics: ['Acromegaly', 'Proclactinoma'],
+      },
+    ],
   },
   {
     id: 'USMLE-BIOSTAT',
     name: 'Biostatistics & Epi',
     page: 36,
     topics: [
-      { id: 'BS-01', name: 'Epidemiology', subTopics: ['Incidence/Prevalence', 'Survival analysis'] },
-      { id: 'BS-02', name: 'Study design', subTopics: ['Clinical trials', 'Systematic reviews'] },
-      { id: 'BS-03', name: 'Testing & Screening', subTopics: ['Sensitivity', 'Specificity', 'ROC'] }
-    ]
+      {
+        id: 'BS-01',
+        name: 'Epidemiology',
+        subTopics: ['Incidence/Prevalence', 'Survival analysis'],
+      },
+      {
+        id: 'BS-02',
+        name: 'Study design',
+        subTopics: ['Clinical trials', 'Systematic reviews'],
+      },
+      {
+        id: 'BS-03',
+        name: 'Testing & Screening',
+        subTopics: ['Sensitivity', 'Specificity', 'ROC'],
+      },
+    ],
   },
   {
     id: 'USMLE-SOCIAL',
     name: 'Social Sciences',
     page: 39,
     topics: [
-      { id: 'SS-01', name: 'Communication skills', subTopics: ['Patient interviewing', 'Interpreter use'] },
-      { id: 'SS-02', name: 'Ethics & Jurisprudence', subTopics: ['Consent', 'Palliative care', 'Malpractice'] },
-      { id: 'SS-03', name: 'Systems-based practice', subTopics: ['Patient safety', 'Quality improvement'] }
-    ]
-  }
+      {
+        id: 'SS-01',
+        name: 'Communication skills',
+        subTopics: ['Patient interviewing', 'Interpreter use'],
+      },
+      {
+        id: 'SS-02',
+        name: 'Ethics & Jurisprudence',
+        subTopics: ['Consent', 'Palliative care', 'Malpractice'],
+      },
+      {
+        id: 'SS-03',
+        name: 'Systems-based practice',
+        subTopics: ['Patient safety', 'Quality improvement'],
+      },
+    ],
+  },
 ];
 
 export const MOCK_ORGAN_SYSTEMS = [

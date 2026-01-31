@@ -25,17 +25,18 @@ import CurriculumHealthView from './views/CurriculumHealthView';
 import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
+import SidebarContent from './components/SidebarContent';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
-
-export type View = 'DASHBOARD' | 'QB_HEALTH' | 'MASTERY' | 'CURRICULUM' | 'ASSESSMENT' | 'AGENTS' | 'BLUEPRINT' | 'BANK_EXPLORER' | 'WORKBENCH';
+import { View } from './types';
 
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
   const [isAuditMapOpen, setIsAuditMapOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Map routes to View types for active state
   const getActiveView = (): View => {
@@ -70,6 +71,11 @@ const DashboardLayout: React.FC = () => {
     return routes[view];
   };
 
+  const handleNavigate = (view: View) => {
+    navigate(getRoutePath(view));
+    setIsMobileMenuOpen(false);
+  };
+
   const AssessmentPlaceholder = () => (
     <div className="flex flex-col items-center justify-center h-96 text-slate-400">
       <LineChart size={64} className="mb-4 opacity-20" />
@@ -92,64 +98,56 @@ const DashboardLayout: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
-      {/* Sidebar */}
-      <aside className="w-72 bg-[#0F1110] border-r border-slate-800 hidden lg:flex flex-col shrink-0">
-        <div className="p-8 flex-grow overflow-y-auto aside-custom-scrollbar">
-          <div className="flex items-center gap-3 mb-10">
-            <img 
-              src="/assets/Medical Student AI Horizontal Dark BG - Green.png" 
-              alt="MSAi Logo" 
-              className="h-10 w-auto"
-            />
-          </div>
-
-          <nav className="space-y-1.5">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => navigate(getRoutePath(item.id as View))}
-                className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-bold transition-all relative ${
-                  activeView === item.id 
-                  ? 'bg-[#1BD183] text-[#0F1110] shadow-lg shadow-black/30' 
-                  : 'text-[#848E8A] hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <item.icon size={20} className={activeView === item.id ? 'text-[#0F1110]' : 'text-[#848E8A]'} />
-                {item.label}
-                {item.id === 'WORKBENCH' && (
-                  <span className="absolute right-4 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></span>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="p-8 space-y-4 border-t border-slate-800">
-           <div className="flex items-center gap-3 p-4 bg-slate-800 rounded-3xl">
-              <div className="h-2 w-2 rounded-full bg-[#1BD183] animate-pulse"></div>
-              <span className="text-[10px] font-black text-white uppercase tracking-widest">Sena: Live</span>
-           </div>
-          <button 
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-red-400 transition"
-          >
-            <LogOut size={18} /> Sign Out
-          </button>
-          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-whitespace transition">
-            <Settings size={18} /> System Config
-          </button>
-        </div>
+      {/* Desktop Sidebar */}
+      <aside className="w-72 hidden xl:flex flex-col shrink-0 h-full">
+        <SidebarContent
+          activeView={activeView}
+          onNavigate={handleNavigate}
+          onLogout={() => logout()}
+        />
       </aside>
 
+      {/* Mobile Drawer */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 xl:hidden flex">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setIsMobileMenuOpen(false)}
+          ></div>
+          <div className="relative w-64 h-full bg-[#0F1110] shadow-2xl animate-in slide-in-from-left duration-300">
+            <SidebarContent
+              activeView={activeView}
+              onNavigate={handleNavigate}
+              onLogout={() => logout()}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto flex flex-col">
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-10 py-5 flex items-center justify-between">
+      <main className="flex-1 overflow-y-auto flex flex-col relative w-full">
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-4 xl:px-10 py-5 flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
-            <div className="relative max-w-lg w-full">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-              <input 
-                type="text" 
-                placeholder="Query QIDs, Objectives, or Syndromes..." 
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="xl:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+            >
+              <div className="space-y-1.5">
+                <span className="block w-6 h-0.5 bg-current"></span>
+                <span className="block w-6 h-0.5 bg-current"></span>
+                <span className="block w-6 h-0.5 bg-current"></span>
+              </div>
+            </button>
+
+            <div className="relative max-w-lg w-full hidden md:block">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                size={20}
+              />
+              <input
+                type="text"
+                placeholder="Query QIDs, Objectives, or Syndromes..."
                 className="w-full pl-12 pr-6 py-3 bg-slate-100 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-[#1BD183] outline-none transition shadow-inner"
               />
             </div>
@@ -171,25 +169,29 @@ const DashboardLayout: React.FC = () => {
           </div> */}
         </header>
 
-        <div className="p-10 max-w-[1600px] mx-auto w-full">
+        <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
-            MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" /> {activeView.replace('_', ' ')}
+            MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
+            {activeView.replace('_', ' ')}
           </div>
-          <div className="flex justify-between items-end mb-10">
+          <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-10 gap-6">
             <div>
-              <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-none">
-                {navItems.find(n => n.id === activeView)?.label || 'Mission Control'}
+              <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-none">
+                {navItems.find((n) => n.id === activeView)?.label ||
+                  'Mission Control'}
               </h2>
-              <p className="text-slate-500 mt-2 text-lg font-medium italic">Authoring environment powered by USMLE Content Intelligence.</p>
+              <p className="text-slate-500 mt-2 text-base xl:text-lg font-medium italic">
+                Authoring environment powered by USMLE Content Intelligence.
+              </p>
             </div>
-            <div className="flex gap-4">
-              <button 
+            <div className="flex gap-4 w-full xl:w-auto">
+              <button
                 onClick={() => setIsAuditMapOpen(true)}
-                className="px-6 py-3 bg-[#191A19] rounded-[8px] text-sm text-white shadow-sm hover:bg-[##232524] transition active:translate-y-1"
+                className="flex-1 xl:flex-none px-6 py-3 bg-[#191A19] rounded-[8px] text-sm text-white shadow-sm hover:bg-[##232524] transition active:translate-y-1"
               >
                 Audit Map
               </button>
-              <button className="px-6 py-3 primary-button rounded-[8px] text-sm font-black text-white transition active:translate-y-1">
+              <button className="flex-1 xl:flex-none px-6 py-3 primary-button rounded-[8px] text-sm font-black text-white transition active:translate-y-1">
                 Trigger Auditor
               </button>
             </div>
@@ -203,7 +205,14 @@ const DashboardLayout: React.FC = () => {
               <Route path="/bank-explorer" element={<BankExplorerView />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />
               <Route path="/mastery" element={<StudentMasteryView />} />
-              <Route path="/curriculum" element={<CurriculumHealthView />} />
+              <Route
+                path="/curriculum"
+                element={
+                  <CurriculumHealthView
+                    onNavigate={(view) => handleNavigate(view)}
+                  />
+                }
+              />
               <Route path="/assessment" element={<AssessmentPlaceholder />} />
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
@@ -215,9 +224,7 @@ const DashboardLayout: React.FC = () => {
 
       {/* Curriculum Audit Map Modal */}
       {isAuditMapOpen && (
-        <CurriculumAuditMap 
-          onClose={() => setIsAuditMapOpen(false)}
-        />
+        <CurriculumAuditMap onClose={() => setIsAuditMapOpen(false)} />
       )}
     </div>
   );

@@ -30,8 +30,8 @@ const StudentMasteryView: React.FC = () => {
   const atRiskStudents = MOCK_STUDENTS.filter(s => s.atRisk);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 space-y-6">
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="xl:col-span-2 space-y-6">
         <DashboardCard title="Cohort Mastery Radar" subtitle="Average performance by organ system">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">

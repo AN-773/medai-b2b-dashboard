@@ -55,8 +55,8 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
           <button onClick={onBack} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 shadow-sm transition">
             <ArrowLeft size={20} />
           </button>
@@ -65,15 +65,15 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
             <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Resource ID: {initialData?.id || 'UNASSIGNED'}</p>
           </div>
         </div>
-        <button onClick={onSave} className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
+        <button onClick={onSave} className="w-full sm:w-auto bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
           <Save size={18} /> Save Changes
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="xl:col-span-2 space-y-8">
           {/* Main Info */}
-          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-6 xl:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
             <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
               <FileText size={20} className="text-indigo-600" />
               Content Specification
@@ -100,7 +100,7 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
           </div>
 
           {/* Engagement Markers */}
-          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-6 xl:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
                 <MonitorPlay size={20} className="text-amber-500" />
@@ -116,8 +116,8 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
 
             <div className="space-y-4">
               {engagementMarkers.map((m, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl group transition-all hover:bg-white hover:shadow-md">
-                  <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                <div key={i} className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl group transition-all hover:bg-white hover:shadow-md">
+                  <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
                     <Clock size={12} className="text-slate-400" />
                     <input
                       type="number"
@@ -127,7 +127,7 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
                       placeholder="Sec"
                     />
                   </div>
-                  <div className="flex-1 flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex-1 flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
                     <MessageSquare size={12} className="text-slate-400" />
                     <input
                       value={m.note}
@@ -138,7 +138,7 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
                   </div>
                   <button
                     onClick={() => removeMarker(i)}
-                    className="p-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
+                    className="p-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100 self-end sm:self-auto"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -155,7 +155,7 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
 
         {/* Sidebar Info */}
         <div className="space-y-8">
-          <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-6 xl:p-8 rounded-[2rem] border border-slate-200 shadow-sm space-y-6">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
               <Target size={16} className="text-indigo-600" />
               Learning Objectives
@@ -170,7 +170,7 @@ const LectureEditor: React.FC<LectureEditorProps> = ({ onBack, onSave, initialDa
             </div>
           </div>
 
-          <div className="bg-slate-900 p-8 rounded-[2rem] text-white space-y-6">
+          <div className="bg-slate-900 p-6 xl:p-8 rounded-[2rem] text-white space-y-6">
             <h4 className="text-xs font-black uppercase tracking-widest">Asset Files</h4>
             <div className="space-y-4">
               <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">

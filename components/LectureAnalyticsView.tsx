@@ -45,7 +45,7 @@ const LectureAnalyticsView: React.FC<{ lectureId: string; title: string }> = ({ 
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Zap size={24} /></div>
@@ -85,8 +85,8 @@ const LectureAnalyticsView: React.FC<{ lectureId: string; title: string }> = ({ 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        <div className="xl:col-span-8">
           <DashboardCard title="Engagement & Cognitive Load" subtitle="Attention vs Mental Effort Mapping">
             <div className="h-80 w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
@@ -110,7 +110,7 @@ const LectureAnalyticsView: React.FC<{ lectureId: string; title: string }> = ({ 
           </DashboardCard>
         </div>
 
-        <div className="lg:col-span-4 space-y-8">
+        <div className="xl:col-span-4 space-y-8">
           <DashboardCard title="Cognitive Architecture" subtitle="Intrinsic vs Extraneous vs Germane">
             <div className="h-64 mt-4">
               <ResponsiveContainer width="100%" height="100%">

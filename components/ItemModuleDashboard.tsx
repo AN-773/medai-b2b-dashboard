@@ -120,7 +120,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         </div>
         <button 
           onClick={onCreateClick}
-          className="flex items-center gap-2 bg-primary-gradient text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-primary-gradient text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
         >
           <Plus size={16} />
           Create {config.singular}
@@ -128,7 +128,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
       </div>
 
       {/* Stats Cards with Dynamic Labeling */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
           <div key={index} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group hover:border-indigo-200 transition-colors">
             <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
@@ -142,9 +142,9 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Main List with Dynamic Table Headings */}
-        <div className="lg:col-span-2 bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+        <div className="xl:col-span-2 bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
             <h3 className="font-black text-slate-900 uppercase tracking-tight">Recent {config.plural}</h3>
             <button 
@@ -159,10 +159,10 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-4">{config.tableCol}</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Revised</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-4 xl:px-6 py-4">{config.tableCol}</th>
+                  <th className="px-4 xl:px-6 py-4">Status</th>
+                  <th className="hidden xl:table-cell px-6 py-4">Revised</th>
+                  <th className="px-4 xl:px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -171,17 +171,17 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
                     onClick={() => onItemClick?.(q)}
                     className="hover:bg-slate-50 transition-colors group cursor-pointer"
                   >
-                    <td className="px-6 py-4 max-w-xs truncate font-bold text-slate-900">{q.text}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 xl:px-6 py-4 max-w-xs truncate font-bold text-slate-900">{q.text}</td>
+                    <td className="px-4 xl:px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight
                          ${q.status === 'Published' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
                          <span className={`w-1 h-1 rounded-full ${q.status === 'Published' ? 'bg-emerald-500' : 'bg-slate-500'}`}></span>
                         {q.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-xs font-medium text-slate-400">{new Date(q.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="hidden xl:table-cell px-6 py-4 text-xs font-medium text-slate-400">{new Date(q.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 xl:px-6 py-4 text-right">
+                      <div className="flex justify-end gap-1 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={(e) => { e.stopPropagation(); onEditClick(q); }}
                           className="p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors"
@@ -204,7 +204,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         </div>
 
         {/* Alerts Side Panel */}
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
+        <div className="bg-white p-4 xl:p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
           <h3 className="font-black text-slate-900 uppercase tracking-tight mb-6 flex justify-between items-center">
             <span>Agent Alerts</span>
             {activeIssues.length > 0 && (

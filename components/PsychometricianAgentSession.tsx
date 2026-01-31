@@ -112,7 +112,7 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-6">
-      <div className="bg-white rounded-[3rem] w-full max-w-xl shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-500">
+      <div className="bg-white rounded-[2rem] md:rounded-[3rem] w-full max-w-xl shadow-2xl overflow-hidden overflow-y-auto max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-500">
         <div className="p-10 text-center space-y-8">
           <div className="flex justify-end">
             <button onClick={onClose} className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground h-8 w-8 hover:bg-gray-200"><X size={24} /></button>
@@ -124,8 +124,8 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
                <div className="absolute inset-0 rounded-full border-4 border-[#1BD183] animate-ping opacity-20"></div>
             </div>
             <div>
-              <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Vocal Consultation</h2>
-              <p className="text-sm text-slate-500 font-medium">Psychometrician Agent: Zephyr</p>
+              <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">Vocal Consultation</h2>
+              <p className="text-xs md:text-sm text-slate-500 font-medium">Psychometrician Agent: Zephyr</p>
             </div>
           </div>
 
@@ -155,7 +155,7 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-center">
            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              Sena Live Active
+              Sina Live Active
            </div>
         </div>
       </div>

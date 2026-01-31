@@ -42,10 +42,10 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-180px)] bg-slate-950 rounded-[3rem] overflow-hidden shadow-2xl border border-white/5 animate-in fade-in zoom-in-95 duration-500">
+    <div className="flex flex-col min-h-[calc(100vh-120px)] xl:h-[calc(100vh-180px)] bg-slate-950 rounded-[2rem] xl:rounded-[3rem] overflow-hidden shadow-2xl border border-white/5 animate-in fade-in zoom-in-95 duration-500">
       {/* Immersive Header */}
-      <div className="flex items-center justify-between px-8 py-6 bg-slate-900/50 backdrop-blur-md border-b border-white/5">
-        <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 xl:px-8 py-4 xl:py-6 bg-slate-900/50 backdrop-blur-md border-b border-white/5 gap-4">
+        <div className="flex items-center gap-4 xl:gap-6">
           <button 
             onClick={onBack}
             className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 transition-all border border-white/10"
@@ -59,20 +59,20 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
               </span>
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{lecture.id}</span>
             </div>
-            <h2 className="text-xl font-black text-white tracking-tight">{lecture.title}</h2>
+            <h2 className="text-xl font-black text-white tracking-tight line-clamp-1">{lecture.title}</h2>
           </div>
         </div>
         <button 
           onClick={() => onEdit(lecture)}
-          className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
         >
           <Edit3 size={14} /> Edit Resource
         </button>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
         {/* Main Cinema View */}
-        <div className="flex-1 flex flex-col relative bg-black">
+        <div className="flex-1 flex flex-col relative bg-black min-h-[300px] xl:min-h-0">
           <div className="flex-1 flex items-center justify-center relative group">
             {/* Simulated Video Content */}
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 to-slate-900/20 pointer-events-none" />
@@ -87,7 +87,7 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
             </button>
 
             {/* Engagement Hotspots (Simulated Visual Spikes) */}
-            <div className="absolute bottom-24 left-0 right-0 px-10">
+            <div className="absolute bottom-24 left-0 right-0 px-10 hidden sm:block">
                <div className="h-1.5 w-full bg-white/10 rounded-full relative overflow-hidden group/seek">
                   <div className="absolute top-0 left-0 bottom-0 bg-indigo-500 transition-all duration-300" style={{ width: '35%' }} />
                   {lecture.engagementMarkers.map((m, idx) => (
@@ -103,8 +103,8 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
           </div>
 
           {/* Transport Controls */}
-          <div className="bg-slate-900/80 backdrop-blur-xl border-t border-white/5 p-6 flex items-center justify-between">
-            <div className="flex items-center gap-6">
+          <div className="bg-slate-900/80 backdrop-blur-xl border-t border-white/5 p-4 xl:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-start">
               <div className="flex items-center gap-4">
                 <button className="text-white/60 hover:text-white transition"><SkipBack size={20} /></button>
                 <button 
@@ -120,14 +120,14 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-               <div className="flex items-center gap-3">
+            <div className="flex items-center gap-6 w-full sm:w-auto justify-end">
+               <div className="flex items-center gap-3 hidden sm:flex">
                   <Volume2 size={18} className="text-white/40" />
                   <div className="w-24 h-1 bg-white/10 rounded-full">
                     <div className="h-full bg-white/40 rounded-full w-2/3" />
                   </div>
                </div>
-               <div className="h-4 w-px bg-white/10" />
+               <div className="h-4 w-px bg-white/10 hidden sm:block" />
                <button className="text-white/60 hover:text-white transition"><Settings size={18} /></button>
                <button className="text-white/60 hover:text-white transition"><Maximize size={18} /></button>
             </div>
@@ -135,8 +135,8 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
         </div>
 
         {/* Intelligence Sidebar */}
-        <div className="w-96 bg-slate-900 border-l border-white/5 flex flex-col">
-          <div className="p-1 bg-white/5 m-4 rounded-2xl flex">
+        <div className="w-full xl:w-96 bg-slate-900 border-l border-white/5 flex flex-col h-[400px] xl:h-auto">
+          <div className="p-1 bg-white/5 m-4 rounded-2xl flex shrink-0">
             <button 
               onClick={() => setActiveTab('MARKERS')}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
@@ -196,12 +196,12 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
             )}
           </div>
 
-          <div className="p-6 bg-white/5 border-t border-white/5">
+          <div className="p-6 bg-white/5 border-t border-white/5 shrink-0">
              <div className="flex items-center gap-3 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center text-indigo-400">
                    <MessageSquare size={16} />
                 </div>
-                <p className="text-[10px] font-black text-white uppercase tracking-widest">Sena: Tutor Insights</p>
+                <p className="text-[10px] font-black text-white uppercase tracking-widest">Sina: Tutor Insights</p>
              </div>
              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
                "Students frequently pause at <span className="text-indigo-400">4:12</span>. Consider adding a self-assessment MCQ here to reinforce the IRS-1 phosphorylation mechanism."

@@ -60,9 +60,9 @@ const ExamBlueprintView: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20 animate-in fade-in duration-700">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 pb-20 animate-in fade-in duration-700">
       {/* Sidebar Configuration */}
-      <div className="lg:col-span-4 space-y-6">
+      <div className="xl:col-span-4 space-y-6">
         <DashboardCard title="Blueprint Templates" subtitle="Select institutional standard models">
            <div className="space-y-2 mt-2">
              {MOCK_EXAM_BLUEPRINTS.map(bp => (
@@ -145,7 +145,7 @@ const ExamBlueprintView: React.FC = () => {
       </div>
 
       {/* Main Preview Analytics */}
-      <div className="lg:col-span-8 space-y-8">
+      <div className="xl:col-span-8 space-y-8">
         <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 shadow-sm relative overflow-hidden">
            <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
               <Settings2 size={300} />

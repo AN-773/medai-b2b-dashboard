@@ -95,9 +95,9 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
   }, [selectedItem]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500 h-[750px]">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-in fade-in duration-500 h-[750px]">
       {/* Flag Queue Sidebar */}
-      <div className="lg:col-span-4 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="xl:col-span-4 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="p-8 border-b border-slate-100 bg-slate-50/50">
           <div className="flex justify-between items-center">
             <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
@@ -152,7 +152,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
       </div>
 
       {/* Main Audit workspace */}
-      <div className="lg:col-span-8 overflow-y-auto custom-scrollbar pr-2 pb-10">
+      <div className="xl:col-span-8 overflow-y-auto custom-scrollbar pr-2 pb-10">
         {auditResult ? (
           <div className="space-y-8 animate-in slide-in-from-right-10 duration-700">
             {/* Report Header HUD */}
@@ -171,7 +171,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                    </div>
                    <div>
                      <h3 className="text-2xl font-black uppercase tracking-tight">Integrity Audit: {selectedItem?.id}</h3>
-                     <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Sena Intelligence Report</p>
+                     <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Sina Intelligence Report</p>
                    </div>
                  </div>
                  <button onClick={() => setAuditResult(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition">
@@ -230,7 +230,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                   <div>
                     <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Proposed Remediation</h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Review Sena's suggested optimization</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Review Sina's suggested optimization</p>
                   </div>
                   <div className="flex items-center gap-3">
                      <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">High Reliability Reconstruction</span>
@@ -278,7 +278,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row gap-6 items-center justify-between">
                   <div className="flex items-center gap-3">
                      <ShieldCheck size={20} className="text-emerald-600" />
-                     <span className="text-xs font-bold text-slate-500 italic">Institutional standards alignment confirmed by Sena Auditor.</span>
+                     <span className="text-xs font-bold text-slate-500 italic">Institutional standards alignment confirmed by Sina Auditor.</span>
                   </div>
                   <button 
                     onClick={applyRemedy}

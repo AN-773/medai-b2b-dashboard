@@ -158,7 +158,7 @@
 //       Provide a high-impact executive briefing for the Dean. Use Markdown.
 //       Focus on bank health, student risk, and curriculum gaps.`,
 //       config: {
-//         systemInstruction: "You are the Chief Psychometrician Sena. Be professional, data-driven, and concise.",
+//         systemInstruction: "You are the Chief Psychometrician Sina. Be professional, data-driven, and concise.",
 //         temperature: 0.3
 //       }
 //     });
@@ -167,7 +167,7 @@
 //       yield chunk.text;
 //     }
 //   } catch (error) {
-//     console.error("Sena Stream Error:", error);
+//     console.error("Sina Stream Error:", error);
 //     yield "Uplink to intelligence fleet timed out. Please check telemetry.";
 //   }
 // }
@@ -222,7 +222,7 @@
 //     const ai = getAIClient();
 //     const response = await ai.models.generateContent({
 //       model: "gemini-2.5-flash-preview-tts",
-//       contents: [{ parts: [{ text: `Executive Briefing from Sena: ${text.substring(0, 1500)}` }] }],
+//       contents: [{ parts: [{ text: `Executive Briefing from Sina: ${text.substring(0, 1500)}` }] }],
 //       config: { 
 //         responseModalities: [Modality.AUDIO],
 //         speechConfig: {

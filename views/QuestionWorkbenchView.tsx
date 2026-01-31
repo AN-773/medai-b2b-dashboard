@@ -167,35 +167,37 @@ const QuestionWorkbenchView: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative">
       {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-10">
-          <div className={`px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} text-white`}>
-            <CheckCircle size={20} />
-            <span className="text-sm font-black uppercase tracking-widest">{toast.message}</span>
-            <button onClick={() => setToast(null)}><X size={16} /></button>
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-10 w-[90vw] xl:w-auto">
+          <div className={`px-6 xl:px-8 py-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} text-white`}>
+            <div className="flex items-center gap-3 overflow-hidden">
+                <CheckCircle size={20} className="shrink-0" />
+                <span className="text-xs xl:text-sm font-black uppercase tracking-widest truncate">{toast.message}</span>
+            </div>
+            <button onClick={() => setToast(null)} className="shrink-0"><X size={16} /></button>
           </div>
         </div>
       )}
 
       {/* Global Type Selector */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="flex items-center gap-2 p-1.5 bg-white rounded-[2.5rem] w-fit">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
+        <div className="flex items-center justify-between xl:justify-start gap-2 p-1.5 bg-white rounded-[2.5rem] w-full xl:w-fit overflow-x-auto no-scrollbar">
           {[ItemType.MCQ, ItemType.SAQ, ItemType.LECTURE].map(type => (
             <button
               key={type}
               onClick={() => { setActiveItemType(type as ItemType); setViewMode('DASHBOARD'); }}
-              className={`flex items-center gap-3 px-8 py-3.5 rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all ${activeItemType === type ? 'bg-primary-gradient text-white ' : 'text-slate-500 hover:bg-slate-300/50'}`}
+              className={`flex-1 xl:flex-none flex items-center justify-center gap-2 xl:gap-3 px-4 xl:px-8 py-3 xl:py-3.5 rounded-[2rem] text-[10px] xl:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeItemType === type ? 'bg-primary-gradient text-white ' : 'text-slate-500 hover:bg-slate-300/50'}`}
             >
-              {type === ItemType.MCQ ? <ClipboardCheck size={16} /> : type === ItemType.SAQ ? <FileText size={16} /> : <MonitorPlay size={16} />}
+              {type === ItemType.MCQ ? <ClipboardCheck size={14} className="xl:w-4 xl:h-4" /> : type === ItemType.SAQ ? <FileText size={14} className="xl:w-4 xl:h-4" /> : <MonitorPlay size={14} className="xl:w-4 xl:h-4" />}
               {type}s
             </button>
           ))}
         </div>
-        <button onClick={() => navigate('/bank-explorer')} className="flex items-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "><Database size={14} /> Global Repository</button>
+        <button onClick={() => navigate('/bank-explorer')} className="w-full xl:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "><Database size={14} /> Global Repository</button>
       </div>
 
       {/* Workbench Sub-Navigation */}
-      <div className="flex items-center gap-2">
-        <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-fit shadow-sm">
+      <div className="flex items-center gap-2 w-full xl:w-auto">
+        <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-full xl:w-fit shadow-sm overflow-x-auto no-scrollbar">
           {[
             { id: 'DASHBOARD', icon: Layout, label: 'Dashboard' },
             { id: 'INTEGRITY', icon: ShieldCheck, label: 'Integrity Audit', alert: filteredIssues.length > 0 },
@@ -204,7 +206,7 @@ const QuestionWorkbenchView: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}
+              className={`flex-shrink-0 flex items-center gap-2 px-4 xl:px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all relative whitespace-nowrap ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}
             >
               <tab.icon size={14} />
               {tab.label}

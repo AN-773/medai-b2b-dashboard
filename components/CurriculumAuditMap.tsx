@@ -117,28 +117,28 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 lg:p-12">
+    <div className="fixed inset-0 z-[100] flex items-end lg:items-center justify-center sm:p-6 lg:p-12 pointer-events-none">
       <div
-        className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl animate-in fade-in duration-300"
+        className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto"
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-7xl bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-500 flex flex-col max-h-full">
+      <div className="relative w-full max-w-7xl bg-white rounded-t-[2rem] lg:rounded-[3rem] shadow-2xl overflow-hidden border border-white/20 animate-in slide-in-from-bottom-10 lg:zoom-in-95 duration-500 flex flex-col h-[90vh] lg:h-auto lg:max-h-full pointer-events-auto">
         {/* Header */}
-        <div className="p-8 lg:p-12 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="p-6 lg:p-12 border-b border-slate-100 bg-slate-50/50 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 shrink-0">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <LayoutGrid className="text-black" size={24} />
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
                 Curriculum Audit Map
               </h1>
             </div>
-            <p className="text-slate-500 font-medium italic">
+            <p className="text-sm lg:text-base text-slate-500 font-medium italic">
               Global spatial overview of educational assets vs USMLE Outline.
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end">
+          <div className="flex items-center justify-between w-full lg:w-auto gap-4">
+            <div className="flex flex-col items-start lg:items-end">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 Global Coverage
               </span>
@@ -154,8 +154,8 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
         </div>
 
         {/* Content - Heatmap Grid */}
-        <div className="flex-grow p-8 lg:p-12 overflow-y-auto custom-scrollbar">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="flex-grow p-6 lg:p-12 overflow-y-auto custom-scrollbar">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
             {systemsWithNames.map((sys) => (
               <div
                 key={sys.id}
@@ -163,9 +163,9 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                   navigate('/curriculum');
                   onClose();
                 }}
-                className="group p-6 bg-white border border-slate-100 rounded-[2rem] hover:border-indigo-200 hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
+                className="group p-5 lg:p-6 bg-white border border-slate-100 rounded-[1.5rem] lg:rounded-[2rem] hover:border-indigo-200 hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
               >
-                <div className="flex justify-between items-start mb-6">
+                <div className="flex justify-between items-start mb-4 lg:mb-6">
                   <div
                     className={`w-3 h-3 rounded-full ${sys.status === 'Critical' ? 'bg-rose-500' : sys.status === 'Under' ? 'bg-amber-500' : 'bg-emerald-500'}`}
                   />
@@ -207,13 +207,13 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
           </div>
 
           {/* Cognitive Balance Summary */}
-          <div className="relative mt-12 p-10 bg-[#0F1110] rounded-[3rem] text-white flex flex-col lg:flex-row items-center gap-12">
-            <div className="absolute rounded-[3rem] inset-0 bg-gradient-to-br from-[#1BD183]/20 via-transparent to-transparent pointer-events-none"></div>
+          <div className="relative mt-8 lg:mt-12 p-6 lg:p-10 bg-[#0F1110] rounded-[2rem] lg:rounded-[3rem] text-white flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+            <div className="absolute rounded-[2rem] lg:rounded-[3rem] inset-0 bg-gradient-to-br from-[#1BD183]/20 via-transparent to-transparent pointer-events-none"></div>
 
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 space-y-4 w-full">
               <div className="flex items-center gap-3">
                 <Brain size={24} className="text-[#1BD183]" />
-                <h2 className="text-2xl font-black uppercase tracking-tight">
+                <h2 className="text-xl lg:text-2xl font-black uppercase tracking-tight">
                   Institutional Cognitive Weight
                 </h2>
               </div>
@@ -224,29 +224,29 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                 and Hematology blocks to match USMLE Step 1 difficulty
                 benchmarks.
               </p>
-              <div className="flex gap-4 pt-4">
-                <div className="text-center">
+              <div className="flex flex-wrap sm:flex-nowrap justify-between gap-4 pt-4">
+                <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">42%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Apply
                   </div>
                 </div>
-                <div className="w-px h-8 bg-indigo-800 self-center"></div>
-                <div className="text-center">
+                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">28%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Analyze
                   </div>
                 </div>
-                <div className="w-px h-8 bg-indigo-800 self-center"></div>
-                <div className="text-center">
+                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">20%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Understand
                   </div>
                 </div>
-                <div className="w-px h-8 bg-indigo-800 self-center"></div>
-                <div className="text-center">
+                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">10%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Recall
@@ -254,13 +254,13 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                 </div>
               </div>
             </div>
-            <div className="shrink-0">
+            <div className="shrink-0 w-full lg:w-auto">
               <button
                 onClick={() => {
                   navigate('/workbench');
                   onClose();
                 }}
-                className="px-10 py-5 bg-primary-gradient text-white hover:bg-primary-gradient-hover rounded-[2rem] font-black text-sm uppercase tracking-widest  flex items-center gap-4"
+                className="w-full lg:w-auto px-6 py-4 lg:px-10 lg:py-5 bg-primary-gradient text-white hover:bg-primary-gradient-hover rounded-[1.5rem] lg:rounded-[2rem] font-black text-sm uppercase tracking-widest  flex items-center justify-center gap-4 transition-all"
               >
                 <Zap size={20} fill="currentColor" /> Launch Remediation Lab
               </button>

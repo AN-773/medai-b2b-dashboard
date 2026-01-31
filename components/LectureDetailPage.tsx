@@ -52,9 +52,9 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
         <MetricCard label="MCQ Performance" value={`${(metrics.downstreamMCQPerformance * 100).toFixed(0)}%`} icon={BrainCircuit} color="text-purple-600" bg="bg-purple-50" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Linked Items */}
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="xl:col-span-2 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-8 border-b border-slate-100 flex justify-between items-center">
             <h3 className="font-black text-slate-900 uppercase tracking-tight">Linked Assessment Items</h3>
             <span className="text-[10px] font-black bg-slate-900 text-white px-3 py-1 rounded-full">{linkedItems.length} Total</span>

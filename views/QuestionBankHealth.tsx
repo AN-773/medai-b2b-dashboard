@@ -86,7 +86,7 @@ const QuestionBankHealth: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <DashboardCard title="Difficulty Analysis (P-value)" subtitle="Cognitive distribution across total student attempts">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">

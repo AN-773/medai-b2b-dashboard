@@ -98,7 +98,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
       explanation: generatedResult.explanation,
       status: 'Published',
       version: 1,
-      authorId: 'SENA-LAB',
+      authorId: 'SINA-LAB',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       timeToAuthorMinutes: 1,
@@ -112,7 +112,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
       },
       linkedMediaIds: [],
       linkedLectureIds: [],
-      learningObjective: `Synthesized in Sena Lab using ${bloomTarget} trajectory.`
+      learningObjective: `Synthesized in Sina Lab using ${bloomTarget} trajectory.`
     };
     onSaveNew(newItem);
   };
@@ -125,10 +125,10 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500 h-[800px]">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-in fade-in duration-500 h-auto xl:h-[800px]">
       {/* Configuration Sidebar */}
-      <div className="lg:col-span-5 flex flex-col gap-6">
-        <div className="bg-slate-900 rounded-[3rem] p-10 text-white shadow-2xl space-y-8 relative overflow-hidden flex flex-col h-full border border-white/5">
+      <div className="xl:col-span-5 flex flex-col gap-6 h-auto xl:h-full">
+        <div className="bg-slate-900 rounded-[3rem] p-6 xl:p-10 text-white shadow-2xl space-y-8 relative overflow-hidden flex flex-col h-full border border-white/5">
           <div className="absolute top-0 right-0 p-12 opacity-[0.02] pointer-events-none scale-150 rotate-12">
             <FlaskConical size={400} />
           </div>
@@ -138,7 +138,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
               <Brain size={32} />
             </div>
             <div>
-              <h2 className="text-3xl font-black uppercase tracking-tight">Sena Lab</h2>
+              <h2 className="text-3xl font-black uppercase tracking-tight">Sina Lab</h2>
               <p className="text-[#1BD183] text-[10px] font-black uppercase tracking-[0.2em] mt-1">Generative R&D Sandbox</p>
             </div>
           </div>
@@ -157,7 +157,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                       <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{selectedItem.taxonomy.bloomLevel}</p>
                     </div>
                   </div>
-                  <button onClick={() => setSelectedItem(null)} className="p-2 text-slate-500 hover:text-white transition opacity-0 group-hover:opacity-100">
+                  <button onClick={() => setSelectedItem(null)} className="p-2 text-slate-500 hover:text-white transition opacity-100 xl:opacity-0 group-hover:opacity-100">
                     <X size={16} />
                   </button>
                 </div>
@@ -210,7 +210,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
 
           {/* Directives */}
           <div className="relative z-10 flex-1 flex flex-col gap-4">
-             <div className="flex-1 bg-white/5 border border-white/5 rounded-[2rem] p-6 space-y-4 flex flex-col shadow-inner">
+             <div className="flex-1 bg-white/5 border border-white/5 rounded-[2rem] p-6 space-y-4 flex flex-col shadow-inner min-h-[150px]">
                 <label className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Synthesis Directives</label>
                 <textarea 
                   value={prompt}
@@ -220,7 +220,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 />
              </div>
 
-             <div className="grid grid-cols-2 gap-2">
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {presets.map((p, i) => (
                    <button 
                      key={i}
@@ -245,10 +245,10 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
       </div>
 
       {/* Preview Panel */}
-      <div className="lg:col-span-7 flex flex-col h-full">
+      <div className="xl:col-span-7 flex flex-col h-full">
         {generatedResult ? (
           <div className="flex-1 bg-white rounded-[3.5rem] border border-slate-200 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right-10 duration-700">
-             <div className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+             <div className="p-6 xl:p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-[#1BD183] rounded-2xl text-white shadow-lg shadow-[#1BD183]/30">
                     <Sparkles size={24} />
@@ -268,14 +268,14 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 </div>
              </div>
 
-             <div className="flex-1 overflow-y-auto p-12 space-y-12 custom-scrollbar">
+             <div className="flex-1 overflow-y-auto p-6 xl:p-12 space-y-12 custom-scrollbar">
                 <div className="space-y-4">
                    <div className="flex items-center gap-3">
                       <Stethoscope className="text-[#1BD183]/90" size={18} />
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Synthesized Clinical Stem</p>
                    </div>
-                   <div className="p-10 bg-slate-50 border border-slate-100 rounded-[3rem] relative">
-                      <p className="text-xl font-bold text-slate-900 leading-relaxed font-serif relative z-10 italic">
+                   <div className="p-6 xl:p-10 bg-slate-50 border border-slate-100 rounded-[3rem] relative">
+                      <p className="text-lg xl:text-xl font-bold text-slate-900 leading-relaxed font-serif relative z-10 italic">
                         "{generatedResult.newStem}"
                       </p>
                    </div>
@@ -307,7 +307,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                    </div>
                 </div>
 
-                <div className="p-10 bg-[#ebf4ff] rounded-[2.5rem] flex gap-6 items-start">
+                <div className="p-6 xl:p-10 bg-[#ebf4ff] rounded-[2.5rem] flex flex-col sm:flex-row gap-6 items-start">
                    <div className="p-4 bg-white rounded-2xl text-[#1BD183] shadow-sm border border-indigo-100 shrink-0">
                       <Activity size={28} />
                    </div>
@@ -318,7 +318,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 </div>
              </div>
 
-             <div className="p-10 bg-white border-t border-slate-100 flex justify-end gap-5">
+             <div className="p-6 xl:p-10 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-5">
                 <button 
                   onClick={() => setGeneratedResult(null)} 
                   className="px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-slate-200 transition"
@@ -327,7 +327,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 </button>
                 <button 
                   onClick={handleCommit}
-                  className="px-12 py-4 text-white bg-primary-gradient rounded-2xl font-black uppercase tracking-widest text-[11px] transition shadow-2xl shadow-slate-300 flex items-center gap-3 active:scale-95"
+                  className="px-12 py-4 text-white bg-primary-gradient rounded-2xl font-black uppercase tracking-widest text-[11px] transition shadow-2xl shadow-slate-300 flex items-center justify-center gap-3 active:scale-95"
                 >
                   <Save size={20} /> Commit to Bank
                 </button>
@@ -341,7 +341,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <div className="space-y-2">
                 <h3 className="text-3xl font-black text-slate-400 uppercase tracking-tight">AI Lab Standby</h3>
                 <p className="text-sm text-slate-400 font-medium max-w-sm mx-auto leading-relaxed italic">
-                  Initiate a high-yield synthesis by selecting a source item or organ system. Sena will remaster content based on your precision directives.
+                  Initiate a high-yield synthesis by selecting a source item or organ system. Sina will remaster content based on your precision directives.
                 </p>
              </div>
              <button 

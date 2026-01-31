@@ -88,6 +88,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   const [newRefUrl, setNewRefUrl] = useState('');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     if (initialQuestion) {
       setQuestionText(initialQuestion.text);
@@ -185,8 +193,8 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
 
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
+      <div className="bg-white border-b border-slate-200 px-4 xl:px-6 py-3 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 sticky top-0 z-10 h-auto xl:h-[72px]">
+        <div className="flex items-center gap-4 w-full xl:w-auto">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
             <ArrowLeft size={20} />
           </button>
@@ -196,25 +204,25 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             <p className="text-xs text-slate-500">{initialQuestion ? `Editing ID: ${initialQuestion.id}` : 'AI-Powered Workbench'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="bg-[#F3F6F3] p-1 rounded-[40px] flex gap-1 mr-4">
+        <div className="flex items-center gap-2 w-full xl:w-auto overflow-x-auto no-scrollbar pb-2 xl:pb-0">
+          <div className="bg-[#F3F6F3] p-1 rounded-[40px] flex gap-1 mr-4 shrink-0">
             <button onClick={() => setViewMode('edit')} className={`px-3 py-1.5 rounded-[40px] text-xs font-medium transition-all flex items-center gap-2 ${viewMode === 'edit' ? 'bg-primary-gradient text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              <Layout size={16} /> Edit
+              <Layout size={16} /> <span className="hidden sm:inline">Edit</span>
             </button>
             <button onClick={() => setViewMode('preview')} className={`px-3 py-1.5 rounded-[40px] text-xs font-medium transition-all flex items-center gap-2 ${viewMode === 'preview' ? 'bg-primary-gradient text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              <Eye size={16} /> Preview
+              <Eye size={16} /> <span className="hidden sm:inline">Preview</span>
             </button>
           </div>
-          <button onClick={() => handleSave('Draft')} className="flex items-center gap-2 text-sm bg-[#191A19] border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
-            <FileText size={18} /> Save Draft
+          <button onClick={() => handleSave('Draft')} className="shrink-0 flex items-center gap-2 text-sm bg-[#191A19] border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+            <FileText size={18} /> <span className="hidden sm:inline">Save Draft</span><span className="inline sm:hidden">Draft</span>
           </button>
-          <button onClick={() => handleSave('Published')} className="flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
-            <Save size={18} /> Publish
+          <button onClick={() => handleSave('Published')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+            <Save size={18} /> <span className="hidden sm:inline">Publish</span><span className="inline sm:hidden">Save</span>
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden flex flex-row">
-        <div className={`bg-white flex flex-col overflow-y-auto flex-shrink-0 ${viewMode === 'preview' ? 'hidden md:flex' : 'flex'}`} style={{ width: sidebarWidth }}>
+      <div className="flex-1 overflow-hidden flex flex-col xl:flex-row">
+        <div className={`bg-white flex flex-col overflow-y-auto flex-shrink-0 border-b xl:border-b-0 xl:border-r border-slate-200 ${viewMode === 'preview' ? 'hidden md:flex' : 'flex'}`} style={{ width: isMobile ? '100%' : sidebarWidth, height: isMobile ? 'auto' : '100%' }}>
           <div className="p-5 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
               <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
@@ -259,7 +267,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
              </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-8 relative">
+        <div className="flex-1 overflow-y-auto p-4 xl:p-8 relative">
            {viewMode === 'edit' ? (
              <div className="max-w-3xl mx-auto space-y-8">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

@@ -78,20 +78,20 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">
+          <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight text-center sm:text-left">
             New Instructional Asset
           </h2>
-          <p className="text-sm text-slate-500 font-medium">Step {step}: {steps[step - 1].label}</p>
+          <p className="text-sm text-slate-500 font-medium text-center sm:text-left">Step {step}: {steps[step - 1].label}</p>
         </div>
-        <button onClick={onBack} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition shadow-sm">
+        <button onClick={onBack} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition shadow-sm self-end sm:self-auto">
           <X size={20} />
         </button>
       </div>
 
       {/* Modern Stepper */}
-      <div className="flex items-center justify-between px-10 py-6 bg-white rounded-[2rem] border border-slate-200 shadow-sm">
+      <div className="flex items-center justify-between px-4 xl:px-10 py-6 bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-x-auto no-scrollbar gap-4">
         {steps.map((s, i) => {
           const stepNum = i + 1;
           const Icon = s.icon;
@@ -100,7 +100,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
           
           return (
             <React.Fragment key={i}>
-              <div className="flex flex-col items-center gap-2 group">
+              <div className="flex flex-col items-center gap-2 group min-w-[60px]">
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
                   isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' :
                   isActive ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' :
@@ -108,12 +108,12 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
                 }`}>
                   {isCompleted ? <CheckCircle2 size={24} /> : <Icon size={24} />}
                 </div>
-                <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+                <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
                   {s.label}
                 </span>
               </div>
               {i < steps.length - 1 && (
-                <div className={`flex-1 h-px max-w-[80px] -mt-6 transition-colors duration-500 ${step > stepNum ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                <div className={`flex-1 h-px min-w-[20px] max-w-[80px] -mt-6 transition-colors duration-500 ${step > stepNum ? 'bg-emerald-500' : 'bg-slate-200'}`} />
               )}
             </React.Fragment>
           );
@@ -123,7 +123,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
       {/* Step 1: Alignment (USMLE Outline Navigation) */}
       {step === 1 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
+          <div className="bg-white p-6 xl:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
             <div className="space-y-6">
               <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
                 <Target size={24} className="text-indigo-600" />
@@ -175,14 +175,14 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
               <button
                 onClick={() => setStep(2)}
                 disabled={!selectedSystemId || !selectedTopicId}
-                className="flex items-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 disabled:opacity-50"
+                className="w-full sm:w-auto flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 disabled:opacity-50"
               >
                 Continue <ArrowRight size={18} />
               </button>
             </div>
           </div>
 
-          <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white space-y-6">
+          <div className="bg-slate-900 rounded-[2.5rem] p-6 xl:p-10 text-white space-y-6">
             <h4 className="text-xs font-black text-indigo-400 uppercase tracking-[0.2em]">Institutional Objectives</h4>
             <p className="text-sm text-slate-400 font-medium leading-relaxed italic">
               Select the primary learning objective this lecture targets within the {currentSystem?.name || 'selected system'}.
@@ -213,7 +213,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
 
       {/* Step 2: Basic Information */}
       {step === 2 && (
-        <div className="max-w-3xl mx-auto bg-white p-12 rounded-[3rem] border border-slate-200 shadow-sm space-y-8">
+        <div className="max-w-3xl mx-auto bg-white p-6 xl:p-12 rounded-[3rem] border border-slate-200 shadow-sm space-y-8">
           <div className="space-y-2">
             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Identity & Briefing</h3>
             <p className="text-slate-500 font-medium">Provide instructional meta-data for indexers.</p>
@@ -240,14 +240,14 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
             </div>
           </div>
 
-          <div className="flex justify-between pt-8 border-t border-slate-100">
-            <button onClick={() => setStep(1)} className="flex items-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-slate-900 transition">
+          <div className="flex flex-col-reverse sm:flex-row justify-between gap-4 pt-8 border-t border-slate-100">
+            <button onClick={() => setStep(1)} className="flex items-center justify-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-slate-900 transition py-4 sm:py-0">
               <ArrowLeft size={16} /> Previous Step
             </button>
             <button
               onClick={() => setStep(3)}
               disabled={!title}
-              className="flex items-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg disabled:opacity-50"
+              className="flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg disabled:opacity-50"
             >
               Next <ArrowRight size={18} />
             </button>
@@ -258,7 +258,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
       {/* Step 3: Material Upload & Lecture Text */}
       {step === 3 && (
         <div className="space-y-8">
-          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-6 xl:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
             <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
               <BookOpen size={24} className="text-emerald-600" />
               Instructional Core
@@ -275,7 +275,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="p-10 bg-white border border-slate-200 rounded-[2.5rem] flex flex-col items-center text-center gap-6 group hover:border-indigo-200 transition-all cursor-pointer">
+            <div className="p-6 xl:p-10 bg-white border border-slate-200 rounded-[2.5rem] flex flex-col items-center text-center gap-6 group hover:border-indigo-200 transition-all cursor-pointer">
               <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center group-hover:scale-110 transition-transform">
                 <MonitorPlay size={40} />
               </div>
@@ -284,12 +284,12 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
                 <p className="text-xs text-slate-400 font-medium mt-1">Upload lecture video or recorded clinical case.</p>
               </div>
               <input type="file" id="vid-up" className="hidden" onChange={e => setVideoFile(e.target.files?.[0] || null)} />
-              <label htmlFor="vid-up" className="cursor-pointer px-10 py-3 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition">
+              <label htmlFor="vid-up" className="cursor-pointer w-full sm:w-auto px-10 py-3 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition">
                 {videoFile ? videoFile.name : 'Select File'}
               </label>
             </div>
 
-            <div className="p-10 bg-white border border-slate-200 rounded-[2.5rem] flex flex-col items-center text-center gap-6 group hover:border-emerald-200 transition-all cursor-pointer">
+            <div className="p-6 xl:p-10 bg-white border border-slate-200 rounded-[2.5rem] flex flex-col items-center text-center gap-6 group hover:border-emerald-200 transition-all cursor-pointer">
               <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Upload size={40} />
               </div>
@@ -298,19 +298,19 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
                 <p className="text-xs text-slate-400 font-medium mt-1">Ingest closed-captioning for AI auditing.</p>
               </div>
               <input type="file" id="trans-up" className="hidden" onChange={e => setTranscriptFile(e.target.files?.[0] || null)} />
-              <label htmlFor="trans-up" className="cursor-pointer px-10 py-3 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition">
+              <label htmlFor="trans-up" className="cursor-pointer w-full sm:w-auto px-10 py-3 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition">
                 {transcriptFile ? transcriptFile.name : 'Select File'}
               </label>
             </div>
           </div>
 
-          <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(2)} className="flex items-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-slate-900 transition">
+          <div className="flex flex-col-reverse sm:flex-row justify-between gap-4 pt-4">
+            <button onClick={() => setStep(2)} className="flex items-center justify-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-slate-900 transition py-4 sm:py-0">
               <ArrowLeft size={16} /> Previous Step
             </button>
             <button
               onClick={() => setStep(4)}
-              className="flex items-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg"
+              className="flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg"
             >
               Next <ArrowRight size={18} />
             </button>
@@ -321,7 +321,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
       {/* Step 4: Item Mapping (Link Questions) */}
       {step === 4 && (
         <div className="space-y-8">
-          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
+          <div className="bg-white p-6 xl:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
             <div className="flex justify-between items-center">
                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
                  <ClipboardCheck size={24} className="text-indigo-600" />
@@ -362,17 +362,17 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
             </div>
           </div>
 
-          <div className="flex justify-between items-center bg-slate-900 p-8 rounded-[2.5rem] shadow-xl text-white">
+          <div className="flex flex-col-reverse xl:flex-row justify-between items-center bg-slate-900 p-6 xl:p-8 rounded-[2.5rem] shadow-xl text-white gap-6">
             <button onClick={() => setStep(3)} className="flex items-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-white transition">
               <ArrowLeft size={16} /> Back to Materials
             </button>
-            <div className="flex gap-4">
-               <button className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition">
+            <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
+               <button className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition w-full sm:w-auto">
                   Save as Draft
                </button>
                <button 
                  onClick={handleFinalize}
-                 className="flex items-center gap-3 bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-600 transition shadow-2xl shadow-emerald-500/20 active:scale-95"
+                 className="flex items-center justify-center gap-3 bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-600 transition shadow-2xl shadow-emerald-500/20 active:scale-95 w-full sm:w-auto"
                >
                  <Save size={18} /> Finalize Asset
                </button>
@@ -380,6 +380,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
           </div>
         </div>
       )}
+
     </div>
   );
 };
