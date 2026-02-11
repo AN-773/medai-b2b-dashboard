@@ -197,11 +197,10 @@ const QuestionWorkbenchView: React.FC = () => {
 
       {/* Workbench Sub-Navigation */}
       <div className="flex items-center gap-2 w-full xl:w-auto">
-        <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-full xl:w-fit shadow-sm overflow-x-auto no-scrollbar">
+        <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-full xl:w-fit shadow-sm overflow-x no-scrollbar">
           {[
             { id: 'DASHBOARD', icon: Layout, label: 'Dashboard' },
             { id: 'INTEGRITY', icon: ShieldCheck, label: 'Integrity Audit', alert: filteredIssues.length > 0 },
-            { id: 'LAB', icon: FlaskConical, label: 'Generative Lab' }
           ].map(tab => (
             <button
               key={tab.id}

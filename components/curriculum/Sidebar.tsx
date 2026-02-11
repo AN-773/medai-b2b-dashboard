@@ -1,19 +1,20 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, LayoutGrid, ChevronRight } from 'lucide-react';
-import { USMLEStandardCategory } from '../../types';
+import { OrganSystem } from '../../types/TestsServiceTypes';
 
 interface SidebarProps {
-  systems: USMLEStandardCategory[];
+  systems: OrganSystem[];
   activeId: string;
   onSelect: (id: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect }) => {
+const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect }: SidebarProps) => {
   const [searchTerm, setSearchTerm] = useState('');
-
-  const filteredSystems = useMemo(() => {
-    return systems.filter(sys => sys.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  console.log("Sidebar", systems);
+  
+  const filteredSystems: OrganSystem[] = useMemo(() => {
+    return systems.filter(system => system.title.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [systems, searchTerm]);
 
   return (
@@ -45,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect }) => {
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
             }`}
           >
-            <span className="truncate">{system.name}</span>
+            <span className="truncate">{system.title}</span>
             {activeId === system.id && <ChevronRight size={14} className="text-slate-400" />}
           </button>
         ))}

@@ -1,23 +1,25 @@
 
 import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Stethoscope, 
-  Users, 
-  BookOpen, 
-  LineChart, 
-  Cpu, 
-  ClipboardList, 
-  Bell, 
+import {
+  LayoutDashboard,
+  Stethoscope,
+  Users,
+  BookOpen,
+  LineChart,
+  Cpu,
+  ClipboardList,
+  Bell,
   Settings,
   Search,
   ChevronRight,
   Database,
   Wand2,
-  LogOut
+  LogOut,
+  GraduationCap
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
+import FacultyDashboard from './views/FacultyDashboard';
 import StudentMasteryView from './views/StudentMasteryView';
 import AIAgentCenter from './views/AIAgentCenter';
 import ExamBlueprintView from './views/ExamBlueprintView';
@@ -50,6 +52,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/assessment')) return 'ASSESSMENT';
     if (path.startsWith('/agents')) return 'AGENTS';
     if (path.startsWith('/blueprint')) return 'BLUEPRINT';
+    if (path.startsWith('/faculty')) return 'FACULTY';
     return 'DASHBOARD';
   };
 
@@ -66,7 +69,8 @@ const DashboardLayout: React.FC = () => {
       CURRICULUM: '/curriculum',
       ASSESSMENT: '/assessment',
       AGENTS: '/agents',
-      BLUEPRINT: '/blueprint'
+      BLUEPRINT: '/blueprint',
+      FACULTY: '/faculty'
     };
     return routes[view];
   };
@@ -86,6 +90,7 @@ const DashboardLayout: React.FC = () => {
 
   const navItems = [
     { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
+    { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
     { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
     { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
     { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
@@ -126,49 +131,6 @@ const DashboardLayout: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col relative w-full">
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-4 xl:px-10 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4 flex-1">
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="xl:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-            >
-              <div className="space-y-1.5">
-                <span className="block w-6 h-0.5 bg-current"></span>
-                <span className="block w-6 h-0.5 bg-current"></span>
-                <span className="block w-6 h-0.5 bg-current"></span>
-              </div>
-            </button>
-
-            <div className="relative max-w-lg w-full hidden md:block">
-              <Search
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                size={20}
-              />
-              <input
-                type="text"
-                placeholder="Query QIDs, Objectives, or Syndromes..."
-                className="w-full pl-12 pr-6 py-3 bg-slate-100 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-[#1BD183] outline-none transition shadow-inner"
-              />
-            </div>
-          </div>
-          {/* <div className="flex items-center gap-8">
-            <button className="relative p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition">
-              <Bell size={22} />
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
-            <div className="flex items-center gap-4 pl-8 border-l border-slate-200">
-              <div className="text-right">
-                <p className="text-sm font-black text-slate-900 leading-none">Dr. Theodore</p>
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Dean of Academic Affairs</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
-                <img src="https://picsum.photos/100/100?seed=dean" alt="Dean Avatar" className="w-full h-full object-cover" />
-              </div>
-            </div>
-          </div> */}
-        </header>
-
         <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
             MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
@@ -184,23 +146,13 @@ const DashboardLayout: React.FC = () => {
                 Authoring environment powered by USMLE Content Intelligence.
               </p>
             </div>
-            <div className="flex gap-4 w-full xl:w-auto">
-              <button
-                onClick={() => setIsAuditMapOpen(true)}
-                className="flex-1 xl:flex-none px-6 py-3 bg-[#191A19] rounded-[8px] text-sm text-white shadow-sm hover:bg-[##232524] transition active:translate-y-1"
-              >
-                Audit Map
-              </button>
-              <button className="flex-1 xl:flex-none px-6 py-3 primary-button rounded-[8px] text-sm font-black text-white transition active:translate-y-1">
-                Trigger Auditor
-              </button>
-            </div>
           </div>
 
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<AIAgentCenter />} />
+              <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />

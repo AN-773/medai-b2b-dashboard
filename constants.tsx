@@ -1,729 +1,1166 @@
 
-import { 
-  OrganSystem, 
-  Discipline, 
-  BloomTaxonomy, 
-  StudentMastery, 
-  CurriculumObjective, 
+import {
+  StudentMastery,
   AIAgentInsight,
-  AgentMetaData,
-  ItemType,
-  QuestionType,
   Issue,
   BackendItem,
   LectureAsset,
-  Author,
-  MediaAsset,
   ItemPsychometrics,
-  LectureMetrics,
   LearningObjective,
-  ObjectiveCoverage,
-  CurriculumMapping,
-  AIInsightLog,
-  AgentStatus,
-  AIActionHistory,
   ExamBlueprint,
   ReliabilityTarget,
-  USMLEStandardCategory
+  Cohort
 } from './types';
 
-export const USMLE_2024_OUTLINE: USMLEStandardCategory[] = [
+// ============================================================================
+// 1. MOCK ITEMS & PSYCHOMETRICS
+// ============================================================================
+
+export const MOCK_ITEMS: BackendItem[] = [
   {
-    id: 'USMLE-HUM-DEV',
-    name: 'Human Development',
-    page: 3,
+    id: 'QID-CV-101',
+    itemTagline: 'Anterior MI ECG Recognition',
+    type: 'MCQ',
+    stem: 'A 55-year-old male presents with crushing substernal chest pain. ECG shows ST elevation in leads V1-V4. Which coronary artery is most likely occluded?',
+    options: [
+      { id: 'opt1', text: 'Left Anterior Descending', isCorrect: true, label: 'A' },
+      { id: 'opt2', text: 'Right Coronary Artery', isCorrect: false, label: 'B' },
+      { id: 'opt3', text: 'Left Circumflex', isCorrect: false, label: 'C' },
+      { id: 'opt4', text: 'Posterior Descending', isCorrect: false, label: 'D' },
+      { id: 'opt5', text: 'Left Main', isCorrect: false, label: 'E' }
+    ],
+    status: 'Published',
+    version: 1,
+    authorId: 'AUTH-DEAN',
+    createdAt: '2025-01-15T10:00:00Z',
+    updatedAt: '2025-01-15T10:00:00Z',
+    timeToAuthorMinutes: 15,
+    itemType: 'single-best-answer',
+    taxonomy: {
+      organSystemId: 'USMLE-CV',
+      disciplineId: 'Pathology',
+      bloomLevel: 'Apply',
+      syndromeTopicId: 'TOPIC-CV-MI',
+      subTopicId: 'Acute MI',
+      usmleContentId: 'CV-1.2.3'
+    },
+    linkedMediaIds: [],
+    linkedLectureIds: ['LECT-CV-MI-001'],
+    learningObjective: 'OBJ-CV-001',
+    pValue: 0.62,
+    dIndex: 0.45,
+    sampleSize: 342,
+    distractors: [
+      { id: 'opt2', isFunctional: true },
+      { id: 'opt3', isFunctional: true },
+      { id: 'opt4', isFunctional: false }
+    ]
+  },
+  {
+    id: 'QID-RN-202',
+    itemTagline: 'FeNa Interpretation',
+    type: 'MCQ',
+    stem: 'A patient with dehydration has a serum creatinine of 2.1 mg/dL. Urine sodium is 10 mEq/L. What is the most likely diagnosis?',
+    options: [
+      { id: 'opt1', text: 'Prerenal Azotemia', isCorrect: true, label: 'A' },
+      { id: 'opt2', text: 'Acute Tubular Necrosis', isCorrect: false, label: 'B' },
+      { id: 'opt3', text: 'Postrenal Obstruction', isCorrect: false, label: 'C' },
+      { id: 'opt4', text: 'Acute Interstitial Nephritis', isCorrect: false, label: 'D' },
+      { id: 'opt5', text: 'Glomerulonephritis', isCorrect: false, label: 'E' }
+    ],
+    status: 'Published',
+    version: 1,
+    authorId: 'AUTH-SYSTEM',
+    createdAt: '2025-01-20T10:00:00Z',
+    updatedAt: '2025-01-20T10:00:00Z',
+    timeToAuthorMinutes: 12,
+    itemType: 'single-best-answer',
+    taxonomy: {
+      organSystemId: 'USMLE-RENAL',
+      disciplineId: 'Pathophysiology',
+      bloomLevel: 'Analyze',
+      syndromeTopicId: 'TOPIC-RENAL-AKI',
+      subTopicId: 'Prerenal',
+      usmleContentId: 'RN-2.1.4'
+    },
+    linkedMediaIds: [],
+    linkedLectureIds: [],
+    learningObjective: 'OBJ-RN-002',
+    pValue: 0.45,
+    dIndex: 0.15,
+    sampleSize: 120,
+    distractors: []
+  },
+  {
+    id: 'QID-GI-303',
+    itemTagline: 'Zollinger-Ellison Syndrome',
+    type: 'MCQ',
+    stem: 'A 45-year-old male with recurrent peptic ulcers and diarrhea. Gastrin levels are elevated. What is the most likely diagnosis?',
+    options: [
+      { id: 'opt1', text: 'Gastrinoma', isCorrect: true, label: 'A' },
+      { id: 'opt2', text: 'H. Pylori', isCorrect: false, label: 'B' },
+      { id: 'opt3', text: 'NSAID use', isCorrect: false, label: 'C' },
+      { id: 'opt4', text: 'Stress', isCorrect: false, label: 'D' },
+      { id: 'opt5', text: 'Alcohol', isCorrect: false, label: 'E' }
+    ],
+    status: 'Draft',
+    version: 1,
+    authorId: 'AUTH-DEAN',
+    createdAt: '2025-02-10T10:00:00Z',
+    updatedAt: '2025-02-10T10:00:00Z',
+    timeToAuthorMinutes: 20,
+    itemType: 'single-best-answer',
+    taxonomy: {
+      organSystemId: 'USMLE-GI',
+      disciplineId: 'Pathology',
+      bloomLevel: 'Apply',
+      syndromeTopicId: 'TOPIC-GI-IBD',
+      usmleContentId: 'GI-1'
+    },
+    linkedMediaIds: [],
+    linkedLectureIds: [],
+    learningObjective: 'OBJ-GI-003',
+    pValue: 0.0,
+    dIndex: 0.0,
+    sampleSize: 0,
+    distractors: []
+  },
+  {
+    id: 'QID-RESP-404',
+    itemTagline: 'Pneumonia Pathogen',
+    type: 'MCQ',
+    stem: 'A patient presents with rust-colored sputum and lobar consolidation. What is the most likely pathogen?',
+    options: [
+      { id: 'opt1', text: 'Streptococcus pneumoniae', isCorrect: true, label: 'A' },
+      { id: 'opt2', text: 'Klebsiella pneumoniae', isCorrect: false, label: 'B' },
+      { id: 'opt3', text: 'Mycoplasma pneumoniae', isCorrect: false, label: 'C' },
+      { id: 'opt4', text: 'Staphylococcus aureus', isCorrect: false, label: 'D' },
+      { id: 'opt5', text: 'Pseudomonas aeruginosa', isCorrect: false, label: 'E' }
+    ],
+    status: 'Published',
+    version: 1,
+    authorId: 'AUTH-SYSTEM',
+    createdAt: '2025-02-05T10:00:00Z',
+    updatedAt: '2025-02-05T10:00:00Z',
+    timeToAuthorMinutes: 8,
+    itemType: 'single-best-answer',
+    taxonomy: {
+      organSystemId: 'USMLE-RESP',
+      disciplineId: 'Microbiology',
+      bloomLevel: 'Remember',
+      syndromeTopicId: 'TOPIC-RESP-OBS',
+      usmleContentId: 'RESP-1'
+    },
+    linkedMediaIds: [],
+    linkedLectureIds: [],
+    learningObjective: 'OBJ-RESP-004',
+    pValue: 0.78,
+    dIndex: 0.30,
+    sampleSize: 500,
+    distractors: []
+  }
+];
+
+export const MOCK_ITEM_PSYCHOMETRICS: ItemPsychometrics[] = [
+  {
+    itemId: 'QID-CV-101',
+    sampleSize: 342,
+    difficultyIndex: 0.62,
+    discriminationIndex: 0.45,
+    highIncorrectCount: 12,
+    lowIncorrectCount: 45,
+    groupSizeN: 92,
+    timeOnTaskSecondsAvg: 45,
+    distractorAnalysis: [
+      { optionId: 'opt1', selectionRate: 0.62, highPerformerSelectionRate: 0.88, flaggedNonFunctional: false },
+      { optionId: 'opt2', selectionRate: 0.15, highPerformerSelectionRate: 0.05, flaggedNonFunctional: false },
+      { optionId: 'opt3', selectionRate: 0.18, highPerformerSelectionRate: 0.07, flaggedNonFunctional: false },
+      { optionId: 'opt4', selectionRate: 0.04, highPerformerSelectionRate: 0.00, flaggedNonFunctional: true },
+      { optionId: 'opt5', selectionRate: 0.01, highPerformerSelectionRate: 0.00, flaggedNonFunctional: true }
+    ],
+    lastUpdated: '2025-02-15'
+  },
+  {
+    itemId: 'QID-RN-202',
+    sampleSize: 120,
+    difficultyIndex: 0.45,
+    discriminationIndex: 0.15,
+    highIncorrectCount: 25,
+    lowIncorrectCount: 28,
+    groupSizeN: 32,
+    timeOnTaskSecondsAvg: 85,
+    distractorAnalysis: [
+      { optionId: 'opt1', selectionRate: 0.45, highPerformerSelectionRate: 0.50, flaggedNonFunctional: false },
+      { optionId: 'opt2', selectionRate: 0.35, highPerformerSelectionRate: 0.40, flaggedNonFunctional: false },
+      { optionId: 'opt3', selectionRate: 0.10, highPerformerSelectionRate: 0.05, flaggedNonFunctional: false },
+      { optionId: 'opt4', selectionRate: 0.05, highPerformerSelectionRate: 0.05, flaggedNonFunctional: false },
+      { optionId: 'opt5', selectionRate: 0.05, highPerformerSelectionRate: 0.00, flaggedNonFunctional: false }
+    ],
+    lastUpdated: '2025-02-14'
+  },
+  {
+    itemId: 'QID-GI-303',
+    sampleSize: 0,
+    difficultyIndex: 0,
+    discriminationIndex: 0,
+    highIncorrectCount: 0,
+    lowIncorrectCount: 0,
+    groupSizeN: 0,
+    timeOnTaskSecondsAvg: 0,
+    distractorAnalysis: [],
+    lastUpdated: '2025-02-10'
+  },
+  {
+    itemId: 'QID-RESP-404',
+    sampleSize: 500,
+    difficultyIndex: 0.78,
+    discriminationIndex: 0.30,
+    highIncorrectCount: 5,
+    lowIncorrectCount: 15,
+    groupSizeN: 135,
+    timeOnTaskSecondsAvg: 30,
+    distractorAnalysis: [
+      { optionId: 'opt1', selectionRate: 0.78, highPerformerSelectionRate: 0.95, flaggedNonFunctional: false },
+      { optionId: 'opt2', selectionRate: 0.04, highPerformerSelectionRate: 0.00, flaggedNonFunctional: true },
+      { optionId: 'opt3', selectionRate: 0.08, highPerformerSelectionRate: 0.02, flaggedNonFunctional: false },
+      { optionId: 'opt4', selectionRate: 0.05, highPerformerSelectionRate: 0.01, flaggedNonFunctional: false },
+      { optionId: 'opt5', selectionRate: 0.05, highPerformerSelectionRate: 0.02, flaggedNonFunctional: false }
+    ],
+    lastUpdated: '2025-02-05'
+  }
+];
+
+// ============================================================================
+// 2. CURRICULUM ASSETS
+// ============================================================================
+
+export interface UsmleSystem {
+  id: string;
+  name: string;
+  topics: UsmleTopic[];
+}
+
+export interface UsmleTopic {
+  id: string;
+  name: string;
+  subTopics: string[];
+}
+
+export const USMLE_2024_OUTLINE: UsmleSystem[] = [
+  {
+    id: "SYS-HUMAN-DEV",
+    name: "Human Development",
     topics: [
       {
-        id: 'HD-01',
-        name: 'Normal age-related findings and care of the well patient',
+        id: "TOP-HUMAN-INFANCY",
+        name: "Infancy & Childhood",
         subTopics: [
-          'Infancy and childhood (0-12 years)',
-          'Adolescence (13-17 years)',
-          'Adulthood (18-64 years)',
-          'Older Adulthood (65+ years)',
-        ],
+          "Normal physical changes",
+          "Developmental stages",
+          "Preventive health & lifestyle"
+        ]
       },
-    ],
-  },
-  {
-    id: 'USMLE-IMMUNE',
-    name: 'Immune System',
-    page: 4,
-    topics: [
       {
-        id: 'IM-01',
-        name: 'Disorders associated with immunodeficiency',
+        id: "TOP-HUMAN-ADOLESCENCE",
+        name: "Adolescence",
         subTopics: [
-          'Humoral immunity',
-          'Cell-mediated immunity',
-          'Complement deficiency',
-          'Phagocytic cells',
-        ],
+          "Normal physical changes",
+          "Developmental stages",
+          "Preventive health & lifestyle"
+        ]
       },
       {
-        id: 'IM-02',
-        name: 'HIV/AIDS',
-        subTopics: ['Complications', 'Immunology of AIDS', 'IRS'],
+        id: "TOP-HUMAN-ADULTHOOD",
+        name: "Adulthood",
+        subTopics: [
+          "Normal physical changes",
+          "Developmental stages",
+          "Preventive health & lifestyle"
+        ]
       },
       {
-        id: 'IM-03',
-        name: 'Immunologically mediated disorders',
-        subTopics: ['Hypersensitivity reactions', 'Transplantation'],
-      },
-      {
-        id: 'IM-04',
-        name: 'Adverse effects of drugs',
-        subTopics: ['Jarisch-Herxheimer', 'Immunosuppressants'],
-      },
-    ],
+        id: "TOP-HUMAN-OLDER-ADULT",
+        name: "Older Adulthood",
+        subTopics: [
+          "Normal physical changes",
+          "Developmental stages",
+          "Preventive health & lifestyle"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-BLOOD',
-    name: 'Blood & Lymphoreticular System',
-    page: 5,
+    id: "SYS-IMMUNE",
+    name: "Immune System",
     topics: [
       {
-        id: 'BL-01',
-        name: 'Infectious and immunologic disorders',
-        subTopics: ['Bacterial', 'Viral', 'Parasitic'],
+        id: "TOP-IMM-IMMUNODEF",
+        name: "Immunodeficiency Disorders",
+        subTopics: [
+          "Humoral immunity disorders",
+          "Cell-mediated immunity disorders",
+          "Complement deficiencies",
+          "Phagocytic/NK cell disorders"
+        ]
       },
       {
-        id: 'BL-02',
-        name: 'Neoplasms',
-        subTopics: ['Leukemia', 'Lymphomas', 'Multiple myeloma'],
+        id: "TOP-IMM-HIV",
+        name: "HIV/AIDS",
+        subTopics: [
+          "HIV1/HIV2",
+          "AIDS complications",
+          "Immune reconstitution syndrome"
+        ]
       },
       {
-        id: 'BL-03',
-        name: 'Anemia, cytopenias, and polycythemia',
-        subTopics: ['Hemolysis', 'Hemoglobin disorders', 'Cytopenias'],
+        id: "TOP-IMM-HYPERSENS",
+        name: "Hypersensitivity & Immune Reactions",
+        subTopics: [
+          "Type I–IV hypersensitivity",
+          "Transplantation & GVHD"
+        ]
       },
       {
-        id: 'BL-04',
-        name: 'Coagulation disorders',
-        subTopics: ['Hypocoagulable', 'Hypercoagulable'],
-      },
-    ],
+        id: "TOP-IMM-DRUG",
+        name: "Drug Effects on Immune System",
+        subTopics: [
+          "Immunosuppressants",
+          "Monoclonal antibodies",
+          "Vaccine reactions"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-BEHAVIOR',
-    name: 'Behavioral Health',
-    page: 7,
+    id: "SYS-BLOOD",
+    name: "Blood & Lymphoreticular System",
     topics: [
       {
-        id: 'BH-01',
-        name: 'Psychotic disorders',
-        subTopics: ['Schizophrenia', 'Delusional disorder'],
+        id: "TOP-BLOOD-INFECT",
+        name: "Infectious & Immunologic Disorders",
+        subTopics: [
+          "Bacterial infections",
+          "Viral infections",
+          "Parasitic infections",
+          "Lymphoid tissue infections",
+          "Autoimmune hematologic disorders"
+        ]
       },
       {
-        id: 'BH-02',
-        name: 'Anxiety disorders',
-        subTopics: ['Panic disorder', 'OCD', 'PTSD'],
+        id: "TOP-BLOOD-NEOPLASM",
+        name: "Hematologic Neoplasms",
+        subTopics: [
+          "Leukemias",
+          "Lymphomas",
+          "Myeloma & dysproteinemias"
+        ]
       },
       {
-        id: 'BH-03',
-        name: 'Mood disorders',
-        subTopics: ['Depressive disorder', 'Bipolar disorder'],
+        id: "TOP-BLOOD-ANEMIA",
+        name: "Anemias & Cytopenias",
+        subTopics: [
+          "Decreased production",
+          "Hemolysis",
+          "Hemoglobinopathies",
+          "Cytopenias",
+          "Polycythemias"
+        ]
       },
       {
-        id: 'BH-04',
-        name: 'Eating & Impulse-control',
-        subTopics: ['Anorexia', 'Bulimia', 'Conduct disorders'],
-      },
-    ],
+        id: "TOP-BLOOD-COAG",
+        name: "Coagulation Disorders",
+        subTopics: [
+          "Hypocoagulable states",
+          "Hypercoagulable states",
+          "Transfusion reactions"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-NERVOUS',
-    name: 'Nervous System & Special Senses',
-    page: 9,
+    id: "SYS-BEHAVIORAL",
+    name: "Behavioral Health",
     topics: [
       {
-        id: 'NS-01',
-        name: 'Infectious/Inflammatory',
-        subTopics: ['Meningitis', 'Encephalitis', 'Myasthenia gravis'],
+        id: "TOP-BEHAV-PSYCHOTIC",
+        name: "Psychotic Disorders",
+        subTopics: [
+          "Schizophrenia spectrum",
+          "Delusional disorders",
+          "Substance-induced psychosis"
+        ]
       },
       {
-        id: 'NS-02',
-        name: 'Cerebrovascular disease',
-        subTopics: ['TIA', 'Stroke', 'Hemorrhage'],
+        id: "TOP-BEHAV-ANXIETY",
+        name: "Anxiety Disorders",
+        subTopics: [
+          "Generalized anxiety",
+          "Panic disorder",
+          "Phobias",
+          "PTSD",
+          "OCD"
+        ]
       },
       {
-        id: 'NS-03',
-        name: 'Spine & Cord disorders',
-        subTopics: ['Cauda equina', 'Spinal stenosis'],
+        id: "TOP-BEHAV-MOOD",
+        name: "Mood Disorders",
+        subTopics: [
+          "Depressive disorders",
+          "Bipolar disorders",
+          "Postpartum mood disorders"
+        ]
       },
       {
-        id: 'NS-04',
-        name: 'Cranial & Peripheral nerve',
-        subTopics: ['Bell palsy', 'Horner syndrome'],
-      },
-      {
-        id: 'NS-05',
-        name: 'Eye & Eyelid',
-        subTopics: ['Retina', 'Structural', 'Structural'],
-      },
-      {
-        id: 'NS-06',
-        name: 'Ear',
-        subTopics: ['Hearing loss', 'Balance', 'Ménière'],
-      },
-    ],
+        id: "TOP-BEHAV-SUBSTANCE",
+        name: "Substance Use Disorders",
+        subTopics: [
+          "Alcohol",
+          "Opioids",
+          "Stimulants",
+          "Sedatives",
+          "Cannabis",
+          "Hallucinogens"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-SKIN',
-    name: 'Skin & Subcutaneous Tissue',
-    page: 13,
+    id: "SYS-NEURO",
+    name: "Nervous System & Special Senses",
     topics: [
       {
-        id: 'SK-01',
-        name: 'Infectious/Inflammatory',
-        subTopics: ['Bacterial/Cellulitis', 'Viral/Herpes', 'Fungal'],
+        id: "TOP-NEURO-INFECT",
+        name: "Infectious & Inflammatory Disorders",
+        subTopics: [
+          "Meningitis",
+          "Encephalitis",
+          "Prion disease",
+          "Botulism & tetanus"
+        ]
       },
       {
-        id: 'SK-02',
-        name: 'Neoplasms',
-        subTopics: ['Benign', 'Malignant (Basal cell, Melanoma)'],
+        id: "TOP-NEURO-NEOPLASM",
+        name: "Neoplasms",
+        subTopics: [
+          "Benign CNS tumors",
+          "Malignant CNS tumors",
+          "Metastatic lesions"
+        ]
       },
       {
-        id: 'SK-03',
-        name: 'Integumentary disorders',
-        subTopics: ['Hair/Nails', 'Sweat glands'],
+        id: "TOP-NEURO-CVA",
+        name: "Cerebrovascular Disease",
+        subTopics: [
+          "Ischemic stroke",
+          "Hemorrhagic stroke",
+          "Aneurysms",
+          "Vascular dementia"
+        ]
       },
-    ],
+      {
+        id: "TOP-NEURO-MOVEMENT",
+        name: "Movement Disorders",
+        subTopics: [
+          "Parkinson disease",
+          "Huntington disease",
+          "Essential tremor",
+          "Dystonias"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-MSK',
-    name: 'Musculoskeletal System',
-    page: 15,
+    id: "SYS-SKIN",
+    name: "Skin & Subcutaneous Tissue",
     topics: [
       {
-        id: 'MS-01',
-        name: 'Infectious/Inflammatory',
-        subTopics: ['Osteomyelitis', 'Rheumatoid arthritis'],
+        id: "TOP-SKIN-INFECT",
+        name: "Infectious Disorders",
+        subTopics: [
+          "Bacterial skin infections",
+          "Viral exanthems",
+          "Fungal infections",
+          "Parasitic infestations"
+        ]
       },
       {
-        id: 'MS-02',
-        name: 'Degenerative/Metabolic',
-        subTopics: ['Osteoporosis', 'Osteomalacia', 'Gout'],
+        id: "TOP-SKIN-IMMUNO",
+        name: "Immunologic & Inflammatory Disorders",
+        subTopics: [
+          "Eczematous dermatoses",
+          "Vesiculobullous disorders",
+          "Urticaria & exanthems",
+          "Autoimmune skin disorders"
+        ]
       },
       {
-        id: 'MS-03',
-        name: 'Traumatic/Mechanical',
-        subTopics: ['Fractures', 'Dislocations'],
-      },
-    ],
+        id: "TOP-SKIN-NEOPLASM",
+        name: "Skin Neoplasms",
+        subTopics: [
+          "Benign lesions",
+          "Basal cell carcinoma",
+          "Squamous cell carcinoma",
+          "Melanoma"
+        ]
+      }
+    ]
   },
+
   {
-    id: 'USMLE-CARDIO',
-    name: 'Cardiovascular System',
-    page: 17,
+    id: "SYS-MSK",
+    name: "Musculoskeletal System",
     topics: [
       {
-        id: 'CV-01',
-        name: 'Dysrhythmias',
-        subTopics: ['Fibrillation', 'Tachycardia', 'Heart block'],
+        id: "TOP-MSK-INFECT",
+        name: "Infectious & Inflammatory Disorders",
+        subTopics: [
+          "Osteomyelitis",
+          "Septic arthritis",
+          "Myositis",
+          "Necrotizing fasciitis"
+        ]
       },
       {
-        id: 'CV-02',
-        name: 'Heart failure',
-        subTopics: ['Congestive', 'Diastolic/Systolic'],
+        id: "TOP-MSK-NEOPLASM",
+        name: "Bone & Soft Tissue Neoplasms",
+        subTopics: [
+          "Benign bone tumors",
+          "Osteosarcoma",
+          "Sarcomas",
+          "Metastatic bone disease"
+        ]
       },
       {
-        id: 'CV-03',
-        name: 'Ischemic heart disease',
-        subTopics: ['MI', 'Angina'],
-        objectives: [
-          {
-            id: 'OBJ-CV-03-001',
-            text: 'Distinguish between stable angina, unstable angina, and NSTEMI based on ECG changes and cardiac biomarkers.',
-            subTopic: 'Angina',
-            organSystemId: 'USMLE-CARDIO',
-            disciplineId: 'DISC-PATH',
-            bloomLevel: 'Analyze',
-            usmleContentId: 'USMLE-CARDIO-IHD',
-            targetItemCount: 12,
-            targetLectureCount: 3,
-          },
-          {
-            id: 'OBJ-CV-03-002',
-            text: 'Describe the timeline of gross and microscopic changes in the myocardium following a myocardial infarction.',
-            subTopic: 'MI',
-            organSystemId: 'USMLE-CARDIO',
-            disciplineId: 'DISC-PATH',
-            bloomLevel: 'Remember',
-            usmleContentId: 'USMLE-CARDIO-MI',
-            targetItemCount: 15,
-            targetLectureCount: 2,
-          },
-        ],
-      },
-      {
-        id: 'CV-04',
-        name: 'Valvular heart disease',
-        subTopics: ['Stenosis', 'Prolapse'],
-      },
-    ],
+        id: "TOP-MSK-DEGEN",
+        name: "Degenerative & Metabolic Disorders",
+        subTopics: [
+          "Osteoarthritis",
+          "Disc degeneration",
+          "Metabolic bone disease"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-RESP',
-    name: 'Respiratory System',
-    page: 19,
+    id: "SYS-GI",
+    name: "Gastrointestinal System",
     topics: [
       {
-        id: 'RS-01',
-        name: 'Infectious/Inflammatory',
-        subTopics: ['Pneumonia', 'Sinusitis', 'Tuberculosis'],
+        id: "TOP-GI-INFECT",
+        name: "Infectious & Inflammatory Disorders",
+        subTopics: [
+          "Gastroenteritis",
+          "Hepatitis",
+          "Pancreatitis",
+          "Cholecystitis",
+          "Appendicitis",
+          "Inflammatory bowel disease"
+        ]
       },
       {
-        id: 'RS-02',
-        name: 'Obstructive airway disease',
-        subTopics: ['Asthma', 'COPD', 'Bronchiectasis'],
-        objectives: [
-          {
-            id: 'OBJ-RS-02-001',
-            text: 'Compare and contrast the pulmonary function test (PFT) findings in obstructive vs. restrictive lung diseases.',
-            subTopic: 'COPD',
-            organSystemId: 'USMLE-RESP',
-            disciplineId: 'DISC-PHYS',
-            bloomLevel: 'Analyze',
-            usmleContentId: 'USMLE-RESP-PFT',
-            targetItemCount: 12,
-            targetLectureCount: 2,
-          },
-          {
-            id: 'OBJ-RS-02-002',
-            text: 'Describe the immediate and late-phase immune responses in the pathophysiology of Asthma.',
-            subTopic: 'Asthma',
-            organSystemId: 'USMLE-RESP',
-            disciplineId: 'DISC-IMMUNO',
-            bloomLevel: 'Understand',
-            usmleContentId: 'USMLE-RESP-ASTHMA',
-            targetItemCount: 8,
-            targetLectureCount: 1,
-          },
-        ],
+        id: "TOP-GI-NEOPLASM",
+        name: "GI Neoplasms",
+        subTopics: [
+          "Esophageal cancer",
+          "Gastric cancer",
+          "Colorectal cancer",
+          "Pancreatic cancer",
+          "Hepatocellular carcinoma"
+        ]
       },
       {
-        id: 'RS-03',
-        name: 'Pneumoconiosis/Interstitial',
-        subTopics: ['Asbestosis', 'Silicosis'],
+        id: "TOP-GI-MOTILITY",
+        name: "Motility & Functional Disorders",
+        subTopics: [
+          "GERD",
+          "Achalasia",
+          "Irritable bowel syndrome",
+          "Gastroparesis"
+        ]
       },
-    ],
+      {
+        id: "TOP-GI-MALABSORPTION",
+        name: "Malabsorption & Nutritional Disorders",
+        subTopics: [
+          "Celiac disease",
+          "Lactose intolerance",
+          "Short bowel syndrome"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-GI',
-    name: 'Gastrointestinal System',
-    page: 21,
+    id: "SYS-RENAL",
+    name: "Renal & Urinary System",
     topics: [
       {
-        id: 'GI-01',
-        name: 'Infectious/Inflammatory',
-        subTopics: ['Enteritis', 'Peritonitis', 'Colitis'],
+        id: "TOP-RENAL-GLOMERULAR",
+        name: "Glomerular Disorders",
+        subTopics: [
+          "Nephritic syndromes",
+          "Nephrotic syndromes",
+          "Glomerulonephritis"
+        ]
       },
       {
-        id: 'GI-02',
-        name: 'Stomach/Intestine disorders',
-        subTopics: ['Ulcers', 'Appendicitis', 'IBS'],
+        id: "TOP-RENAL-TUBULAR",
+        name: "Tubular & Interstitial Disorders",
+        subTopics: [
+          "Acute tubular necrosis",
+          "Interstitial nephritis",
+          "Renal tubular acidosis"
+        ]
       },
       {
-        id: 'GI-03',
-        name: 'Liver/Biliary system',
-        subTopics: ['Cirrhosis', 'Hepatitis', 'Jaundice'],
+        id: "TOP-RENAL-VASCULAR",
+        name: "Renal Vascular Disorders",
+        subTopics: [
+          "Renal artery stenosis",
+          "Hypertensive nephropathy",
+          "Thrombotic microangiopathies"
+        ]
       },
       {
-        id: 'GI-04',
-        name: 'Pancreas',
-        subTopics: ['Pancreatitis', 'Insufficiency'],
-      },
-    ],
+        id: "TOP-RENAL-UROLOGY",
+        name: "Urinary Tract Disorders",
+        subTopics: [
+          "UTIs",
+          "Pyelonephritis",
+          "Kidney stones",
+          "Obstructive uropathy"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-RENAL',
-    name: 'Renal & Urinary System',
-    page: 24,
+    id: "SYS-ENDOCRINE",
+    name: "Endocrine System",
     topics: [
       {
-        id: 'RN-01',
-        name: 'Infectious disorders',
-        subTopics: ['Pyelonephritis', 'Cystitis'],
+        id: "TOP-ENDO-DIABETES",
+        name: "Diabetes & Metabolic Disorders",
+        subTopics: [
+          "Type 1 diabetes",
+          "Type 2 diabetes",
+          "DKA",
+          "HHS",
+          "Hypoglycemia"
+        ]
       },
       {
-        id: 'RN-02',
-        name: 'Metabolic/Regulatory',
-        subTopics: ['AKI', 'CKD', 'Calculi'],
-        objectives: [
-          {
-            id: 'OBJ-RN-02-001',
-            text: 'Differentiate between prerenal, intrinsic, and postrenal causes of Acute Kidney Injury (AKI) using BUN/Creatinine ratio.',
-            subTopic: 'AKI',
-            organSystemId: 'USMLE-RENAL',
-            disciplineId: 'DISC-PHYS',
-            bloomLevel: 'Apply',
-            usmleContentId: 'USMLE-RENAL-AKI',
-            targetItemCount: 10,
-            targetLectureCount: 2,
-          },
-          {
-            id: 'OBJ-RN-02-002',
-            text: 'Explain the mechanism of calcium oxalate stone formation and preventative dietary strategies.',
-            subTopic: 'Calculi',
-            organSystemId: 'USMLE-RENAL',
-            disciplineId: 'DISC-PATH',
-            bloomLevel: 'Understand',
-            usmleContentId: 'USMLE-RENAL-STONE',
-            targetItemCount: 6,
-            targetLectureCount: 1,
-          },
-        ],
+        id: "TOP-ENDO-THYROID",
+        name: "Thyroid Disorders",
+        subTopics: [
+          "Hyperthyroidism",
+          "Hypothyroidism",
+          "Thyroiditis",
+          "Thyroid nodules"
+        ]
       },
       {
-        id: 'RN-03',
-        name: 'Vascular disorders',
-        subTopics: ['Renal artery stenosis'],
+        id: "TOP-ENDO-ADRENAL",
+        name: "Adrenal Disorders",
+        subTopics: [
+          "Cushing syndrome",
+          "Addison disease",
+          "Hyperaldosteronism",
+          "Pheochromocytoma"
+        ]
       },
-    ],
+      {
+        id: "TOP-ENDO-PITUITARY",
+        name: "Pituitary Disorders",
+        subTopics: [
+          "Pituitary adenomas",
+          "Hypopituitarism",
+          "SIADH",
+          "Diabetes insipidus"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-REPRO',
-    name: 'Reproductive System',
-    page: 26,
+    id: "SYS-REPRO",
+    name: "Reproductive System",
     topics: [
       {
-        id: 'RP-01',
-        name: 'Pregnancy & Childbirth',
-        subTopics: ['Prenatal care', 'Obstetric complications'],
+        id: "TOP-REPRO-FEMALE",
+        name: "Female & Transgender Female Health",
+        subTopics: [
+          "Menstrual disorders",
+          "PCOS",
+          "Gynecologic infections",
+          "Breast disorders",
+          "Contraception"
+        ]
       },
       {
-        id: 'RP-02',
-        name: 'Female System & Breast',
-        subTopics: ['Menopause', 'Menstrual disorders'],
+        id: "TOP-REPRO-MALE",
+        name: "Male & Transgender Male Health",
+        subTopics: [
+          "Prostate disorders",
+          "Testicular disorders",
+          "Male infertility",
+          "STIs"
+        ]
       },
       {
-        id: 'RP-03',
-        name: 'Male System',
-        subTopics: ['Prostatic hyperplasia', 'Erectile dysfunction'],
-      },
-    ],
+        id: "TOP-REPRO-PREGNANCY",
+        name: "Pregnancy & Puerperium",
+        subTopics: [
+          "Normal pregnancy",
+          "Hypertensive disorders",
+          "Gestational diabetes",
+          "Postpartum complications"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-ENDO',
-    name: 'Endocrine System',
-    page: 31,
+    id: "SYS-MULTISYSTEM",
+    name: "Multisystem Processes & Disorders",
     topics: [
       {
-        id: 'EN-01',
-        name: 'Diabetes mellitus',
-        subTopics: ['Type 1', 'Type 2', 'Complications'],
-        objectives: [
-          {
-            id: 'OBJ-EN-01-001',
-            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
-            subTopic: 'Type 1',
-            organSystemId: 'USMLE-ENDO',
-            disciplineId: 'DISC-PHYS',
-            bloomLevel: 'Understand',
-            usmleContentId: 'USMLE-ENDO-DM',
-            targetItemCount: 10,
-            targetLectureCount: 2,
-          },
-          {
-            id: 'OBJ-EN-01-022',
-            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
-            subTopic: 'Type 1',
-            organSystemId: 'USMLE-ENDO',
-            disciplineId: 'DISC-PHYS',
-            bloomLevel: 'Apply',
-            usmleContentId: 'USMLE-ENDO-DM',
-            targetItemCount: 10,
-            targetLectureCount: 2,
-          },
-          {
-            id: 'OBJ-EN-01-012',
-            text: 'Differentiate between the pathophysiology of Type 1 and Type 2 Diabetes Mellitus.',
-            subTopic: 'Type 1',
-            organSystemId: 'USMLE-ENDO',
-            disciplineId: 'DISC-PHYS',
-            bloomLevel: 'Understand',
-            usmleContentId: 'USMLE-ENDO-DM',
-            targetItemCount: 10,
-            targetLectureCount: 2,
-          },
-          {
-            id: 'OBJ-EN-01-002',
-            text: 'Identify the clinical presentation and diagnostic criteria for Diabetic Ketoacidosis (DKA).',
-            subTopic: 'Complications',
-            organSystemId: 'USMLE-ENDO',
-            disciplineId: 'DISC-PATH',
-            bloomLevel: 'Apply',
-            usmleContentId: 'USMLE-ENDO-DKA',
-            targetItemCount: 5,
-            targetLectureCount: 1,
-            linkedItemIds: ['QID-1001'],
-          },
-          {
-            id: 'OBJ-EN-01-003',
-            text: 'Explain the mechanism of action of metformin and its role in Type 2 Diabetes management.',
-            subTopic: 'Type 2',
-            organSystemId: 'USMLE-ENDO',
-            disciplineId: 'DISC-PHARM',
-            bloomLevel: 'Understand',
-            usmleContentId: 'USMLE-ENDO-RX',
-            targetItemCount: 8,
-            targetLectureCount: 1,
-          },
-        ],
+        id: "TOP-MULTI-SHOCK",
+        name: "Shock & Critical Illness",
+        subTopics: [
+          "Septic shock",
+          "Cardiogenic shock",
+          "Hypovolemic shock",
+          "Distributive shock"
+        ]
       },
       {
-        id: 'EN-02',
-        name: 'Thyroid disorders',
-        subTopics: ['Hyper/Hypothyroidism', 'Thyroiditis'],
+        id: "TOP-MULTI-AUTOIMMUNE",
+        name: "Autoimmune & Systemic Disorders",
+        subTopics: [
+          "SLE",
+          "Rheumatoid arthritis",
+          "Vasculitides",
+          "Sarcoidosis"
+        ]
       },
       {
-        id: 'EN-03',
-        name: 'Pituitary disorders',
-        subTopics: ['Acromegaly', 'Proclactinoma'],
-      },
-    ],
+        id: "TOP-MULTI-INFECTION",
+        name: "Systemic Infections",
+        subTopics: [
+          "Sepsis",
+          "Systemic fungal infections",
+          "Opportunistic infections"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-BIOSTAT',
-    name: 'Biostatistics & Epi',
-    page: 36,
+    id: "SYS-BIOSTATS",
+    name: "Biostatistics & Epidemiology / Population Health",
     topics: [
       {
-        id: 'BS-01',
-        name: 'Epidemiology',
-        subTopics: ['Incidence/Prevalence', 'Survival analysis'],
+        id: "TOP-BIOSTATS-STUDY",
+        name: "Study Design & Interpretation",
+        subTopics: [
+          "Bias",
+          "Confounding",
+          "Randomization",
+          "Blinding",
+          "Study types"
+        ]
       },
       {
-        id: 'BS-02',
-        name: 'Study design',
-        subTopics: ['Clinical trials', 'Systematic reviews'],
+        id: "TOP-BIOSTATS-MEASURES",
+        name: "Measures & Calculations",
+        subTopics: [
+          "Sensitivity & specificity",
+          "Predictive values",
+          "Risk ratios",
+          "Odds ratios"
+        ]
       },
       {
-        id: 'BS-03',
-        name: 'Testing & Screening',
-        subTopics: ['Sensitivity', 'Specificity', 'ROC'],
-      },
-    ],
+        id: "TOP-BIOSTATS-PUBLIC",
+        name: "Public Health & Screening",
+        subTopics: [
+          "Screening programs",
+          "Outbreak investigation",
+          "Health disparities"
+        ]
+      }
+    ]
   },
   {
-    id: 'USMLE-SOCIAL',
-    name: 'Social Sciences',
-    page: 39,
+    id: "SYS-SOCIAL",
+    name: "Social Sciences / Communication & Interpersonal Skills",
     topics: [
       {
-        id: 'SS-01',
-        name: 'Communication skills',
-        subTopics: ['Patient interviewing', 'Interpreter use'],
+        id: "TOP-SOCIAL-COMM",
+        name: "Communication Skills",
+        subTopics: [
+          "Patient interviewing",
+          "Breaking bad news",
+          "Shared decision-making"
+        ]
       },
       {
-        id: 'SS-02',
-        name: 'Ethics & Jurisprudence',
-        subTopics: ['Consent', 'Palliative care', 'Malpractice'],
+        id: "TOP-SOCIAL-ETHICS",
+        name: "Ethics & Professionalism",
+        subTopics: [
+          "Consent",
+          "Capacity",
+          "Confidentiality",
+          "Professional boundaries"
+        ]
       },
       {
-        id: 'SS-03',
-        name: 'Systems-based practice',
-        subTopics: ['Patient safety', 'Quality improvement'],
-      },
-    ],
+        id: "TOP-SOCIAL-SYSTEMS",
+        name: "Healthcare Systems & Social Determinants",
+        subTopics: [
+          "Access to care",
+          "Cultural competence",
+          "Health literacy",
+          "Social determinants of health"
+        ]
+      }
+    ]
+  }
+];
+
+export const MOCK_LEARNING_OBJECTIVES: LearningObjective[] = [
+  {
+    id: 'OBJ-CV-001',
+    text: 'Differentiate between transmural and subendocardial infarction based on ECG findings.',
+    bloomLevel: 'Analyze',
+    disciplineId: 'Pathology',
+    organSystemId: 'USMLE-CV',
+    usmleContentId: 'CV-1.2.3',
+    usmleCodes: ['CV-1.2.3', 'PATH-001'],
+    subTopic: 'Acute MI',
+    linkedItemIds: ['QID-CV-101'],
+    linkedLectureIds: ['LECT-CV-MI-001']
   },
+  {
+    id: 'OBJ-RN-002',
+    text: 'Calculate fractional excretion of sodium (FeNa) to distinguish prerenal from intrinsic renal failure.',
+    bloomLevel: 'Apply',
+    disciplineId: 'Pathophysiology',
+    organSystemId: 'USMLE-RENAL',
+    usmleContentId: 'RN-2.1.4',
+    usmleCodes: ['RN-2.1.4', 'PHYS-002'],
+    subTopic: 'Prerenal',
+    linkedItemIds: ['QID-RN-202']
+  },
+  {
+    id: 'OBJ-GI-003',
+    text: 'Identify the pathophysiology of Zollinger-Ellison syndrome.',
+    bloomLevel: 'Apply',
+    disciplineId: 'Pathology',
+    organSystemId: 'USMLE-GI',
+    usmleContentId: 'GI-1',
+    usmleCodes: ['GI-1', 'ENDO-003'],
+    subTopic: 'Gastric Disorders',
+    linkedItemIds: ['QID-GI-303']
+  },
+  {
+    id: 'OBJ-RESP-004',
+    text: 'Recognize the clinical presentation of pneumococcal pneumonia.',
+    bloomLevel: 'Remember',
+    disciplineId: 'Microbiology',
+    organSystemId: 'USMLE-RESP',
+    usmleContentId: 'RESP-1',
+    usmleCodes: ['RESP-1', 'MICRO-004'],
+    subTopic: 'Pneumonia',
+    linkedItemIds: ['QID-RESP-404']
+  }
+];
+
+// ============================================================================
+// 3. COHORT PERFORMANCE & RELIABILITY
+// ============================================================================
+
+export const MOCK_COHORTS: Cohort[] = [
+  { id: 'COH-MS1-FALL', name: 'MS1 (Fall Intake)', yearLevel: 'MS1', intakeTerm: 'Fall', studentCount: 150 },
+  { id: 'COH-MS1-SPRING', name: 'MS1 (Spring Intake)', yearLevel: 'MS1', intakeTerm: 'Spring', studentCount: 120 }
+];
+
+// Generators for realistic student patterns
+const createGunner = (id: string, name: string, cohort: string) => ({
+  studentId: id,
+  studentName: name,
+  cohortId: cohort,
+  masteryScores: { Cardiovascular: 94, Renal: 92, GI: 88, Respiratory: 91, Endocrine: 95, Hematology: 89 },
+  discriminationWeightedScore: 95,
+  totalScore: 92,
+  atRisk: false,
+  predictedStep1: '260-270',
+  engagementScore: 98,
+  percentileRank: 99,
+  coverage: 85,
+  recentDailyGain: 1.8,
+  daysUntilStep1: 180
+});
+
+const createStruggler = (id: string, name: string, cohort: string) => ({
+  studentId: id,
+  studentName: name,
+  cohortId: cohort,
+  masteryScores: { Cardiovascular: 52, Renal: 41, GI: 68, Respiratory: 45, Endocrine: 50, Hematology: 48 },
+  discriminationWeightedScore: 35,
+  totalScore: 51,
+  atRisk: true,
+  predictedStep1: '190-210',
+  engagementScore: 72,
+  percentileRank: 22,
+  coverage: 35,
+  recentDailyGain: 0.4,
+  daysUntilStep1: 180
+});
+
+const createEfficient = (id: string, name: string, cohort: string) => ({
+  studentId: id,
+  studentName: name,
+  cohortId: cohort,
+  masteryScores: { Cardiovascular: 78, Renal: 82, GI: 75, Respiratory: 80, Endocrine: 85, Hematology: 79 },
+  discriminationWeightedScore: 82,
+  totalScore: 80,
+  atRisk: false,
+  predictedStep1: '230-240',
+  engagementScore: 88,
+  percentileRank: 75,
+  coverage: 92,
+  recentDailyGain: 1.2,
+  daysUntilStep1: 180
+});
+
+const createDrifter = (id: string, name: string, cohort: string) => ({
+  studentId: id,
+  studentName: name,
+  cohortId: cohort,
+  masteryScores: { Cardiovascular: 85, Renal: 82, GI: 80, Respiratory: 84, Endocrine: 81, Hematology: 78 },
+  discriminationWeightedScore: 83,
+  totalScore: 82,
+  atRisk: true, // Risk due to low coverage/velocity, not mastery
+  predictedStep1: '220-230',
+  engagementScore: 60,
+  percentileRank: 65,
+  coverage: 25, // Very low coverage
+  recentDailyGain: 0.2, // Very slow
+  daysUntilStep1: 180
+});
+
+export const MOCK_STUDENTS: StudentMastery[] = [
+  // Fall Intake (Generally Ahead)
+  createGunner('S-901', 'Julian Thorne', 'COH-MS1-FALL'),
+  createGunner('S-902', 'Aisha Patel', 'COH-MS1-FALL'),
+  createEfficient('S-903', 'Liam O\'Connor', 'COH-MS1-FALL'),
+  createEfficient('S-904', 'Sarah Chen', 'COH-MS1-FALL'),
+  createEfficient('S-905', 'Marcus Vane', 'COH-MS1-FALL'),
+  createStruggler('S-906', 'David Kim', 'COH-MS1-FALL'),
+  createStruggler('S-907', 'Emily Davis', 'COH-MS1-FALL'),
+  createDrifter('S-908', 'James Wilson', 'COH-MS1-FALL'),
+  createEfficient('S-909', 'Olivia Martinez', 'COH-MS1-FALL'),
+  createGunner('S-910', 'Lucas Anderson', 'COH-MS1-FALL'),
+
+  // Spring Intake (Newer, mixed)
+  createGunner('S-101', 'Elena Rostova', 'COH-MS1-SPRING'),
+  createStruggler('S-102', 'Tom Baker', 'COH-MS1-SPRING'),
+  createDrifter('S-103', 'Sophie Clarke', 'COH-MS1-SPRING'),
+  createEfficient('S-104', 'Raj Singh', 'COH-MS1-SPRING'),
+  createStruggler('S-105', 'Maria Garcia', 'COH-MS1-SPRING'),
+  createDrifter('S-106', 'Kevin Lee', 'COH-MS1-SPRING'),
+  createGunner('S-107', 'Anna White', 'COH-MS1-SPRING'),
+  createEfficient('S-108', 'Brian Scott', 'COH-MS1-SPRING'),
+  createStruggler('S-109', 'Chloe Turner', 'COH-MS1-SPRING'),
+  createDrifter('S-110', 'Daniel Harris', 'COH-MS1-SPRING'),
 ];
 
 export const MOCK_ORGAN_SYSTEMS = [
-  { id: 'USMLE-CARDIO', name: 'Cardiovascular System', usmleCode: 'CARDIO' },
-  { id: 'USMLE-RESP', name: 'Respiratory System', usmleCode: 'RESP' },
-  { id: 'USMLE-GI', name: 'Gastrointestinal System', usmleCode: 'GI' },
-  { id: 'USMLE-RENAL', name: 'Renal & Urinary System', usmleCode: 'RENAL' },
-  { id: 'USMLE-NERVOUS', name: 'Nervous System & Special Senses', usmleCode: 'NEURO' },
-  { id: 'USMLE-ENDO', name: 'Endocrine System', usmleCode: 'ENDO' },
-  { id: 'USMLE-MSK', name: 'Musculoskeletal System', usmleCode: 'MSK' },
-  { id: 'USMLE-REPRO', name: 'Reproductive System', usmleCode: 'REPRO' },
-  { id: 'USMLE-BEHAVIOR', name: 'Behavioral Health', usmleCode: 'BEH' },
-  { id: 'USMLE-BIOSTAT', name: 'Biostatistics & Epi', usmleCode: 'BIO' },
-  { id: 'USMLE-BLOOD', name: 'Blood & Lymphoreticular', usmleCode: 'HEME' },
-  { id: 'USMLE-IMMUNE', name: 'Immune System', usmleCode: 'IMM' },
-  { id: 'USMLE-SKIN', name: 'Skin & Subcutaneous Tissue', usmleCode: 'SKIN' },
-  { id: 'USMLE-SOCIAL', name: 'Social Sciences', usmleCode: 'SOC' },
-  { id: 'USMLE-HUM-DEV', name: 'Human Development', usmleCode: 'HD' },
+  { id: "SYS-HUMAN-DEV", name: "Human Development" },
+  { id: "SYS-IMMUNE", name: "Immune System" },
+  { id: "SYS-BLOOD", name: "Blood & Lymphoreticular" },
+  { id: "SYS-BEHAVIORAL", name: "Behavioral Health" },
+  { id: "SYS-NEURO", name: "Nervous System & Special Senses" },
+  { id: "SYS-SKIN", name: "Skin & Subcutaneous Tissue" },
+  { id: "SYS-MSK", name: "Musculoskeletal System" },
+  { id: "SYS-GI", name: "Gastrointestinal System" },
+  { id: "SYS-RENAL", name: "Renal & Urinary System" },
+  { id: "SYS-ENDOCRINE", name: "Endocrine System" },
+  { id: "SYS-REPRO", name: "Reproductive System" },
+  { id: "SYS-MULTISYSTEM", name: "Multisystem Processes & Disorders" },
+  { id: "SYS-BIOSTATS", name: "Biostatistics & Epidemiology" },
+  { id: "SYS-SOCIAL", name: "Social Sciences" }
 ];
 
-export const MOCK_AUTHORS: Author[] = [
-  { id: 'AUTH-001', name: 'Dr. Aisha Khan', role: 'Endocrinology Faculty', institution: 'Caribbean College of Medicine', bio: 'Endocrinologist with focus on diabetes education and assessment design.' },
-  { id: 'AUTH-002', name: 'Dr. Marcus Li', role: 'Renal Pathology Fellow', institution: 'Caribbean College of Medicine', bio: 'Renal pathologist with interest in glomerular disease education.' },
-  { id: 'AUTH-003', name: 'Dr. Elena Rodríguez', role: 'Nephrology Faculty', institution: 'Caribbean College of Medicine', bio: 'Clinician-educator in nephrology with emphasis on clinical reasoning.' },
+export const MOCK_RELIABILITY_TARGETS: ReliabilityTarget[] = [
+  { context: 'USMLE Formative Block', targetCronbachAlpha: 0.85, targetKR20: 0.85 },
+  { context: 'Peer-to-Peer Quiz', targetCronbachAlpha: 0.70, targetKR20: 0.70 }
 ];
 
 export const MOCK_EXAM_BLUEPRINTS: ExamBlueprint[] = [
   {
-    id: 'BLUEPRINT-STEP1-BLOCK-40-DEFAULT',
-    name: 'Step 1-style 40-question General Block',
-    description: 'Balanced block approximating Step 1 content distribution.',
-    totalItems: 40,
+    id: 'BP-STEP1-SIM',
+    name: 'Step 1 Clinical Synthesis',
+    description: 'High-density blueprint focusing on pathophysiology and multi-step reasoning.',
+    totalItems: 280,
     organSystemWeights: [
-      { organSystemId: 'USMLE-CARDIO', weightPercent: 16 },
-      { organSystemId: 'USMLE-RENAL', weightPercent: 10 },
-      { organSystemId: 'USMLE-ENDO', weightPercent: 12 },
+      { organSystemId: 'USMLE-CV', weightPercent: 15 },
+      { organSystemId: 'USMLE-RENAL', weightPercent: 12 },
+      { organSystemId: 'USMLE-GI', weightPercent: 12 },
+      { organSystemId: 'USMLE-RESP', weightPercent: 12 },
+      { organSystemId: 'USMLE-ENDO', weightPercent: 10 }
     ],
     difficultyDistribution: [
-      { label: 'Easy', proportion: 0.25 },
-      { label: 'Moderate', proportion: 0.50 },
-      { label: 'Hard', proportion: 0.25 },
+      { label: 'Easy', proportion: 0.2 },
+      { label: 'Moderate', proportion: 0.5 },
+      { label: 'Hard', proportion: 0.3 }
     ],
     bloomDistribution: [
-      { bloomLevel: 'Recall', proportion: 0.25 },
-      { bloomLevel: 'Understand', proportion: 0.35 },
-      { bloomLevel: 'Apply', proportion: 0.30 },
-      { bloomLevel: 'Analyze', proportion: 0.10 },
-    ],
-  },
-  {
-    id: 'sBLUEPRINT-STEP1-BLOCK-40-DEFAULT',
-    name: 'Step 1-style 40-question General Block',
-    description: 'Balanced block approximating Step 1 content distribution.',
-    totalItems: 40,
-    organSystemWeights: [
-      { organSystemId: 'USMLE-CARDIO', weightPercent: 16 },
-      { organSystemId: 'USMLE-RENAL', weightPercent: 10 },
-      { organSystemId: 'USMLE-ENDO', weightPercent: 12 },
-    ],
-    difficultyDistribution: [
-      { label: 'Easy', proportion: 0.25 },
-      { label: 'Moderate', proportion: 0.50 },
-      { label: 'Hard', proportion: 0.25 },
-    ],
-    bloomDistribution: [
-      { bloomLevel: 'Recall', proportion: 0.25 },
-      { bloomLevel: 'Understand', proportion: 0.35 },
-      { bloomLevel: 'Apply', proportion: 0.30 },
-      { bloomLevel: 'Analyze', proportion: 0.10 },
-    ],
-  },
-];
-
-export const MOCK_RELIABILITY_TARGETS: ReliabilityTarget[] = [
-  {
-    id: 'REL-STEP1-GENERAL',
-    context: 'Summative Step 1-style exam',
-    targetCronbachAlpha: 0.85,
-    targetKR20: 0.84,
-    minSampleSizeForReliability: 200,
-  },
-];
-
-export const MOCK_AI_INSIGHT_LOGS: AIInsightLog[] = [
-  {
-    id: 'AI-LOG-0001',
-    timestamp: '2025-02-18T10:00:00Z',
-    agentId: 'AGENT-CURR-AUDITOR',
-    agentName: 'Curriculum Auditor Agent',
-    severity: 'warning',
-    entityType: 'Item',
-    entityId: 'QID-1001',
-    message: 'Item difficulty drifting downward; approaching “too easy” threshold for target cohort.',
-    suggestedActions: ['Review distractors', 'Consider increasing clinical complexity.'],
-  },
-  {
-    id: 'AI-LOG-0002',
-    timestamp: '2025-02-18T10:05:00Z',
-    agentId: 'AGENT-PSYCHOMETRICIAN',
-    agentName: 'Psychometrician Agent',
-    severity: 'critical',
-    entityType: 'Objective',
-    entityId: 'OBJ-ENDO-002',
-    message: 'Objective under-assessed: only 37% of target item coverage achieved in Endocrine.',
-    suggestedActions: ['Trigger item generator for ≥3 new items', 'Prioritize Bloom: Apply level.'],
-  },
-];
-
-export const MOCK_AGENT_STATUS: AgentStatus[] = [
-  {
-    id: 'AGENT-CURR-AUDITOR',
-    name: 'Curriculum Auditor Agent',
-    status: 'online',
-    lastHeartbeat: '2025-02-18T10:15:00Z',
-    recentTasksProcessed: 42,
-  },
-  {
-    id: 'AGENT-PSYCHOMETRICIAN',
-    name: 'Psychometrician Agent',
-    status: 'online',
-    lastHeartbeat: '2025-02-18T10:14:30Z',
-    recentTasksProcessed: 27,
-  },
-];
-
-export const MOCK_ITEMS: BackendItem[] = [
-  {
-    id: 'QID-1001',
-    type: 'MCQ',
-    stem: 'A 32-year-old woman presents with fatigue, polyuria, and polydipsia. Laboratory testing reveals fasting plasma glucose of 162 mg/dL. Which of the following best describes the primary mechanism of action of the first-line drug used to treat this patient’s condition?',
-    options: [
-      { id: 'QID-1001-A', label: 'A', text: 'Activation of peroxisome proliferator-activated receptor gamma (PPAR-γ)', isCorrect: false, plausibilityNote: 'Common confusion with thiazolidinediones.' },
-      { id: 'QID-1001-B', label: 'B', text: 'Decreased hepatic gluconeogenesis and increased peripheral insulin sensitivity', isCorrect: true, plausibilityNote: 'Correct – metformin mechanism.' },
-      { id: 'QID-1001-C', label: 'C', text: 'Direct stimulation of pancreatic β-cell insulin release independent of glucose', isCorrect: false },
-      { id: 'QID-1001-D', label: 'D', text: 'Inhibition of intestinal brush border α-glucosidases', isCorrect: false },
-    ],
-    explanation: 'Metformin is first-line therapy for type 2 diabetes and works primarily by inhibiting hepatic gluconeogenesis.',
-    itemTagline: 'Mechanism of metformin as first-line therapy for T2DM.',
-    itemType: 'single-best-answer',
-    status: 'Published',
-    version: 3,
-    authorId: 'AUTH-001',
-    createdAt: '2025-01-10T10:15:00Z',
-    updatedAt: '2025-01-20T14:42:00Z',
-    timeToAuthorMinutes: 35,
-    taxonomy: { organSystemId: 'USMLE-ENDO', disciplineId: 'DISC-PHARM', bloomLevel: 'Apply', syndromeTopicId: 'TOPIC-T2DM', usmleContentId: 'USMLE-ENDO-GLUCOSE-HOMEOSTASIS' },
-    linkedMediaIds: [],
-    linkedLectureIds: ['LECT-ENDO-001'],
-    learningObjective: 'Mechanism of metformin as first-line therapy for T2DM.',
-  },
-];
-
-export const MOCK_LECTURES: LectureAsset[] = [
-  {
-    id: 'LECT-ENDO-001',
-    title: 'Type 2 Diabetes Pathophysiology',
-    description: 'Comprehensive review of insulin resistance.',
-    videoUri: '',
-    transcriptUri: '',
-    slideDeckUri: '',
-    engagementMarkers: [],
-    status: 'Published',
-    version: 1,
-    authorId: 'AUTH-001',
-    estimatedDurationMinutes: 45,
-    createdAt: '2025-01-05T09:00:00Z',
-    updatedAt: '2025-01-05T09:00:00Z',
-    linkedObjectiveIds: ['OBJ-ENDO-001'],
-    linkedItemIds: ['QID-1001']
-  },
-];
-
-export const MOCK_ITEM_PSYCHOMETRICS: ItemPsychometrics[] = [
-  { itemId: 'QID-1001', sampleSize: 312, difficultyIndex: 0.64, discriminationIndex: 0.36, timeOnTaskSecondsAvg: 82, distractorAnalysis: [], lastUpdated: '2025-02-15' },
-];
-
-export const MOCK_LECTURE_METRICS: LectureMetrics[] = [
-  { lectureId: 'LECT-ENDO-001', avgWatchTimePercent: 0.81, rewatchRatePercent: 0.34, pauseClusterTimestamps: [305, 890], avgTutorQueriesPerStudent: 0.6, avgNotesPerStudent: 7.2, intrinsicLoad: 7, extraneousLoad: 3, germaneLoad: 8, preAssessmentAvg: 0.48, postAssessmentAvg: 0.82, retentionAssessmentAvg: 0.76, downstreamMCQPerformance: 0.79, nbmeCorrelationScore: 0.62, updatedAt: '2025-02-18' },
-];
-
-export const MOCK_LEARNING_OBJECTIVES: LearningObjective[] = [
-  { id: 'OBJ-ENDO-001', text: 'Explain the pathophysiology of insulin resistance in type 2 diabetes mellitus.', organSystemId: 'USMLE-ENDO', disciplineId: 'DISC-PHYS', bloomLevel: 'Understand', usmleContentId: 'USMLE-ENDO-GLUCOSE-HOMEOSTASIS', targetItemCount: 6, targetLectureCount: 1 },
-];
-
-export const MOCK_OBJECTIVE_COVERAGE: ObjectiveCoverage[] = [
-  { objectiveId: 'OBJ-ENDO-001', mappedItemCount: 5, mappedLectureCount: 1, coveragePercentItems: 5 / 6, coveragePercentLectures: 1 / 1 },
-];
-
-export const MOCK_STUDENTS: StudentMastery[] = [
-  { studentId: 'S001', studentName: 'Alice Johnson', masteryScores: { 'USMLE-ENDO': 78, 'USMLE-RENAL': 42 }, totalScore: 81, atRisk: false, predictedStep1: '245-255', engagementScore: 92 },
+      { bloomLevel: 'Remember', proportion: 0.1 },
+      { bloomLevel: 'Understand', proportion: 0.3 },
+      { bloomLevel: 'Apply', proportion: 0.4 },
+      { bloomLevel: 'Analyze', proportion: 0.2 }
+    ]
+  }
 ];
 
 export const MOCK_ISSUES: Issue[] = [
-  { id: 'ISS-001', type: 'Performance', severity: 'High', title: 'Non-functional Distractor (Option A)', description: 'Item QID-1001 has a low selection rate for Option A.', questionId: 'QID-1001', status: 'Open', createdAt: '2024-03-25' }
+  {
+    id: 'ISS-001',
+    type: 'Performance',
+    severity: 'High',
+    title: 'Negative Discrimination',
+    description: 'Item GI-303 is confusing high-performing students.',
+    questionId: 'QID-GI-303',
+    status: 'Open',
+    createdAt: '2025-02-18'
+  },
+  {
+    id: 'ISS-002',
+    type: 'Content',
+    severity: 'Medium',
+    title: 'Non-functional Distractor',
+    description: 'Distractor B in Item RESP-404 has < 5% selection rate.',
+    questionId: 'QID-RESP-404',
+    status: 'Open',
+    createdAt: '2025-02-18'
+  }
 ];
 
-export const MOCK_SYNDROME_TOPICS = [
-  { id: 'TOPIC-T2DM', name: 'Type 2 Diabetes Mellitus', path: ['Endocrine', 'Metabolism', 'Diabetes'] }
+// ============================================================================
+// 4. INSTRUCTIONAL ASSETS (DEMO LECTURE)
+// ============================================================================
+
+export const MOCK_LECTURES: LectureAsset[] = [
+  {
+    id: 'LECT-CV-MI-001',
+    title: 'MI Histopathology: The 0-24 Hour Window',
+    description: 'Critical analysis of cellular changes post-ischemia. Essential for Step 1 differentiation between early and marginal necrosis.',
+    videoUri: 'mi_pathology_lecture.mp4',
+    transcriptUri: 'mi_pathology_transcript.vtt',
+    slideDeckUri: 'mi_pathology_slides.pdf',
+    engagementMarkers: [
+      { timestampSec: 120, type: 'Conceptual Spike', description: 'Differential: 4-12 vs 12-24 hour window transition.' },
+      { timestampSec: 450, type: 'Visual Evidence', description: 'High-power microscopy showing contraction bands.' },
+      { timestampSec: 820, type: 'Clinical Correlate', description: 'Relationship between neutrophil waves and reperfusion injury.' }
+    ],
+    status: 'Published',
+    version: 1,
+    authorId: 'AUTH-DEAN',
+    estimatedDurationMinutes: 18,
+    createdAt: '2025-01-20T10:00:00Z',
+    updatedAt: '2025-02-15T09:00:00Z',
+    linkedObjectiveIds: ['OBJ-CV-001'],
+    linkedItemIds: ['QID-CV-101']
+  }
 ];
+
+export const MOCK_LECTURE_METRICS = [
+  {
+    lectureId: 'LECT-CV-MI-001',
+    avgWatchTimePercent: 0.88,
+    rewatchRatePercent: 0.42,
+    preAssessmentAvg: 0.52,
+    postAssessmentAvg: 0.84,
+    retentionAssessmentAvg: 0.78,
+    downstreamMCQPerformance: 0.81,
+    nbmeCorrelationScore: 0.74,
+    avgTutorQueriesPerStudent: 1.4,
+    avgNotesPerStudent: 8.2,
+    intrinsicLoad: 6,
+    extraneousLoad: 2,
+    germaneLoad: 8,
+    pauseClusterTimestamps: [120, 122, 125, 450, 455]
+  }
+];
+
+// ============================================================================
+// 5. AI INSIGHTS & AGENT STATUS
+// ============================================================================
+
+export const MOCK_AI_INSIGHT_LOGS: AIAgentInsight[] = [
+  {
+    id: 'INS-001',
+    agentName: 'Sina Core',
+    message: 'Discrimination drift detected in Renal MCQ block. Item QID-RN-202 is confusing top performers.',
+    priority: 'high',
+    severity: 'critical',
+    timestamp: new Date().toISOString(),
+    actionRequired: true,
+    category: 'QB_HEALTH',
+    suggestedActions: ['Audit Item', 'Adjust Options'],
+    entityId: 'QID-RN-202'
+  },
+  {
+    id: 'INS-002',
+    agentName: 'Sina Mastery',
+    message: 'Cohort performance on Cardiovascular MI Histopathology items is strongly correlated with lecture LECT-CV-MI-001 completion.',
+    priority: 'medium',
+    severity: 'info',
+    timestamp: new Date().toISOString(),
+    actionRequired: false,
+    category: 'STUDENT_MASTERY',
+    suggestedActions: ['Endorse Resource'],
+    entityId: 'LECT-CV-MI-001'
+  }
+];
+
+export const MOCK_AGENT_STATUS = [
+  { id: 'AGT-001', name: 'Sina Psychometric', status: 'online', recentTasksProcessed: 142 },
+  { id: 'AGT-002', name: 'Sina Curriculum', status: 'online', recentTasksProcessed: 56 },
+  { id: 'AGT-003', name: 'Sina Authoring', status: 'warning', recentTasksProcessed: 89 }
+];
+
+export const USMLE_SYSTEM_DISTRIBUTION = {
+  "SYS-HUMAN-DEV": { min: 1, max: 3 },
+  "SYS-BLOOD-IMMUNE": { min: 9, max: 13 },
+  "SYS-BEHAVIORAL-NEURO": { min: 10, max: 14 },
+  "SYS-MSK-SKIN": { min: 8, max: 12 },
+  "SYS-CV": { min: 7, max: 11 },
+  "SYS-GI": { min: 6, max: 10 },
+  "SYS-REPRO-ENDO": { min: 12, max: 16 },
+  "SYS-MULTISYSTEM": { min: 8, max: 12 },
+  "SYS-BIOSTATS": { min: 4, max: 6 },
+  "SYS-SOCIAL": { min: 6, max: 9 }
+};
+
+export const USMLE_DISCIPLINE_DISTRIBUTION = {
+  PATHOLOGY: { min: 45, max: 55 },
+  PHYSIOLOGY: { min: 30, max: 40 },
+  PHARMACOLOGY: { min: 10, max: 20 },
+  BIOCHEM_NUTRITION: { min: 5, max: 15 },
+  MICROBIOLOGY: { min: 10, max: 20 },
+  IMMUNOLOGY: { min: 5, max: 15 },
+  ANATOMY_EMBRYOLOGY: { min: 10, max: 20 },
+  HISTOLOGY_CELL: { min: 5, max: 15 },
+  BEHAVIORAL_SCIENCE: { min: 10, max: 15 }
+};
+
+export const USMLE_TASK_DISTRIBUTION = {
+  FOUNDATIONAL_SCIENCE: { min: 60, max: 70 },
+  DIAGNOSIS: { min: 20, max: 25 },
+  COMMUNICATION: { min: 6, max: 9 },
+  PRACTICE_BASED_LEARNING: { min: 4, max: 6 }
+};

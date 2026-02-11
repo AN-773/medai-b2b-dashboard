@@ -1,3 +1,16 @@
+import React from 'react';
+
+export type View =
+  | 'DASHBOARD'
+  | 'WORKBENCH'
+  | 'BANK_EXPLORER'
+  | 'QB_HEALTH'
+  | 'MASTERY'
+  | 'CURRICULUM'
+  | 'ASSESSMENT'
+  | 'AGENTS'
+  | 'BLUEPRINT'
+  | 'FACULTY';
 
 export enum OrganSystem {
   Cardiovascular = 'Cardiovascular',
@@ -25,7 +38,7 @@ export interface USMLEStandardTopic {
 export interface USMLEStandardCategory {
   id: string;
   name: string;
-  page: number;
+  page?: number;
   topics: USMLEStandardTopic[];
 }
 
@@ -71,6 +84,7 @@ export interface QuestionOption {
   selectionRate?: number;
   label?: string;
   plausibilityNote?: string;
+  highPerformerSelectionRate?: number; // Added for RB distractor analysis
 }
 
 export interface Taxonomy {
@@ -83,21 +97,59 @@ export interface Taxonomy {
   usmleContentId: string;
 }
 
-export interface Author {
-  id: string;
-  name: string;
-  role: string;
-  institution: string;
-  bio: string;
+export interface ItemPsychometrics {
+  itemId: string;
+  sampleSize: number;
+  difficultyIndex: number; // P-Value
+  discriminationIndex: number; // Simplified R_B index
+  highIncorrectCount: number;
+  lowIncorrectCount: number;
+  groupSizeN: number; // The 'n' in the R_B formula (total * 0.27)
+  flawedDistractorId?: string;
+  flawReason?: string;
+  timeOnTaskSecondsAvg: number;
+  distractorAnalysis: DistractorAudit[];
+  lastUpdated: string;
 }
 
-export interface MediaAsset {
+export interface SessionReliability {
+  sessionId: string;
+  kr20Value: number; // Internal Consistency Reliability
+  totalItems: number;
+  totalStudents: number;
+  meanScore: number;
+  variance: number;
+  status: 'RELIABLE' | 'UNSTABLE' | 'LOW_SAMPLE';
+}
+
+export interface DistractorAudit {
+  optionId: string;
+  selectionRate: number;
+  highPerformerSelectionRate: number;
+  flaggedNonFunctional: boolean;
+}
+
+export interface LearningObjective {
   id: string;
-  type: string;
-  description: string;
-  storageUri: string;
-  altText: string;
-  base64Preview: string;
+  text: string;
+  subTopic?: string;
+  organSystemId?: string;
+  disciplineId: string;
+  bloomLevel: string;
+  usmleContentId: string;
+  usmleCodes?: string[]; // Added: Array of USMLE codes for precise mapping
+  targetItemCount?: number;
+  targetLectureCount?: number;
+  linkedLectureIds?: string[];
+  linkedItemIds?: string[];
+  snomedConceptId?: string; // SNOMED CT Concept ID
+  snomedConceptName?: string; // SNOMED CT Fully Specified Name
+}
+
+export enum ItemType {
+  MCQ = 'MCQ',
+  SAQ = 'SAQ',
+  LECTURE = 'LECTURE'
 }
 
 export interface Reference {
@@ -106,122 +158,18 @@ export interface Reference {
   url: string;
 }
 
-export interface DistractorAudit {
-  optionId: string;
-  selectionRate: number;
-  flaggedNonFunctional: boolean;
-}
-
-export interface ItemPsychometrics {
-  itemId: string;
-  sampleSize: number;
-  difficultyIndex: number;
-  discriminationIndex: number;
-  timeOnTaskSecondsAvg: number;
-  distractorAnalysis: DistractorAudit[];
-  lastUpdated: string;
-}
-
-export interface LectureMetrics {
-  lectureId: string;
-  avgWatchTimePercent: number;
-  rewatchRatePercent: number;
-  pauseClusterTimestamps: number[];
-  avgTutorQueriesPerStudent: number;
-  avgNotesPerStudent: number;
-  intrinsicLoad: number;
-  extraneousLoad: number;
-  germaneLoad: number;
-  preAssessmentAvg: number;
-  postAssessmentAvg: number;
-  retentionAssessmentAvg: number;
-  downstreamMCQPerformance: number;
-  nbmeCorrelationScore: number;
-  updatedAt: string;
-}
-
-export interface LearningObjective {
-  id: string;
-  text: string;
-  organSystemId: string;
-  disciplineId: string;
-  bloomLevel: string;
-  usmleContentId: string;
-  targetItemCount: number;
-  targetLectureCount: number;
-  subTopic?: string;
-  linkedLectureIds?: string[];
-  linkedItemIds?: string[];
-}
-
-export interface ObjectiveCoverage {
-  objectiveId: string;
-  mappedItemCount: number;
-  mappedLectureCount: number;
-  coveragePercentItems: number;
-  coveragePercentLectures: number;
-}
-
-export interface CurriculumMapping {
-  lectureId: string;
-  objectiveId: string;
-  itemIds: string[];
-}
-
-export interface AIInsightLog {
-  id: string;
-  timestamp: string;
-  agentId: string;
-  agentName: string;
-  severity: 'info' | 'warning' | 'critical';
-  entityType: string;
-  entityId: string;
-  message: string;
-  suggestedActions: string[];
-}
-
-export interface AgentStatus {
+export interface Author {
   id: string;
   name: string;
-  status: 'online' | 'offline' | 'idle' | 'busy';
-  lastHeartbeat: string;
-  recentTasksProcessed: number;
+  role: string;
+  avatar?: string;
 }
 
-export interface AIActionHistory {
+export interface MediaAsset {
   id: string;
-  timestamp: string;
-  agentId: string;
-  entityType: string;
-  entityId: string;
-  recommendation: string;
-  actionTaken: 'accepted' | 'deferred' | 'rejected';
-  actedByUserId: string;
-  followUpItemIds: string[];
-}
-
-export interface ExamBlueprint {
-  id: string;
-  name: string;
-  description: string;
-  totalItems: number;
-  organSystemWeights: { organSystemId: string; weightPercent: number }[];
-  difficultyDistribution: { label: string; proportion: number }[];
-  bloomDistribution: { bloomLevel: string; proportion: number }[];
-}
-
-export interface ReliabilityTarget {
-  id: string;
-  context: string;
-  targetCronbachAlpha: number;
-  targetKR20: number;
-  minSampleSizeForReliability: number;
-}
-
-export enum ItemType {
-  MCQ = 'MCQ',
-  SAQ = 'SAQ',
-  LECTURE = 'LECTURE'
+  type: 'image' | 'video' | 'audio' | 'document';
+  uri: string;
+  title: string;
 }
 
 export interface BackendItem {
@@ -274,6 +222,7 @@ export interface LectureAsset {
 
 export interface Question {
   id: string;
+  title?: string; // Added for item tagline
   text: string;
   type: QuestionType;
   bloomsLevel: BloomsLevel;
@@ -284,6 +233,7 @@ export interface Question {
   tags: string[];
   createdAt: string;
   status: 'Draft' | 'Published' | 'Archived';
+  taxonomy?: Taxonomy;
   analysis?: {
     difficultyIndex: number;
     discriminationIndex: number;
@@ -302,181 +252,193 @@ export interface Issue {
   createdAt: string;
 }
 
+export interface Cohort {
+  id: string;
+  name: string;
+  yearLevel: 'MS1' | 'MS2' | 'MS3' | 'MS4';
+  intakeTerm: 'Fall' | 'Spring';
+  studentCount: number;
+}
+
 export interface StudentMastery {
   studentId: string;
   studentName: string;
+  cohortId: string; // Link to Cohort
   masteryScores: Record<string, number>;
+  discriminationWeightedScore: number; // Mastery on RB > 0.3 items
   totalScore: number;
+  coverage: number; // Percentage of curriculum attempted
+  recentDailyGain: number; // Points gained per day over last 7 days
+  daysUntilStep1: number;
   atRisk: boolean;
   predictedStep1: string;
   engagementScore: number;
+  percentileRank: number;
 }
 
-export interface CurriculumObjective {
-  id: string;
-  title: string;
-  system: OrganSystem;
-  coveragePercent: number;
-  itemCount: number;
-  status: 'adequate' | 'under' | 'over';
-  bloomTarget: Record<string, number>;
-  subTopics?: { name: string; itemCount: number }[];
-}
-
+// Fixed AIAgentInsight to include missing severity, suggestedActions, and entityId properties
 export interface AIAgentInsight {
   id: string;
   agentName: string;
   message: string;
   priority: 'low' | 'medium' | 'high';
+  severity: string;
+  suggestedActions: string[];
+  entityId?: string;
   timestamp: string;
   actionRequired: boolean;
   category: 'QB_HEALTH' | 'STUDENT_MASTERY' | 'CURRICULUM' | 'PSYCHOMETRICS';
 }
 
-export interface AgentMetaData {
+// Added missing interfaces for Exam Blueprints and Reliability Targets
+export interface ExamBlueprint {
   id: string;
   name: string;
-  type: 'FRONTLINE' | 'BACKEND';
   description: string;
-  status: 'OPTIMIZING' | 'LIVE' | 'LEARNING' | 'IDLE' | 'FLAGGED';
-  load: number;
-  metricLabel: string;
-  metricValue: string;
-}
-
-export type View =
-  | 'DASHBOARD'
-  | 'QB_HEALTH'
-  | 'MASTERY'
-  | 'CURRICULUM'
-  | 'ASSESSMENT'
-  | 'AGENTS'
-  | 'BLUEPRINT'
-  | 'BANK_EXPLORER'
-  | 'WORKBENCH';
-
-export interface ApiChoice {
-  id: string;
-  content: string;
-  isCorrect: boolean;
-  multimediaId: string | null;
-  multimedia: any;
-  createdAt: string;
-  updatedAt: string;
-  questionId: string;
-  explanation: string;
-}
-
-export interface ApiQuestion {
-  id: string;
-  identifier: string;
-  title: string;
-  status: string;
-  exam: string;
-  subjects: any;
-  metadata: any;
-  organSystemId: string;
-  difficultyId: string;
-  cognitiveSkillId: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  multimediaId: string | null;
-  multimedia: any;
-  choices: ApiChoice[];
-  organSystem: {
-    id: string;
-    title: string;
-    identifier: string;
-    createdAt: string;
-    updatedAt: string;
-    topics: any;
-    questions: any;
-  };
-  disciplines: {
-    id: string;
-    title: string;
-    createdAt: string;
-    updatedAt: string;
-    blocks: any;
-    questions: any;
-  }[];
-  dbSubjects: any[];
-  competencies: any[];
-  learningObjectiveId: string;
-  learningObjective: {
-    id: string;
-    title: string;
-    identifier: string;
-    createdAt: string;
-    updatedAt: string;
-    syndromeId: string;
-    syndrome: any;
-    disciplines: any;
-    cognitiveSkillId: string;
-    cognitiveSkill: any;
-    blocks: any;
-    questions: any;
-  };
-  syndromeId: string;
-  syndrome: {
-    id: string;
-    title: string;
-    topicId: string;
-    topic: any;
-    identifier: string;
-    createdAt: string;
-    updatedAt: string;
-  };
-  topicId: string;
-  topic: {
-    id: string;
-    title: string;
-    identifier: string;
+  totalItems: number;
+  organSystemWeights: {
     organSystemId: string;
-    organSystem: any;
-    organSystems: any;
-    syndromes: any;
-    createdAt: string;
-    updatedAt: string;
-  };
-  tags: any[];
-  feedbacks: any[];
+    weightPercent: number;
+  }[];
+  difficultyDistribution: {
+    label: string;
+    proportion: number;
+  }[];
+  bloomDistribution: {
+    bloomLevel: string;
+    proportion: number;
+  }[];
 }
 
-export interface ApiResponse<T> {
-  items: T[];
-  page: number;
-  total: number;
-}
-export interface ApiOrganSystem {
-  id: string;
-  title: string;
-  identifier: string;
-  createdAt: string;
-  updatedAt: string;
-  topics: ApiTopic[];
-  questions: any;
+export interface ReliabilityTarget {
+  context: string;
+  targetCronbachAlpha: number;
+  targetKR20: number;
 }
 
-export interface ApiTopic {
+// --- FACULTY DASHBOARD TYPES ---
+
+export interface FacultyAlert {
   id: string;
   title: string;
-  identifier: string;
-  organSystemId: string;
-  organSystem: ApiOrganSystem | null;
-  organSystems: any;
-  syndromes: ApiSyndrome[];
-  createdAt: string;
-  updatedAt: string;
+  description: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  timeAgo: string;
+  suggestedAction?: string;
 }
 
-export interface ApiSyndrome {
+export interface CohortMetrics {
+  avgReadiness: number;
+  atRiskCount: number;
+  avgTAPR: number;
+  avgCoverage: number;
+  readinessChange: string;
+  riskChange: string;
+  taprChange: string;
+  coverageChange: string;
+  systemMastery: Array<{ system: string; mastery: number }>;
+  readinessDistribution: Array<{ range: string; count: number }>;
+  trendData: Array<{ week: string; readiness: number; mastery: number }>;
+  bloomDistribution: Array<{ name: string; value: number }>;
+}
+
+export interface FacultyTimeSavings {
+  hoursThisWeek: number;
+  hoursThisMonth: number;
+  efficiencyGain: number;
+}
+
+export interface CurriculumGap {
+  system: string;
+  description: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  affectedStudents: number;
+  suggestedAction: string;
+}
+
+export interface Intervention {
   id: string;
   title: string;
-  identifier: string;
-  topicId: string;
-  topic: ApiTopic | null;
-  createdAt: string;
-  updatedAt: string;
+  description: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  studentCount: number;
+  studentIds: string[];
+  estimatedTime: string;
+  expectedImpact: number;
+  confidence: number;
+}
+
+// --- UNIFIED SINA DATA MODELS ---
+
+export type SystemMastery = Record<string, number>;
+export type EvidenceStatus = number; // 0.0 to 1.0
+
+export interface SINAStudent {
+  studentId: string;
+  studentName: string;
+  cohortId: string;
+  mastery: SystemMastery;
+  readiness: number;
+  tapr: number;
+  coverage: number;
+  evidence: EvidenceStatus;
+  riskLevel: 'Critical' | 'High' | 'Moderate' | 'On Track' | 'Advanced';
+  predictedStep1: string;
+  primaryIntervention: string;
+  recentDailyGain: number;
+  daysUntilStep1: number;
+}
+
+export interface SINACohort {
+  cohortId: string;
+  students: SINAStudent[];
+  analytics: CohortMetrics;
+  interventions: Intervention[];
+}
+
+// FIX: Global declaration to resolve JSX.IntrinsicElements errors
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      div: any;
+      p: any;
+      span: any;
+      a: any;
+      ul: any;
+      li: any;
+      button: any;
+      input: any;
+      label: any;
+      select: any;
+      option: any;
+      textarea: any;
+      img: any;
+      form: any;
+      header: any;
+      footer: any;
+      nav: any;
+      aside: any;
+      section: any;
+      main: any;
+      svg: any;
+      path: any;
+      h1: any;
+      h2: any;
+      h3: any;
+      h4: any;
+      h5: any;
+      h6: any;
+      table: any;
+      thead: any;
+      tbody: any;
+      tr: any;
+      th: any;
+      td: any;
+      defs: any;
+      linearGradient: any;
+      stop: any;
+      // Catch-all
+      [elemName: string]: any;
+    }
+  }
 }

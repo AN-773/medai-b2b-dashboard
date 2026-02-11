@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus } from 'lucide-react';
-import { LearningObjective, USMLEStandardTopic } from '../../types';
+import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus, ChevronDown, Loader2 } from 'lucide-react';
+import { LearningObjective, Syndrome, Topic } from '@/types/TestsServiceTypes';
 
 interface ObjectiveListProps {
-  topic: USMLEStandardTopic;
-  subTopic?: string | null;
+  topic: Topic;
+  subTopic?: Syndrome | null;
   searchTerm: string;
   bloomFilter: string;
   setBloomFilter: (val: string) => void;
@@ -13,6 +13,11 @@ interface ObjectiveListProps {
   onEdit: (id: string, text: string, bloom: string) => void;
   onDelete: (id: string) => void;
   onViewLinked: (obj: LearningObjective) => void;
+  isLoading?: boolean;
+  currentPage?: number;
+  totalItems?: number;
+  itemsPerPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
 const BLOOM_COLORS: Record<string, string> = {
@@ -23,34 +28,22 @@ const BLOOM_COLORS: Record<string, string> = {
 };
 
 const ObjectiveList: React.FC<ObjectiveListProps> = ({
-  topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onViewLinked
-}) => {
+  topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onViewLinked, isLoading,
+  currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange
+}: ObjectiveListProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editBloom, setEditBloom] = useState('');
 
-  const filteredObjectives = useMemo(() => {
-    let result = topic.objectives || [];
-    
-    // Filter by SubTopic if provided
-    if (subTopic) {
-        result = result.filter(obj => obj.subTopic === subTopic);
-    }
-
-    if (searchTerm) {
-      result = result.filter(obj => obj.text.toLowerCase().includes(searchTerm.toLowerCase()));
-    }
-    if (bloomFilter !== 'All') {
-      result = result.filter(obj => obj.bloomLevel === bloomFilter);
-    }
-    return result;
-  }, [topic, subTopic, searchTerm, bloomFilter]);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const hasMorePages = currentPage < totalPages;
+  const loadedCount = itemsPerPage * currentPage;
 
   const handleStartEdit = (e: React.MouseEvent, obj: LearningObjective) => {
     e.stopPropagation();
     setEditingId(obj.id);
-    setEditText(obj.text);
-    setEditBloom(obj.bloomLevel);
+    setEditText(obj.title);
+    setEditBloom(obj.cognitiveSkillId);
   };
 
   const handleSave = () => {
@@ -75,20 +68,20 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             <ArrowLeft size={20} className="text-slate-400 group-hover:text-slate-900" />
             </button>
             <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{subTopic || topic.name}</h2>
-            <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{subTopic?.title || topic.title}</h2>
+            <div className="flex items-center gap-3 mt-2">
                 {subTopic && (
                     <span className="px-3 py-1 bg-indigo-50 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                    {topic.name}
+                    {topic.title}
                     </span>
                 )}
                 {!subTopic && (
                     <span className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    {topic.subTopics?.length} Subtopics
+                    {topic.syndromes?.length} Subtopics
                     </span>
                 )}
                 <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                <span className="text-sm font-bold text-slate-400">{filteredObjectives.length} Objectives</span>
+                <span className="text-sm font-bold text-slate-400">{loadedCount} of {totalItems} Objectives</span>
             </div>
             </div>
         </div>
@@ -111,8 +104,14 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
         </div>
       </div>
 
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1BD183] mb-4"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Objectives...</p>
+        </div>
+      ) : (
       <div className="space-y-6">
-        {filteredObjectives.map((obj) => (
+        {topic?.objectives?.map((obj) => (
           <div key={obj.id} className="relative group">
             {editingId === obj.id ? (
               <div className="flex flex-col gap-6 bg-white p-8 rounded-[2rem] border-2 border-[#1BA6D1] shadow-2xl animate-in zoom-in-95 duration-200 relative z-10">
@@ -165,16 +164,16 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj.bloomLevel] || 'bg-slate-100'}`}>
-                      {obj.bloomLevel}
+                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj.cognitiveSkill.title] || 'bg-slate-100'}`}>
+                      {obj.cognitiveSkill.title}
                     </span>
-                    {(obj.linkedItemIds?.length || 0) > 0 && (
+                    {(obj.questions?.length || 0) > 0 && (
                       <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-lg">
-                        <Check size={10} /> {obj.linkedItemIds?.length} Items
+                        <Check size={10} /> {obj.questions?.length} Items
                       </span>
                     )}
                   </div>
-                  <p className="text-lg text-slate-800 leading-relaxed font-medium">{obj.text}</p>
+                  <p className="text-lg text-slate-800 leading-relaxed font-medium">{obj.title}</p>
                 </div>
                 
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
@@ -198,7 +197,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           </div>
         ))}
         
-        {filteredObjectives.length === 0 && (
+        {topic?.objectives?.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-slate-400">
                 <Filter size={24} className="mb-2 opacity-50" />
                 <p className="text-xs font-black uppercase tracking-widest">No objectives found</p>
@@ -213,7 +212,26 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             <span className="font-black text-xs uppercase tracking-widest">Add Learning Objective</span>
             </button>
         )}
+
+        {/* Load More Button */}
+        {hasMorePages && !searchTerm && bloomFilter === 'All' && (
+          <button 
+            onClick={() => onPageChange?.(currentPage + 1)}
+            disabled={isLoading}
+            className="w-full py-6 bg-gradient-to-r from-[#1BA6D1]/5 to-[#1BD183]/5 border border-[#1BD183]/20 rounded-2xl flex items-center justify-center gap-3 text-[#1BD183] hover:from-[#1BA6D1]/10 hover:to-[#1BD183]/10 hover:border-[#1BD183]/40 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <ChevronDown size={20} className="group-hover:translate-y-0.5 transition-transform" />
+            )}
+            <span className="font-black text-xs uppercase tracking-widest">
+              {isLoading ? 'Loading...' : `Load More (${totalItems - loadedCount} remaining)`}
+            </span>
+          </button>
+        )}
       </div>
+      )}
     </div>
   );
 };

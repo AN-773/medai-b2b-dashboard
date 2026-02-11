@@ -7,7 +7,7 @@ import TopicGrid from '../components/curriculum/TopicGrid';
 import SubTopicGrid from '../components/curriculum/SubTopicGrid';
 import ObjectiveList from '../components/curriculum/ObjectiveList';
 import LinkedItemsPanel from '../components/curriculum/LinkedItemsPanel';
-import { exportToCSV, processCSV } from '../utils/csvUtils';
+// import { exportToCSV, processCSV } from '../utils/csvUtils';
 import { LearningObjective, Taxonomy, View } from '../types';
 
 interface CurriculumHealthViewProps {
@@ -22,22 +22,30 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
     setCurriculumData,
     activeSystem,
     activeTopic,
+    activeSubTopic,
     activeSystemId,
     activeTopicId,
-    activeSubTopic,
-    setActiveSubTopic,
-    setActiveTopicId,
+    activeSubTopicId,
     contentSearch,
     setContentSearch,
     bloomFilter,
     setBloomFilter,
     handleSystemSelect,
+    handleTopicSelect,
+    handleSubTopicSelect,
     updateObjective,
     deleteObjective,
     isLoading,
     areTopicsLoading,
-    areSubTopicsLoading,
+    areObjectivesLoading,
+    objectivesPage,
+    objectivesTotal,
+    objectivesLimit,
+    setObjectivesPage,
   } = useCurriculum();
+
+  console.log(curriculumData);
+  
 
   const [viewLinkedItems, setViewLinkedItems] =
     useState<LearningObjective | null>(null);
@@ -48,25 +56,25 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
-  }, [activeTopicId, activeSubTopic, activeSystemId]);
+  }, [activeTopicId, activeSubTopicId, activeSystemId]);
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = processCSV(
-          event.target?.result as string,
-          curriculumData,
-        );
-        if (result.success) {
-          setCurriculumData(result.data);
-          alert(`Imported ${result.count} objectives.`);
-        }
-      };
-      reader.readAsText(file);
-      e.target.value = '';
-    }
+    // const file = e.target.files?.[0];
+    // if (file) {
+    //   const reader = new FileReader();
+    //   reader.onload = (event) => {
+    //     const result = processCSV(
+    //       event.target?.result as string,
+    //       curriculumData,
+    //     );
+    //     if (result.success) {
+    //       setCurriculumData(result.data);
+    //       alert(`Imported ${result.count} objectives.`);
+    //     }
+    //   };
+    //   reader.readAsText(file);
+    //   e.target.value = '';
+    // }
   };
 
   const handleCreateLinkedItem = (obj: LearningObjective) => {
@@ -88,12 +96,12 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
       <span
         className="font-black text-slate-900 uppercase tracking-wide cursor-pointer hover:text-[#1BD183] transition-colors flex items-center gap-2"
         onClick={() => {
-          setActiveTopicId(null);
-          setActiveSubTopic(null);
+          handleTopicSelect(null);
+          handleSubTopicSelect(null);
         }}
       >
         <Activity size={16} className="text-[#1BA6D1]" />
-        {activeSystem?.name}
+        {activeSystem?.title}
       </span>
       {activeTopic && (
         <>
@@ -103,17 +111,17 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
           />
           <span
             className={`font-bold uppercase tracking-wide cursor-pointer transition-colors ${
-              activeSubTopic
+              activeSubTopicId
                 ? 'text-slate-900 hover:text-[#1BD183]'
                 : 'text-[#1BD183] bg-[#1BD183]/5 px-3 py-1 rounded-lg text-xs border border-[#1BD183]/10'
             }`}
-            onClick={() => setActiveSubTopic(null)}
+            onClick={() => handleSubTopicSelect(null)}
           >
-            {activeTopic.name}
+            {activeTopic.title}
           </span>
         </>
       )}
-      {activeSubTopic && (
+      {activeSubTopicId && (
         <>
           <ChevronRight
             size={14}
@@ -121,7 +129,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
           />
           <span className="font-bold text-[#1BD183] bg-[#1BD183]/5 px-3 py-1 rounded-lg text-xs uppercase tracking-wide border border-[#1BD183]/10 flex items-center gap-2">
             <Network size={12} />
-            {activeSubTopic}
+            {activeSubTopic.title}
           </span>
         </>
       )}
@@ -152,7 +160,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-white/50 backdrop-blur-sm relative">
         <WorkbenchHeader
           onImport={() => fileInputRef.current?.click()}
-          onExport={() => exportToCSV(curriculumData)}
+          onExport={() => /* exportToCSV(curriculumData) */ console.log("export")}
           searchTerm={contentSearch}
           setSearch={setContentSearch}
           searchPlaceholder={
@@ -179,12 +187,12 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
             ) : (
                 <TopicGrid
                 topics={activeSystem?.topics || []}
-                onSelect={setActiveTopicId}
+                onSelect={handleTopicSelect}
                 searchTerm={contentSearch}
                 />
             )
           ) : !activeSubTopic ? (
-            areSubTopicsLoading ? (
+            areTopicsLoading ? (
                <div className="flex flex-col items-center justify-center py-20">
                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1BD183] mb-4"></div>
                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Syndromes...</p>
@@ -192,8 +200,8 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
             ) : (
                 <SubTopicGrid
                 topic={activeTopic!}
-                onSelect={setActiveSubTopic}
-                onBack={() => setActiveTopicId(null)}
+                onSelect={handleSubTopicSelect}
+                onBack={() => handleTopicSelect(null)}
                 searchTerm={contentSearch}
                 />
             )
@@ -204,10 +212,15 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
               searchTerm={contentSearch}
               bloomFilter={bloomFilter}
               setBloomFilter={setBloomFilter}
-              onBack={() => setActiveSubTopic(null)}
+              onBack={() => handleSubTopicSelect(null)}
               onEdit={updateObjective}
               onDelete={deleteObjective}
               onViewLinked={setViewLinkedItems}
+              isLoading={areObjectivesLoading}
+              currentPage={objectivesPage}
+              totalItems={objectivesTotal}
+              itemsPerPage={objectivesLimit}
+              onPageChange={setObjectivesPage}
             />
           )}
         </div>

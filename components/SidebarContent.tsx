@@ -6,10 +6,12 @@ import {
   Stethoscope, 
   Users, 
   BookOpen, 
-  LineChart, 
+  LineChart,
+  Cpu,
   ClipboardList, 
   Database,
   Wand2,
+  GraduationCap
 } from 'lucide-react';
 import { View } from '../types';
 
@@ -20,17 +22,32 @@ interface SidebarContentProps {
 }
 
 const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate, onLogout }) => {
-  const navItems = [
-    { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
-    { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
-    { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
-    { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
-    { id: 'MASTERY', label: 'Student Mastery', icon: Users },
-    { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
-    { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
-    // { id: 'AGENTS', label: 'AI Agent Fleet', icon: Cpu },
-    { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList }
-  ];
+  
+  const isActive = (view: View) => activeView === view;
+
+  const getButtonClass = (view: View) => {
+    return isActive(view)
+      ? "w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all relative group bg-[#00AA55] text-white shadow-xl shadow-emerald-900/20"
+      : "w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all relative group text-gray-400 hover:bg-white/10 hover:text-white";
+  };
+
+  const getIconClass = (view: View) => {
+    return isActive(view)
+      ? "text-white"
+      : "text-gray-500 group-hover:text-[#00AA55]";
+  };
+
+  const getSubMenuButtonClass = (view: View) => {
+    return isActive(view)
+      ? "w-full flex items-center gap-3 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all relative group text-white"
+      : "w-full flex items-center gap-3 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all relative group text-gray-500 hover:text-white";
+  };
+
+  const getSubMenuDotClass = (view: View) => {
+    return isActive(view)
+      ? "w-1.5 h-1.5 rounded-full bg-[#00AA55]"
+      : "w-1.5 h-1.5 rounded-full bg-gray-700 group-hover:bg-gray-500";
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#0F1110] border-r border-slate-800 text-slate-900 font-['Inter']">
@@ -43,24 +60,92 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
             />
           </div>
 
-          <nav className="space-y-1.5">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id as View)}
-                className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-bold transition-all relative ${
-                  activeView === item.id 
-                  ? 'bg-[#1BD183] text-[#0F1110] shadow-lg shadow-black/30' 
-                  : 'text-[#848E8A] hover:bg-slate-800 hover:text-slate-200'
-                }`}
+          <nav className="space-y-1">
+            {/* Mission Control */}
+            <button 
+              onClick={() => onNavigate('DASHBOARD')}
+              className={getButtonClass('DASHBOARD')}
+            >
+              <LayoutDashboard size={20} className={getIconClass('DASHBOARD')} />
+              Mission Control
+            </button>
+
+            {/* Faculty Command Group */}
+            <button 
+              onClick={() => onNavigate('FACULTY')}
+              className={getButtonClass('FACULTY')}
+            >
+              <GraduationCap size={20} className={getIconClass('FACULTY')} />
+              Faculty Command
+            </button>
+            
+            <div className="pl-6 space-y-1 mt-1 mb-2 relative">
+              <div className="absolute left-10 top-2 bottom-2 w-px bg-white/10"></div>
+              
+              <button 
+                onClick={() => onNavigate('CURRICULUM')}
+                className={getSubMenuButtonClass('CURRICULUM')}
               >
-                <item.icon size={20} className={activeView === item.id ? 'text-[#0F1110]' : 'text-[#848E8A]'} />
-                {item.label}
-                {item.id === 'WORKBENCH' && (
-                  <span className="absolute right-4 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></span>
-                )}
+                <div className={getSubMenuDotClass('CURRICULUM')}></div>
+                Curriculum Workbench
               </button>
-            ))}
+              
+              <button 
+                onClick={() => onNavigate('MASTERY')}
+                className={getSubMenuButtonClass('MASTERY')}
+              >
+                <div className={getSubMenuDotClass('MASTERY')}></div>
+                Student Mastery
+              </button>
+            </div>
+
+            {/* Item Workbench */}
+            <button 
+              onClick={() => onNavigate('WORKBENCH')}
+              className={getButtonClass('WORKBENCH')}
+            >
+              <Wand2 size={20} className={getIconClass('WORKBENCH')} />
+              Item Workbench
+            </button>
+
+            {/* Item Repository Group */}
+            <button 
+              onClick={() => onNavigate('BANK_EXPLORER')}
+              className={getButtonClass('BANK_EXPLORER')}
+            >
+              <Database size={20} className={getIconClass('BANK_EXPLORER')} />
+              Item Repository
+            </button>
+
+            <div className="pl-6 space-y-1 mt-1 mb-2 relative">
+              <div className="absolute left-10 top-2 bottom-2 w-px bg-white/10"></div>
+              <button 
+                onClick={() => onNavigate('QB_HEALTH')}
+                className={getSubMenuButtonClass('QB_HEALTH')}
+              >
+                <div className={getSubMenuDotClass('QB_HEALTH')}></div>
+                QB Health
+              </button>
+            </div>
+
+            {/* Assessment Quality */}
+            <button 
+              onClick={() => onNavigate('ASSESSMENT')}
+              className={getButtonClass('ASSESSMENT')}
+            >
+              <LineChart size={20} className={getIconClass('ASSESSMENT')} />
+              Assessment Quality
+            </button>
+
+            {/* Blueprint Builder */}
+            <button 
+              onClick={() => onNavigate('BLUEPRINT')}
+              className={getButtonClass('BLUEPRINT')}
+            >
+              <ClipboardList size={20} className={getIconClass('BLUEPRINT')} />
+              Blueprint Builder
+            </button>
+
           </nav>
         </div>
 
@@ -75,7 +160,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
           >
             <LogOut size={18} /> Sign Out
           </button>
-          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-whitespace transition">
+          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-white transition">
             <Settings size={18} /> System Config
           </button>
         </div>

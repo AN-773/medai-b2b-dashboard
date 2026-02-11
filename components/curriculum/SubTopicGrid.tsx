@@ -1,17 +1,35 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Network, ChevronRight, Plus, Filter, ArrowLeft } from 'lucide-react';
-import { USMLEStandardTopic } from '../../types';
+import CreateSubTopicModal from './CreateSubTopicModal';
+import { Syndrome, Topic } from '@/types/TestsServiceTypes';
 
 interface SubTopicGridProps {
-  topic: USMLEStandardTopic;
-  onSelect: (subTopic: string) => void;
+  topic: Topic;
+  onSelect: (subTopic: Syndrome) => void;
   onBack: () => void;
   searchTerm: string;
+  onCreateSubTopic?: (data: { name: string; identifier?: string }) => Promise<void>;
 }
 
-const SubTopicGrid: React.FC<SubTopicGridProps> = ({ topic, onSelect, onBack, searchTerm }) => {
-  const subTopics = topic.subTopics?.filter(s => s.toLowerCase().includes(searchTerm.toLowerCase())) || [];
+const SubTopicGrid: React.FC<SubTopicGridProps> = ({ 
+  topic, 
+  onSelect, 
+  onBack, 
+  searchTerm,
+  onCreateSubTopic 
+}: SubTopicGridProps) => {
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const subTopics: Syndrome[] = topic.syndromes?.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())) || [];
+
+  const handleCreateSubTopic = async (data: { name: string; identifier?: string }) => {
+    if (onCreateSubTopic) {
+      await onCreateSubTopic(data);
+    } else {
+      // Placeholder - will be replaced when API endpoints are provided
+      console.log('Create subtopic:', data);
+      throw new Error('API endpoint not yet implemented');
+    }
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500">
@@ -21,17 +39,15 @@ const SubTopicGrid: React.FC<SubTopicGridProps> = ({ topic, onSelect, onBack, se
         </button>
         <div>
            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">Select Specific Subtopic</h2>
-           <p className="text-sm font-medium text-slate-500 mt-1">{topic.name}</p>
+           <p className="text-sm font-medium text-slate-500 mt-1">{topic.title}</p>
         </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {subTopics.map(sub => {
-          // Count objectives for this subtopic
-          const objCount = topic.objectives?.filter(o => o.subTopic === sub).length || 0;
           return (
             <div 
-              key={sub}
+              key={sub.id}
               onClick={() => onSelect(sub)}
               className="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:border-[#1BD183] hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden"
             >
@@ -43,16 +59,16 @@ const SubTopicGrid: React.FC<SubTopicGridProps> = ({ topic, onSelect, onBack, se
                   <ChevronRight size={14} className="text-slate-300 group-hover:text-[#1BD183]" />
                 </div>
               </div>
-              <h3 className="font-black text-xl text-slate-900 mb-2 relative z-10 pr-4 leading-tight">{sub}</h3>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide relative z-10">
-                {objCount} Learning Objectives
-              </p>
+              <h3 className="font-black text-xl text-slate-900 mb-2 relative z-10 pr-4 leading-tight">{sub.title}</h3>
             </div>
           );
         })}
-        {/* Add New Subtopic Stub */}
-        <button className="border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center text-slate-400 hover:border-[#1BD183] hover:bg-[#1BD183]/30 transition-all min-h-[240px] group">
-          <div className="p-4 bg-slate-50 rounded-full mb-4 group-hover:bg-white group-hover:shadow-md group-hover:text-[#1BD183] transition-all">
+        {/* Add New Subtopic Button */}
+        <button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center text-slate-400 hover:border-[#6366f1] hover:bg-[#6366f1]/10 transition-all min-h-[240px] group"
+        >
+          <div className="p-4 bg-slate-50 rounded-full mb-4 group-hover:bg-white group-hover:shadow-md group-hover:text-[#6366f1] transition-all">
              <Plus size={32} />
           </div>
           <span className="font-black text-xs uppercase tracking-widest">Add New Subtopic</span>
@@ -64,6 +80,13 @@ const SubTopicGrid: React.FC<SubTopicGridProps> = ({ topic, onSelect, onBack, se
             <p className="text-xs font-black uppercase tracking-widest">No subtopics found for this topic</p>
         </div>
       )}
+
+      <CreateSubTopicModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateSubTopic}
+        topicName={topic.title}
+      />
     </div>
   );
 };

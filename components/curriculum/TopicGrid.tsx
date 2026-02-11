@@ -1,15 +1,35 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FileText, ChevronRight, Plus, Filter } from 'lucide-react';
-import { USMLEStandardTopic } from '../../types';
+import CreateTopicModal from './CreateTopicModal';
+import { Topic } from '@/types/TestsServiceTypes';
 
 interface TopicGridProps {
-  topics: USMLEStandardTopic[];
+  topics: Topic[];
   onSelect: (id: string) => void;
   searchTerm: string;
+  onCreateTopic?: (data: { name: string; identifier?: string }) => Promise<void>;
+  organSystemName?: string;
 }
 
-const TopicGrid: React.FC<TopicGridProps> = ({ topics, onSelect, searchTerm }) => {
-  const filteredTopics = topics.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+const TopicGrid: React.FC<TopicGridProps> = ({ 
+  topics, 
+  onSelect, 
+  searchTerm, 
+  onCreateTopic,
+  organSystemName 
+}: TopicGridProps) => {
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const filteredTopics: Topic[] = topics.filter(t => t.title.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const handleCreateTopic = async (data: { name: string; identifier?: string }) => {
+    if (onCreateTopic) {
+      await onCreateTopic(data);
+    } else {
+      // Placeholder - will be replaced when API endpoints are provided
+      console.log('Create topic:', data);
+      throw new Error('API endpoint not yet implemented');
+    }
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -29,13 +49,16 @@ const TopicGrid: React.FC<TopicGridProps> = ({ topics, onSelect, searchTerm }) =
                 <ChevronRight size={14} className="text-slate-300 group-hover:text-[#1BD183]" />
               </div>
             </div>
-            <h3 className="font-black text-xl text-slate-900 mb-2 relative z-10 pr-4 leading-tight">{topic.name}</h3>
+            <h3 className="font-black text-xl text-slate-900 mb-2 relative z-10 pr-4 leading-tight">{topic.title}</h3>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide relative z-10">
-              {topic.subTopics?.length || 0} Subtopics • {topic.objectives?.length || 0} Objectives
+              {topic.syndromes?.length || 0} Subtopics
             </p>
           </div>
         ))}
-        <button className="border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] hover:bg-[#1BD183]/30 transition-all min-h-[240px] group">
+        <button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] hover:bg-[#1BD183]/10 transition-all min-h-[240px] group"
+        >
           <div className="p-4 bg-slate-50 rounded-full mb-4 group-hover:bg-white group-hover:shadow-md transition-all">
              <Plus size={32} />
           </div>
@@ -48,6 +71,13 @@ const TopicGrid: React.FC<TopicGridProps> = ({ topics, onSelect, searchTerm }) =
             <p className="text-xs font-black uppercase tracking-widest">No topics found</p>
         </div>
       )}
+
+      <CreateTopicModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateTopic}
+        organSystemName={organSystemName}
+      />
     </div>
   );
 };

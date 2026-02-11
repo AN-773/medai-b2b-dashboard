@@ -1,30 +1,24 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Sparkles, 
   ArrowLeft, 
   Save, 
   Eye, 
   Check, 
-  Upload, 
   X,
-  Target,
-  BookOpen,
   Layout,
-  Link as LinkIcon,
-  Trash2,
-  Plus,
-  Activity,
-  BarChart2,
-  Users,
-  Clock,
-  GripVertical,
-  AlertTriangle,
   FileText,
   ImageIcon,
-  Wand2
+  Wand2,
+  Layers,
+  Search,
+  Brain,
+  Loader2
 } from 'lucide-react';
 import { BloomsLevel, Question, QuestionOption, QuestionType, Reference } from '../types';
+import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
+import SearchableSelect, { SelectOption } from './SearchableSelect';
 
 
 interface QuestionEditorProps {
@@ -63,11 +57,17 @@ const RenderMarkdown = ({ content }: { content: string }) => {
   );
 };
 
+// Cognitive Skill / Bloom's Level options
+const COGNITIVE_SKILLS = [
+  { id: 'remember', label: 'Remember', description: 'Recall facts and basic concepts' },
+  { id: 'understand', label: 'Understand', description: 'Explain ideas or concepts' },
+  { id: 'apply', label: 'Apply', description: 'Use information in new situations' },
+  { id: 'analyze', label: 'Analyze', description: 'Draw connections among ideas' },
+];
+
 const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
-  const [sidebarWidth, setSidebarWidth] = useState(500); 
-  const [topic, setTopic] = useState('');
+  const [sidebarWidth, setSidebarWidth] = useState(480); 
   const [bloomsLevel, setBloomsLevel] = useState<BloomsLevel>(BloomsLevel.Understand);
-  const [genLearningObjectives, setGenLearningObjectives] = useState(''); 
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -84,11 +84,60 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   const [learningObjectives, setLearningObjectives] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
-  const [newRefTitle, setNewRefTitle] = useState('');
-  const [newRefUrl, setNewRefUrl] = useState('');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+
+  // Curriculum Data Hook
+  const {
+    organSystems,
+    topics,
+    syndromes,
+    objectives,
+    isLoadingOrganSystems,
+    isLoadingTopics,
+    isLoadingObjectives,
+    selectedOrganSystemId,
+    selectedTopicId,
+    selectedSyndromeId,
+    selectedObjectiveId,
+    objectiveSearchQuery,
+    setSelectedOrganSystemId,
+    setSelectedTopicId,
+    setSelectedSyndromeId,
+    setSelectedObjectiveId,
+    setObjectiveSearchQuery,
+    searchObjectives,
+    fillFiltersFromObjective,
+    clearFilters
+  } = useQuestionEditorData();
+
+  // Transform data to SelectOption format for SearchableSelect
+  const organSystemOptions: SelectOption[] = useMemo(() => 
+    organSystems.map(os => ({ id: os.id, name: os.title })),
+  [organSystems]);
+
+  const topicOptions: SelectOption[] = useMemo(() => 
+    topics.map(t => ({ id: t.id, name: t.title })),
+  [topics]);
+
+  const syndromeOptions: SelectOption[] = useMemo(() => 
+    syndromes.map(s => ({ id: s.id, name: s.title })),
+  [syndromes]);
+
+  const objectiveOptions: SelectOption[] = useMemo(() => 
+    objectives.map(obj => ({ id: obj.id, name: obj.title || 'Untitled Objective' })),
+  [objectives]);
+
+  // Debounced objective search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (objectiveSearchQuery && objectiveSearchQuery.length >= 2) {
+        searchObjectives(objectiveSearchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [objectiveSearchQuery, searchObjectives]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -105,7 +154,6 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       setTags(initialQuestion.tags);
       setBloomsLevel(initialQuestion.bloomsLevel);
       if (initialQuestion.references) setReferences(initialQuestion.references);
-      if (initialQuestion.tags.length > 0) setTopic(initialQuestion.tags[0]);
     }
   }, [initialQuestion]);
 
@@ -124,25 +172,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   };
 
   const handleGenerate = async () => {
-    if (!topic) return;
+    if (!selectedTopicId) return;
     setIsGenerating(true);
     setError(null);
     try {
-      // const generated = await generateQuestionWithAI({
-      //   topic,
-      //   bloomsLevel,
-      //   learningObjectives: genLearningObjectives,
-      //   additionalContext,
-      //   image: attachedImage || undefined
-      // });
+      // AI generation placeholder
       const generated = null;
       if (generated) {
-        setQuestionText(generated.text || '');
-        setExplanation(generated.explanation || '');
-        if (generated.options) setOptions(generated.options as QuestionOption[]);
-        if (generated.learningObjectives) setLearningObjectives(generated.learningObjectives);
-        if (generated.references) setReferences(generated.references as Reference[]);
-        if (generated.tags) setTags(generated.tags);
+        // Handle generated content
       }
     } catch (e) {
       setError("Failed to generate question. Please try again.");
@@ -158,8 +195,6 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     }
     setIsGeneratingImage(true);
     try {
-      const prompt = topic || questionText.slice(0, 100);
-      // const imageUrl = await generateClinicalImage(prompt);
       const imageUrl = null;
       if (imageUrl) setAttachedImage(imageUrl);
     } catch (e) {
@@ -181,9 +216,9 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       type: QuestionType.SingleBestAnswer,
       options,
       explanation,
-      learningObjectives,
+      learningObjectives: selectedObjectiveId ? [selectedObjectiveId, ...learningObjectives] : learningObjectives,
       references,
-      tags,
+      tags: selectedOrganSystemId ? [selectedOrganSystemId, ...tags] : tags,
       createdAt: initialQuestion ? initialQuestion.createdAt : new Date().toISOString(),
       status: targetStatus,
       analysis: initialQuestion?.analysis 
@@ -191,8 +226,15 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     onSave(newQuestion);
   };
 
+  // Find display names for selected items
+  const selectedOrganSystem = organSystems.find(os => os.id === selectedOrganSystemId);
+  const selectedTopic = topics.find(t => t.id === selectedTopicId);
+  const selectedSyndrome = syndromes.find(s => s.id === selectedSyndromeId);
+  const selectedObjective = objectives.find(o => o.id === selectedObjectiveId);
+
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
+      {/* Top Toolbar */}
       <div className="bg-white border-b border-slate-200 px-4 xl:px-6 py-3 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 sticky top-0 z-10 h-auto xl:h-[72px]">
         <div className="flex items-center gap-4 w-full xl:w-auto">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
@@ -221,102 +263,299 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           </button>
         </div>
       </div>
+
       <div className="flex-1 overflow-hidden flex flex-col xl:flex-row">
-        <div className={`bg-white flex flex-col overflow-y-auto flex-shrink-0 border-b xl:border-b-0 xl:border-r border-slate-200 ${viewMode === 'preview' ? 'hidden md:flex' : 'flex'}`} style={{ width: isMobile ? '100%' : sidebarWidth, height: isMobile ? 'auto' : '100%' }}>
+        {/* Sidebar */}
+        <div className={`bg-white flex flex-col overflow-y-auto flex-shrink-0 border-b xl:border-b-0 xl:border-r border-slate-200 custom-scrollbar ${viewMode === 'preview' ? 'hidden md:flex' : 'flex'}`} style={{ width: isMobile ? '100%' : sidebarWidth, height: isMobile ? 'auto' : '100%' }}>
+          
+          {/* Curriculum Alignment Section */}
+          <div className="p-5 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+              <Layers className="text-[#1BD183]" size={18} /> Curriculum Alignment
+            </h3>
+            
+            {/* Objective Search */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Search Objectives</label>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  value={objectiveSearchQuery}
+                  onChange={(e) => setObjectiveSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
+                  placeholder="Search by objective text..." 
+                />
+                {isLoadingObjectives && objectiveSearchQuery && (
+                  <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1BD183] animate-spin" />
+                )}
+              </div>
+              {/* Search Results Dropdown */}
+              {objectiveSearchQuery && objectives.length > 0 && !selectedSyndromeId && (
+                <div className="mt-2 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {objectives.map(obj => (
+                    <button
+                      key={obj.id}
+                      onClick={() => {
+                        fillFiltersFromObjective(obj);
+                        setObjectiveSearchQuery('');
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0"
+                    >
+                      <span className="font-medium text-slate-800 line-clamp-2">{obj.title}</span>
+                      {obj.syndrome && (
+                        <span className="text-xs text-slate-500 block mt-0.5">{obj.syndrome.title}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-400 text-center my-3">— or filter by hierarchy —</div>
+
+            {/* Cascading Filters */}
+            <div className="space-y-3">
+              {/* Organ System */}
+              <SearchableSelect
+                label="Organ System"
+                options={organSystemOptions}
+                value={selectedOrganSystemId || 'ALL'}
+                onChange={(val) => setSelectedOrganSystemId(val === 'ALL' ? '' : val)}
+                disabled={isLoadingOrganSystems}
+                placeholder="Select Organ System..."
+                allOption={{ id: 'ALL', name: 'Select Organ System...' }}
+              />
+              {isLoadingOrganSystems && (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 size={12} className="animate-spin" /> Loading organ systems...
+                </div>
+              )}
+
+              {/* Topic */}
+              <SearchableSelect
+                label="Topic"
+                options={topicOptions}
+                value={selectedTopicId || 'ALL'}
+                onChange={(val) => setSelectedTopicId(val === 'ALL' ? '' : val)}
+                disabled={!selectedOrganSystemId || isLoadingTopics}
+                placeholder="Select Topic..."
+                allOption={{ id: 'ALL', name: 'Select Topic...' }}
+              />
+              {isLoadingTopics && (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 size={12} className="animate-spin" /> Loading topics...
+                </div>
+              )}
+
+              {/* Syndrome (Subtopic) */}
+              <SearchableSelect
+                label="Syndrome / Subtopic"
+                options={syndromeOptions}
+                value={selectedSyndromeId || 'ALL'}
+                onChange={(val) => setSelectedSyndromeId(val === 'ALL' ? '' : val)}
+                disabled={!selectedTopicId || syndromes.length === 0}
+                placeholder="Select Syndrome..."
+                allOption={{ id: 'ALL', name: 'Select Syndrome...' }}
+              />
+
+              {/* Objective */}
+              <SearchableSelect
+                label="Learning Objective"
+                options={objectiveOptions}
+                value={selectedObjectiveId || 'ALL'}
+                onChange={(val) => setSelectedObjectiveId(val === 'ALL' ? '' : val)}
+                disabled={!selectedSyndromeId || objectives.length === 0}
+                placeholder="Select Objective..."
+                allOption={{ id: 'ALL', name: 'Select Objective...' }}
+              />
+              {isLoadingObjectives && selectedSyndromeId && (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 size={12} className="animate-spin" /> Loading objectives...
+                </div>
+              )}
+
+              {/* Clear Filters */}
+              {(selectedOrganSystemId || objectiveSearchQuery) && (
+                <button 
+                  onClick={clearFilters}
+                  className="w-full text-xs text-slate-500 hover:text-slate-700 py-1 transition-colors"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Cognitive Skill (Bloom's Level) Section */}
+          <div className="p-5 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+              <Brain className="text-[#1BD183]" size={18} /> Cognitive Skill
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.values(BloomsLevel).map((level) => (
+                <button
+                  key={level}
+                  onClick={() => setBloomsLevel(level)}
+                  className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                    bloomsLevel === level 
+                      ? 'bg-primary-gradient text-white shadow-md' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* AI Generator Section */}
           <div className="p-5 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
               <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Topic</label>
-                <input value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="e.g. Diabetic Ketoacidosis" />
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context</label>
+                <textarea 
+                  value={additionalContext}
+                  onChange={(e) => setAdditionalContext(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none" 
+                  placeholder="Add specific focus areas, clinical scenarios, or patient demographics..." 
+                />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Bloom's Level</label>
-                <select value={bloomsLevel} onChange={(e) => setBloomsLevel(e.target.value as BloomsLevel)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg">
-                  {Object.values(BloomsLevel).map(level => (<option key={level} value={level}>{level}</option>))}
-                </select>
-              </div>
-              <button onClick={handleGenerate} disabled={isGenerating || !topic} className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm">
-                {isGenerating ? "Generating..." : "Generate Draft"}
+              <button 
+                onClick={handleGenerate} 
+                disabled={isGenerating || !selectedTopicId} 
+                className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Generate Draft
+                  </>
+                )}
               </button>
+              {!selectedTopicId && (
+                <p className="text-xs text-slate-400 text-center">Select a topic to enable AI generation</p>
+              )}
             </div>
           </div>
           
+          {/* Clinical Visuals Section */}
           <div className="p-5 border-b border-slate-100">
-             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-                <ImageIcon className="text-[#1BD183]" size={18} /> Clinical Visuals
-             </h3>
-             <div className="space-y-4">
-                {attachedImage ? (
-                  <div className="relative rounded-xl overflow-hidden group">
-                     <img src={attachedImage} alt="Clinical Visual" className="w-full h-40 object-cover" />
-                     <button onClick={() => setAttachedImage(null)} className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={handleGenerateImage}
-                    disabled={isGeneratingImage}
-                    className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 p-6 rounded-2xl text-slate-400 hover:border-emerald-300 hover:text-emerald-600 transition-all group"
-                  >
-                    {isGeneratingImage ? <div className="animate-spin text-emerald-500"><Wand2 size={24}/></div> : <Wand2 size={24} />}
-                    <span className="text-xs font-bold uppercase tracking-widest">{isGeneratingImage ? "Synthesizing..." : "Generate AI Visual"}</span>
-                  </button>
-                )}
-             </div>
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+              <ImageIcon className="text-[#1BD183]" size={18} /> Clinical Visuals
+            </h3>
+            <div className="space-y-4">
+              {attachedImage ? (
+                <div className="relative rounded-xl overflow-hidden group">
+                  <img src={attachedImage} alt="Clinical Visual" className="w-full h-40 object-cover" />
+                  <button onClick={() => setAttachedImage(null)} className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleGenerateImage}
+                  disabled={isGeneratingImage}
+                  className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 p-6 rounded-2xl text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] transition-all group"
+                >
+                  {isGeneratingImage ? <Loader2 size={24} className="animate-spin text-[#1BD183]" /> : <Wand2 size={24} />}
+                  <span className="text-xs font-bold uppercase tracking-widest">{isGeneratingImage ? "Synthesizing..." : "Generate AI Visual"}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 xl:p-8 relative">
-           {viewMode === 'edit' ? (
-             <div className="max-w-3xl mx-auto space-y-8">
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                  <label className="block text-sm font-semibold text-slate-900 mb-2">Question Stem</label>
-                  <textarea value={questionText} onChange={(e) => setQuestionText(e.target.value)} className="w-full p-4 text-lg border border-slate-200 rounded-lg min-h-[150px]" placeholder="Clinical scenario..."/>
-                  {attachedImage && <img src={attachedImage} className="mt-4 rounded-xl w-full h-64 object-cover border border-slate-100 shadow-sm" />}
-                </div>
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                   <label className="block text-sm font-semibold text-slate-900 mb-4">Answer Options</label>
-                   <div className="space-y-3">
-                     {options.map((option, idx) => (
-                       <div key={option.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
-                          <button onClick={() => setOptions(options.map(o => ({...o, isCorrect: o.id === option.id})))} className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${option.isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'}`}>
-                            {option.isCorrect && <Check size={14} />}
-                          </button>
-                          <input value={option.text} onChange={(e) => { const newOpts = [...options]; newOpts[idx].text = e.target.value; setOptions(newOpts); }} className="flex-1 bg-transparent text-slate-800 focus:outline-none" placeholder={`Option ${String.fromCharCode(65 + idx)}`}/>
-                       </div>
-                     ))}
-                   </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                  <label className="block text-sm font-semibold text-slate-900 mb-2">Explanation</label>
-                  <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} className="w-full p-4 text-sm border border-slate-200 rounded-lg min-h-[200px] bg-indigo-50/20" placeholder="Support Markdown..."/>
-                </div>
-             </div>
-           ) : (
-             <div className="max-w-2xl mx-auto">
-               <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-                 <div className="p-8">
-                   {attachedImage && <img src={attachedImage} className="w-full h-80 object-cover mb-8 rounded-xl shadow-md" />}
-                   <p className="text-lg text-slate-900 leading-relaxed mb-8 font-serif">{questionText || "Question text..."}</p>
-                   <div className="space-y-3">
-                     {options.map((opt, idx) => (
-                       <div key={opt.id} className="p-4 rounded-xl border border-slate-200 flex gap-4">
-                         <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500">{String.fromCharCode(65 + idx)}</span>
-                         <span className="text-slate-700">{opt.text}</span>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-                 {explanation && (
-                    <div className="bg-indigo-50 border-t border-indigo-100 p-8">
-                      <h4 className="text-sm font-bold text-indigo-900 mb-2 uppercase tracking-widest">Psychometric Explanation</h4>
-                      <RenderMarkdown content={explanation} />
+
+        {/* Main Editor Area */}
+        <div className="flex-1 overflow-y-auto p-4 xl:p-8 relative custom-scrollbar">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+              <X size={16} />
+              {error}
+              <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {viewMode === 'edit' ? (
+            <div className="max-w-3xl mx-auto space-y-8">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">Question Stem</label>
+                <textarea 
+                  value={questionText} 
+                  onChange={(e) => setQuestionText(e.target.value)} 
+                  className="w-full p-4 text-lg border border-slate-200 rounded-lg min-h-[150px] focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
+                  placeholder="Clinical scenario..."
+                />
+                {attachedImage && <img src={attachedImage} className="mt-4 rounded-xl w-full h-64 object-cover border border-slate-100 shadow-sm" />}
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-4">Answer Options</label>
+                <div className="space-y-3">
+                  {options.map((option, idx) => (
+                    <div key={option.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
+                      <button 
+                        onClick={() => setOptions(options.map(o => ({...o, isCorrect: o.id === option.id})))} 
+                        className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${option.isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'}`}
+                      >
+                        {option.isCorrect && <Check size={14} />}
+                      </button>
+                      <input 
+                        value={option.text} 
+                        onChange={(e) => { 
+                          const newOpts = [...options]; 
+                          newOpts[idx].text = e.target.value; 
+                          setOptions(newOpts); 
+                        }} 
+                        className="flex-1 bg-transparent text-slate-800 focus:outline-none" 
+                        placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                      />
                     </div>
-                 )}
-               </div>
-             </div>
-           )}
+                  ))}
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">Explanation</label>
+                <textarea 
+                  value={explanation} 
+                  onChange={(e) => setExplanation(e.target.value)} 
+                  className="w-full p-4 text-sm border border-slate-200 rounded-lg min-h-[200px] bg-indigo-50/20 focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
+                  placeholder="Support Markdown..."
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto">
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+                <div className="p-8">
+                  {attachedImage && <img src={attachedImage} className="w-full h-80 object-cover mb-8 rounded-xl shadow-md" />}
+                  <p className="text-lg text-slate-900 leading-relaxed mb-8 font-serif">{questionText || "Question text..."}</p>
+                  <div className="space-y-3">
+                    {options.map((opt, idx) => (
+                      <div key={opt.id} className="p-4 rounded-xl border border-slate-200 flex gap-4">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500">{String.fromCharCode(65 + idx)}</span>
+                        <span className="text-slate-700">{opt.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {explanation && (
+                  <div className="bg-indigo-50 border-t border-indigo-100 p-8">
+                    <h4 className="text-sm font-bold text-indigo-900 mb-2 uppercase tracking-widest">Psychometric Explanation</h4>
+                    <RenderMarkdown content={explanation} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
