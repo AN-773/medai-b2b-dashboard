@@ -1,11 +1,5 @@
 {
   "platform": {
     "apiRuntime": "node:20"
-  },
-  "routes": [
-    {
-      "route": "/*",
-      "rewrite": "/index.html"
-    }
-  ]
+  }
 }
