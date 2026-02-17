@@ -41,17 +41,22 @@ interface UseQuestionEditorDataReturn {
   
   // Auto-fill from objective (for search path)
   fillFiltersFromObjective: (objective: LearningObjective) => void;
+  
+  // Batch set all filters
+  setAllFilters: (organSystemId: string, topicId: string, syndromeId: string, objectiveId: string) => void;
 }
 
 export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   // Data State
   const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
   const [topicsCache, setTopicsCache] = useState<Record<string, Topic[]>>({});
+  const [syndromes, setSyndromes] = useState<Syndrome[]>([]);
   const [objectives, setObjectives] = useState<LearningObjective[]>([]);
   
   // Loading States
   const [isLoadingOrganSystems, setIsLoadingOrganSystems] = useState(true);
   const [isLoadingTopics, setIsLoadingTopics] = useState(false);
+  const [isLoadingSyndromes, setIsLoadingSyndromes] = useState(false);
   const [isLoadingObjectives, setIsLoadingObjectives] = useState(false);
   
   // Selected Values
@@ -87,10 +92,10 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     const fetchTopics = async () => {
       setIsLoadingTopics(true);
       try {
-        const topics = await testsService.getTopics(selectedOrganSystemId);
+        const response = await testsService.getTopics(selectedOrganSystemId);
         setTopicsCache(prev => ({
           ...prev,
-          [selectedOrganSystemId]: topics || []
+          [selectedOrganSystemId]: response.items || []
         }));
       } catch (error) {
         console.error('Failed to fetch topics:', error);
@@ -101,17 +106,41 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     fetchTopics();
   }, [selectedOrganSystemId, topicsCache]);
 
+  // Fetch Syndromes when Topic changes
+  useEffect(() => {
+    if (!selectedTopicId) {
+      // setSyndromes([]);
+      return;
+    }
+    
+    const fetchSyndromes = async () => {
+      setIsLoadingSyndromes(true);
+      try {
+        const response = await testsService.getSyndromes(selectedTopicId);
+        setSyndromes(response.items);
+      } catch (error) {
+        console.error('Failed to fetch syndromes:', error);
+      } finally {
+        setIsLoadingSyndromes(false);
+      }
+    };
+    fetchSyndromes();
+  }, [selectedTopicId]);
+
   // Fetch Objectives when Syndrome changes
   useEffect(() => {
     if (!selectedSyndromeId) {
-      setObjectives([]);
+      // Only clear objectives if not in search mode
+      // if (!objectiveSearchQuery) {
+      //   setObjectives([]);
+      // }
       return;
     }
     
     const fetchObjectives = async () => {
       setIsLoadingObjectives(true);
       try {
-        const response = await testsService.getLearningObjectives(selectedSyndromeId);
+        const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId);
         setObjectives(response.items);
       } catch (error) {
         console.error('Failed to fetch objectives:', error);
@@ -127,18 +156,13 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     return topicsCache[selectedOrganSystemId] || [];
   }, [topicsCache, selectedOrganSystemId]);
 
-  const syndromes = useMemo(() => {
-    if (!selectedTopicId) return [];
-    const topic = topics.find(t => t.id === selectedTopicId);
-    return topic?.syndromes || [];
-  }, [topics, selectedTopicId]);
-
   // Handle Organ System selection (clears children)
   const handleSetOrganSystemId = useCallback((id: string) => {
     setSelectedOrganSystemId(id);
     setSelectedTopicId('');
     setSelectedSyndromeId('');
     setSelectedObjectiveId('');
+    setSyndromes([]);
     setObjectives([]);
   }, []);
 
@@ -147,6 +171,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedTopicId(id);
     setSelectedSyndromeId('');
     setSelectedObjectiveId('');
+    setSyndromes([]);
     setObjectives([]);
   }, []);
 
@@ -159,37 +184,57 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   // Search objectives by text
   const searchObjectives = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
-      setObjectives([]);
+      // If a syndrome is selected, re-fetch its objectives; otherwise clear
+      if (selectedSyndromeId) {
+        try {
+          const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId);
+          setObjectives(response.items);
+        } catch (error) {
+          console.error('Failed to fetch objectives:', error);
+        }
+      } else {
+        setObjectives([]);
+      }
       return;
     }
     
     setIsLoadingObjectives(true);
     try {
-      const response = await testsService.getLearningObjectives(undefined, query);
+      const response = await testsService.getLearningObjectives(1, 200, undefined, query);
       setObjectives(response.items);
     } catch (error) {
       console.error('Failed to search objectives:', error);
     } finally {
       setIsLoadingObjectives(false);
     }
-  }, []);
+  }, [selectedSyndromeId]);
 
   // Fill filters from selected objective (for search path)
   const fillFiltersFromObjective = useCallback((objective: LearningObjective) => {
-    if (objective.syndrome) {
-      const syndrome = objective.syndrome;
-      setSelectedSyndromeId(syndrome.id);
-      
-      if (syndrome.topic) {
-        setSelectedTopicId(syndrome.topic.id);
-        
-        // Find the organ system from the topic
-        if (syndrome.topic.organSystemId) {
-          setSelectedOrganSystemId(syndrome.topic.organSystemId);
-        }
-      }
-    }
+    // Reset hierarchy filters when selecting from search
+    setSelectedOrganSystemId('');
+    setSelectedTopicId('');
+    setSelectedSyndromeId('');
+    setSyndromes([]);
     setSelectedObjectiveId(objective.id);
+  }, []);
+
+  // Batch set all filters (for initialization)
+  const setAllFilters = useCallback((
+    organSystemId: string, 
+    topicId: string, 
+    syndromeId: string, 
+    objectiveId: string
+  ) => {
+    // Set values directly to avoid cascading clears
+    setSelectedOrganSystemId(organSystemId);
+    setSelectedTopicId(topicId);
+    setSelectedSyndromeId(syndromeId);
+    setSelectedObjectiveId(objectiveId);
+    
+    // We also need to ensure data is fetched for these levels if not already
+    // The existing useEffects will react to the ID changes and fetch data
+    // but providing the IDs immediately prevents race conditions validation
   }, []);
 
   // Clear all filters
@@ -199,6 +244,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedSyndromeId('');
     setSelectedObjectiveId('');
     setObjectiveSearchQuery('');
+    setSyndromes([]);
     setObjectives([]);
   }, []);
 
@@ -212,7 +258,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     // Loading States
     isLoadingOrganSystems,
     isLoadingTopics,
-    isLoadingSyndromes: false, // Syndromes come from topics, no separate loading
+    isLoadingSyndromes,
     isLoadingObjectives,
     
     // Selected Values
@@ -228,7 +274,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedSyndromeId: handleSetSyndromeId,
     setSelectedObjectiveId,
     setObjectiveSearchQuery,
-    
+    setAllFilters,    
     // Utilities
     searchObjectives,
     clearFilters,

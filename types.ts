@@ -174,6 +174,7 @@ export interface MediaAsset {
 
 export interface BackendItem {
   id: string;
+  identifier?: string;
   type: 'MCQ' | 'SAQ';
   stem: string;
   options?: QuestionOption[];
@@ -239,6 +240,12 @@ export interface Question {
     discriminationIndex: number;
     flawedDistractor?: string;
   };
+  // Added for editor state
+  organSystemId?: string;
+  topicId?: string;
+  syndromeId?: string;
+  cognitiveSkillId?: string;
+  learningObjectiveId?: string;
 }
 
 export interface Issue {

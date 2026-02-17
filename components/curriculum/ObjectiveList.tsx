@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus, ChevronDown, Loader2 } from 'lucide-react';
 import { LearningObjective, Syndrome, Topic } from '@/types/TestsServiceTypes';
+import { useGlobal } from '@/contexts/GlobalContext';
 
 interface ObjectiveListProps {
   topic: Topic;
@@ -31,6 +32,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
   topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onViewLinked, isLoading,
   currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange
 }: ObjectiveListProps) => {
+  const { cognitiveSkills } = useGlobal();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editBloom, setEditBloom] = useState('');
@@ -92,7 +94,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 <select
                     value={bloomFilter}
                     onChange={(e) => setBloomFilter(e.target.value)}
-                    className="pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer hover:border-indigo-200 transition-colors shadow-sm min-w-[140px]"
+                    className="pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#1BD183] appearance-none cursor-pointer hover:border-[#1BD183] transition-colors shadow-sm min-w-[140px]"
                 >
                     <option value="All">All Types</option>
                     {Object.keys(BLOOM_COLORS).map(level => (
@@ -131,9 +133,9 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                        onChange={(e) => setEditBloom(e.target.value)}
                        className="w-full bg-white border border-slate-200 text-slate-800 text-sm font-bold rounded-xl p-3 pr-10 focus:ring-[#1BD183] focus:border-[#1BD183] outline-none cursor-pointer hover:border-indigo-300 transition-colors"
                      >
-                       {Object.keys(BLOOM_COLORS).map(level => (
-                         <option key={level} value={level}>{level}</option>
-                       ))}
+                        {cognitiveSkills.map(skill => (
+                          <option key={skill.id} value={skill.id}>{skill.title}</option>
+                        ))}
                      </select>
                   </div>
                   <div className="flex gap-3 w-full md:w-auto">

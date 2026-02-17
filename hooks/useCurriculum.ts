@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { testsService } from '../services/testsService';
 import { PaginatedApiResponse, Topic, OrganSystem, LearningObjective, Syndrome } from '../types/TestsServiceTypes';
@@ -9,6 +9,7 @@ export interface UseCurriculumReturn {
   curriculumData: OrganSystem[];
   isLoading: boolean;
   areTopicsLoading: boolean;
+  areSyndromesLoading: boolean;
   areObjectivesLoading: boolean;
   activeSystem: OrganSystem | undefined;
   activeTopic: Topic | undefined;
@@ -36,6 +37,17 @@ export interface UseCurriculumReturn {
   setBloomFilter: (value: string) => void;
   setObjectivesPage: (value: number) => void;
   deleteObjective: (id: string) => void;
+  createOrganSystem: (name: string) => Promise<void>;
+  updateOrganSystem: (id: string, name: string) => Promise<void>;
+  deleteOrganSystem: (id: string) => Promise<void>;
+  createTopic: (name: string, organSystemId: string) => Promise<void>;
+  updateTopic: (id: string, name: string, newOrganSystemId?: string) => Promise<void>;
+  deleteTopic: (id: string) => Promise<void>;
+  moveTopic: (id: string, name: string, newOrganSystemId: string) => Promise<void>;
+  createSubTopic: (name: string, topicId: string) => Promise<void>;
+  updateSubTopic: (id: string, name: string, topicId: string) => Promise<void>;
+  deleteSubTopic: (id: string) => Promise<void>;
+  moveSubTopic: (id: string, name: string, newTopicId: string) => Promise<void>;
 }
 
 export const useCurriculum = (): UseCurriculumReturn => {
@@ -43,6 +55,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
   const [curriculumData, setCurriculumData] = useState<OrganSystem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [areTopicsLoading, setAreTopicsLoading] = useState(false);
+  const [areSyndromesLoading, setAreSyndromesLoading] = useState(false);
   const [areObjectivesLoading, setAreObjectivesLoading] = useState(false);
   const { cognitiveSkills } = useGlobal();
 
@@ -61,6 +74,9 @@ export const useCurriculum = (): UseCurriculumReturn => {
   const [objectivesPage, setObjectivesPage] = useState(1);
   const [objectivesTotal, setObjectivesTotal] = useState(0);
   const objectivesLimit = 20;
+
+  // Track last fetched objectives to prevent infinite loops
+  const lastFetchedObjectivesKey = useRef<string>('');
 
   // Fetch Data
   useEffect(() => {
@@ -83,23 +99,39 @@ export const useCurriculum = (): UseCurriculumReturn => {
     fetchOrganSystems();
   }, []);
 
+  // Derived Data — declared BEFORE effects that depend on them
+  const activeSystem = useMemo(() => 
+    curriculumData.find(s => s.id === activeSystemId), 
+  [curriculumData, activeSystemId]);
+
+  const activeTopic = useMemo(() => 
+    activeSystem?.topics?.find(t => t.id === activeTopicId), 
+  [activeSystem, activeTopicId]);
+
+  const activeSubTopic = useMemo(() => 
+    activeTopic?.syndromes?.find(s => s.id === activeSubTopicId), 
+  [activeTopic, activeSubTopicId]);
+    
   // Fetch Topics (and Syndromes as they are now nested)
 
   useEffect(() => {
     let active = true;
 
     const fetchTopics = async () => {
-      if (!activeSystemId) return;
+      // Ensure we have the parent system loaded before fetching likely dependent data
+      if (!activeSystem) return;
+      // Prevent infinite loop: if topics are already loaded, don't fetch again
+      if (activeSystem.topics) return;
 
       setAreTopicsLoading(true);
       try {
-        const response: Topic[] = await testsService.getTopics(activeSystemId);
+        const response = await testsService.getTopics(activeSystem.id);
         if (active) {
           setCurriculumData(prev => prev.map(sys => {
-            if (sys.id === activeSystemId) {
+            if (sys.id === activeSystem.id) {
               return {
                 ...sys,
-                topics: response
+                topics: response.items
               };
             }
             return sys;
@@ -122,22 +154,79 @@ export const useCurriculum = (): UseCurriculumReturn => {
     return () => {
       active = false;
     };
-  }, [activeSystemId]);
+  }, [activeSystem]);
 
-  // Fetch Learning Objectives when a subtopic (syndrome) is selected
+
+  // Fetch Syndromes when a topic is selected AND topic is loaded in state
+  useEffect(() => {
+    let active = true;
+
+    const fetchSyndromes = async () => {
+      // Must have the topic object loaded (implies parent topics are fetched)
+      if (!activeTopic) return;
+      // Don't re-fetch if syndromes are already loaded for this topic
+      if (activeTopic.syndromes) return;
+
+      setAreSyndromesLoading(true);
+      try {
+        const response = await testsService.getSyndromes(activeTopic.id);
+        if (active) {
+          setCurriculumData(prev => prev.map(sys => {
+            if (sys.id === activeSystemId) {
+              return {
+                ...sys,
+                topics: sys.topics?.map(topic => {
+                  if (topic.id === activeTopic.id) {
+                    return {
+                      ...topic,
+                      syndromes: response.items
+                    };
+                  }
+                  return topic;
+                })
+              };
+            }
+            return sys;
+          }));
+        }
+      } catch (error) {
+        if (active) {
+          console.error('Failed to fetch syndromes:', error);
+        }
+      } finally {
+        if (active) {
+          setAreSyndromesLoading(false);
+        }
+      }
+    };
+
+    fetchSyndromes();
+
+    return () => {
+      active = false;
+    };
+  }, [activeTopic, activeSystemId]);
+
+  // Fetch Learning Objectives when a subtopic (syndrome) is selected AND syndrome is loaded in state
   useEffect(() => {
     let active = true;
 
     const fetchLearningObjectives = async () => {
-      if (!activeSubTopicId || !activeTopicId) return;
+      // Must have the subtopic object loaded
+      if (!activeSubTopic || !activeTopic || !activeSystemId) return;
+
+      // Unlocking the loop: use a ref to track the last fetched combination.
+      // If we already successfully fetched for this subtopic and page, don't fetch again just because data updated.
+      const currentKey = `${activeSubTopic.id}-${objectivesPage}`;
+      if (currentKey === lastFetchedObjectivesKey.current) return;
 
       setAreObjectivesLoading(true);
       try {
-        console.log();
-        
-        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopicId);
+        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id);
 
         if (active) {
+          lastFetchedObjectivesKey.current = currentKey; // Mark as fetched
+
           setObjectivesTotal(response.total);
 
           // Enrich items with cognitive skills
@@ -156,7 +245,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
               return {
                 ...sys,
                 topics: sys.topics?.map(topic => {
-                  if (topic.id === activeTopicId) {
+                  if (topic.id === activeTopic.id) {
                     // If page > 1, append to existing objectives; otherwise replace
                     const existingObjectives = objectivesPage > 1 ? (topic.objectives || []) : [];
 
@@ -188,26 +277,15 @@ export const useCurriculum = (): UseCurriculumReturn => {
     return () => {
       active = false;
     };
-  }, [activeSubTopicId, activeTopicId, activeSystemId, objectivesPage, cognitiveSkills]);
+    // Include objects to ensure we re-run when they become available/complete
+  }, [activeSubTopic, activeTopic, activeSystemId, objectivesPage, cognitiveSkills]);
 
   // Reset pagination when subtopic changes
   useEffect(() => {
     setObjectivesPage(1);
+    // Also reset the fetched key if we switch subtopics explicitly? 
+    // No, the key mismatch will handle it.
   }, [activeSubTopicId]);
-
-
-  // Derived Data
-  const activeSystem = useMemo(() => 
-    curriculumData.find(s => s.id === activeSystemId), 
-  [curriculumData, activeSystemId]);
-
-  const activeTopic = useMemo(() => 
-    activeSystem?.topics?.find(t => t.id === activeTopicId), 
-  [activeSystem, activeTopicId]);
-
-  const activeSubTopic = useMemo(() => 
-    activeTopic?.syndromes?.find(s => s.id === activeSubTopicId), 
-  [activeTopic, activeSubTopicId]);
 
   // Actions
   const handleSystemSelect = (id: string) => {
@@ -266,6 +344,267 @@ export const useCurriculum = (): UseCurriculumReturn => {
         objectives: topic.objectives?.filter(obj => obj.id !== id) || []
       }))
     })));
+  };
+
+  const createOrganSystem = async (name: string) => {
+    try {
+      const newSystem = await testsService.upsertOrganSystem(name);
+      setCurriculumData(prev => [...prev, newSystem]);
+    } catch (error) {
+      console.error('Failed to create organ system:', error);
+      throw error;
+    }
+  };
+
+  const updateOrganSystem = async (id: string, name: string) => {
+    try {
+      await testsService.upsertOrganSystem(name, id);
+      setCurriculumData(prev => prev.map(sys =>
+        sys.id === id ? { ...sys, title: name } : sys
+      ));
+    } catch (error) {
+      console.error('Failed to update organ system:', error);
+      throw error;
+    }
+  };
+
+  const deleteOrganSystem = async (id: string) => {
+    try {
+      await testsService.deleteOrganSystem(id);
+      setCurriculumData(prev => prev.filter(sys => sys.id !== id));
+      if (activeSystemId === id) {
+        setSearchParams(params => {
+          params.delete('system');
+          params.delete('topic');
+          params.delete('subtopic');
+          return params;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete organ system:', error);
+      throw error;
+    }
+  };
+
+  const createTopic = async (name: string, organSystemId: string) => {
+    try {
+      const newTopic = await testsService.upsertTopic(name, organSystemId);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === organSystemId) {
+          return {
+            ...sys,
+            topics: [...(sys.topics || []), newTopic]
+          };
+        }
+        return sys;
+      }));
+    } catch (error) {
+      console.error('Failed to create topic:', error);
+      throw error;
+    }
+  };
+
+  const updateTopic = async (id: string, name: string, newOrganSystemId?: string) => {
+    if (!activeSystemId) return;
+    
+    // If organ system changed, use move logic
+    if (newOrganSystemId && newOrganSystemId !== activeSystemId) {
+      await moveTopic(id, name, newOrganSystemId);
+      return;
+    }
+
+    try {
+      await testsService.upsertTopic(name, activeSystemId, id);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(t => t.id === id ? { ...t, title: name } : t)
+          };
+        }
+        return sys;
+      }));
+    } catch (error) {
+      console.error('Failed to update topic:', error);
+      throw error;
+    }
+  };
+
+  const moveTopic = async (id: string, name: string, newOrganSystemId: string) => {
+    if (!activeSystemId) return;
+    try {
+      const updatedTopic = await testsService.upsertTopic(name, newOrganSystemId, id);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          // Remove from current system
+          return { ...sys, topics: sys.topics?.filter(t => t.id !== id) };
+        }
+        if (sys.id === newOrganSystemId) {
+          // Add to new system
+          return { ...sys, topics: [...(sys.topics || []), updatedTopic] };
+        }
+        return sys;
+      }));
+    } catch (error) {
+      console.error('Failed to move topic:', error);
+      throw error;
+    }
+  };
+
+  const deleteTopic = async (id: string) => {
+    try {
+      await testsService.deleteTopic(id);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.filter(t => t.id !== id)
+          };
+        }
+        return sys;
+      }));
+      if (activeTopicId === id) {
+        handleTopicSelect(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete topic:', error);
+      throw error;
+    }
+  };
+
+  const createSubTopic = async (name: string, topicId: string) => {
+    try {
+      const newSyndrome = await testsService.upsertSyndrome(undefined as any, name, topicId);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic => {
+              if (topic.id === topicId) {
+                return {
+                  ...topic,
+                  syndromes: [...(topic.syndromes || []), newSyndrome]
+                };
+              }
+              return topic;
+            })
+          };
+        }
+        return sys;
+      }));
+    } catch (error) {
+      console.error('Failed to create subtopic:', error);
+      throw error;
+    }
+  };
+
+  const updateSubTopic = async (id: string, name: string, topicId: string) => {
+    if (!activeTopicId) return;
+    try {
+      await testsService.upsertSyndrome(id, name, topicId);
+      if (topicId !== activeTopicId) {
+        // Topic changed — move syndrome from old topic to new topic
+        setCurriculumData(prev => prev.map(sys => {
+          if (sys.id === activeSystemId) {
+            return {
+              ...sys,
+              topics: sys.topics?.map(topic => {
+                if (topic.id === activeTopicId) {
+                  // Remove from old topic
+                  return { ...topic, syndromes: topic.syndromes?.filter(s => s.id !== id) };
+                }
+                if (topic.id === topicId) {
+                  // Add to new topic
+                  return { ...topic, syndromes: [...(topic.syndromes || []), { id, title: name, topicId }] };
+                }
+                return topic;
+              })
+            };
+          }
+          return sys;
+        }));
+      } else {
+        // Same topic — just update the name
+        setCurriculumData(prev => prev.map(sys => {
+          if (sys.id === activeSystemId) {
+            return {
+              ...sys,
+              topics: sys.topics?.map(topic => {
+                if (topic.id === activeTopicId) {
+                  return {
+                    ...topic,
+                    syndromes: topic.syndromes?.map(s => s.id === id ? { ...s, title: name } : s)
+                  };
+                }
+                return topic;
+              })
+            };
+          }
+          return sys;
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to update subtopic:', error);
+      throw error;
+    }
+  };
+
+  const moveSubTopic = async (id: string, name: string, newTopicId: string) => {
+    if (!activeTopicId || !activeSystemId) return;
+    try {
+      const updatedSyndrome = await testsService.upsertSyndrome(id, name, newTopicId);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic => {
+              if (topic.id === activeTopicId) {
+                // Remove from current topic
+                return { ...topic, syndromes: topic.syndromes?.filter(s => s.id !== id) };
+              }
+              if (topic.id === newTopicId) {
+                // Add to new topic
+                return { ...topic, syndromes: [...(topic.syndromes || []), updatedSyndrome] };
+              }
+              return topic;
+            })
+          };
+        }
+        return sys;
+      }));
+    } catch (error) {
+      console.error('Failed to move subtopic:', error);
+      throw error;
+    }
+  };
+
+  const deleteSubTopic = async (id: string) => {
+    try {
+      await testsService.deleteSyndrome(id);
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic => {
+                if (topic.id === activeTopicId) {
+                    return {
+                        ...topic,
+                        syndromes: topic.syndromes?.filter(s => s.id !== id)
+                    };
+                }
+                return topic;
+            })
+          };
+        }
+        return sys;
+      }));
+      if (activeSubTopicId === id) {
+        handleSubTopicSelect(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete subtopic:', error);
+      throw error;
+    }
   };
 
   const handleContentSearchChange = (value: string): void => {
@@ -327,6 +666,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     curriculumData,
     isLoading,
     areTopicsLoading,
+    areSyndromesLoading,
     areObjectivesLoading,
     activeSystem,
     activeTopic,
@@ -354,5 +694,16 @@ export const useCurriculum = (): UseCurriculumReturn => {
     setBloomFilter,
     setObjectivesPage,
     deleteObjective,
+    createOrganSystem,
+    updateOrganSystem,
+    deleteOrganSystem,
+    createTopic,
+    updateTopic,
+    deleteTopic,
+    moveTopic,
+    createSubTopic,
+    updateSubTopic,
+    deleteSubTopic,
+    moveSubTopic,
   };
 };

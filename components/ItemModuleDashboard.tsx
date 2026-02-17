@@ -35,6 +35,9 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
   onIssueClick,
   onItemClick,
   questions,
+  totalQuestions,
+  totalDraftQuestions,
+  totalLiveQuestions,
   issues,
   itemType
 }) => {
@@ -73,21 +76,21 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
   const stats = [
     { 
       label: config.statsLabel, 
-      value: questions.length, 
+      value: totalQuestions, 
       icon: config.mainIcon, 
       color: 'text-blue-600', 
       bg: 'bg-blue-50' 
     },
     { 
       label: 'Published', 
-      value: questions.filter(q => q.status === 'Published').length, 
+      value: totalLiveQuestions, 
       icon: CheckCircle2, 
       color: 'text-green-600', 
       bg: 'bg-green-50' 
     },
     { 
       label: 'Drafts', 
-      value: questions.filter(q => q.status === 'Draft').length, 
+      value: totalDraftQuestions, 
       icon: AlertCircle, 
       color: 'text-amber-600', 
       bg: 'bg-amber-50' 
@@ -184,7 +187,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
                       <div className="flex justify-end gap-1 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={(e) => { e.stopPropagation(); onEditClick(q); }}
-                          className="p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors"
+                          className="p-2 text-slate-400 hover:bg-[#1BD183]/50 hover:text-[#1BD183] rounded-xl transition-colors"
                         >
                           <FileEdit size={16} />
                         </button>

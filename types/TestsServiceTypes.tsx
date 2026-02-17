@@ -282,3 +282,43 @@ export interface Submission {
   answers?: Answer[];
   accountId?: string;
 }
+
+export interface StudentResponse {
+  QuestionID: string;
+  StudentID: string;
+  TestSessionID: string;
+  Score: number; // 0 or 1
+  SelectedOption: string;
+  TotalTestScore: number; // Optional: Total score of the student on the full test
+}
+
+export interface QuestionMetrics {
+  question_id: string;
+  P_value: number;
+  R_B: number;
+  High_Incorrect_Count: number;
+  Low_Incorrect_Count: number;
+  Key_Option: string;
+  Flawed_Distractor_Choice: string;
+  must_revise: boolean;
+  Correct_Answer_Count: number;
+  Total_Answer_Count: number;
+  High_correct_Count: number;
+  Low_correct_Count: number;
+  n?: number;
+  student_results?: StudentResponse[] | null;
+}
+
+export interface PsychometricReport {
+  question_metrics: Record<string, QuestionMetrics>;
+  session_reliability: Record<string, number>;
+}
+
+export interface Psychometric {
+  question_id: string;
+  stats: QuestionMetrics;
+  status: string;
+  title: string;
+}
+
+

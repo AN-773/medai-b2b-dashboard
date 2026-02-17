@@ -383,7 +383,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         {items.map(item => (
             <div 
                 key={item.id}
-                onClick={() => onEditItem?.(item.id)}
+                onClick={() => onEditItem?.(item.identifier || item.id)}
                 className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-[#1BD183]/30 hover:shadow-md transition-all cursor-pointer group"
             >
                 <div className="flex justify-between items-start mb-3">

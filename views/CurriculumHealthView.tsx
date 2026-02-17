@@ -37,11 +37,23 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
     deleteObjective,
     isLoading,
     areTopicsLoading,
+    areSyndromesLoading,
     areObjectivesLoading,
     objectivesPage,
     objectivesTotal,
     objectivesLimit,
     setObjectivesPage,
+    createOrganSystem,
+    updateOrganSystem,
+    deleteOrganSystem,
+    createTopic,
+    updateTopic,
+    deleteTopic,
+    moveTopic,
+    createSubTopic,
+    updateSubTopic,
+    deleteSubTopic,
+    moveSubTopic,
   } = useCurriculum();
 
   console.log(curriculumData);
@@ -78,11 +90,13 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
   };
 
   const handleCreateLinkedItem = (obj: LearningObjective) => {
-    const context: Partial<Taxonomy> = {
+    const context: Partial<Taxonomy> | any = {
+      questionId: 'new',
       organSystemId: activeSystemId,
-      syndromeTopicId: activeTopicId || '',
+      topicId: activeTopicId, 
+      syndromeId: activeSubTopicId, // Map subtopic to syndrome
       subTopicId: obj.subTopic,
-      objectiveId: obj.id,
+      learningObjectiveId: obj.id,
       bloomLevel: obj.bloomLevel,
     };
     setViewLinkedItems(null);
@@ -129,7 +143,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
           />
           <span className="font-bold text-[#1BD183] bg-[#1BD183]/5 px-3 py-1 rounded-lg text-xs uppercase tracking-wide border border-[#1BD183]/10 flex items-center gap-2">
             <Network size={12} />
-            {activeSubTopic.title}
+            {activeSubTopic?.title}
           </span>
         </>
       )}
@@ -155,6 +169,9 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
         systems={curriculumData}
         activeId={activeSystemId}
         onSelect={handleSystemSelect}
+        onCreate={createOrganSystem}
+        onEdit={updateOrganSystem}
+        onDelete={deleteOrganSystem}
       />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-white/50 backdrop-blur-sm relative">
@@ -189,10 +206,15 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
                 topics={activeSystem?.topics || []}
                 onSelect={handleTopicSelect}
                 searchTerm={contentSearch}
+                onCreateTopic={(data) => createTopic(data.name, activeSystemId!)}
+                onEdit={updateTopic}
+                onDelete={deleteTopic}
+                organSystems={curriculumData}
+                currentSystemId={activeSystemId}
                 />
             )
           ) : !activeSubTopic ? (
-            areTopicsLoading ? (
+            areSyndromesLoading ? (
                <div className="flex flex-col items-center justify-center py-20">
                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1BD183] mb-4"></div>
                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Syndromes...</p>
@@ -203,6 +225,11 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({
                 onSelect={handleSubTopicSelect}
                 onBack={() => handleTopicSelect(null)}
                 searchTerm={contentSearch}
+                onCreateSubTopic={(data) => createSubTopic(data.name, activeTopic!.id)}
+                onEdit={updateSubTopic}
+                onDelete={deleteSubTopic}
+                organSystems={curriculumData}
+                currentSystemId={activeSystemId}
                 />
             )
           ) : (

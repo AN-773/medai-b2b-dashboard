@@ -1,21 +1,37 @@
-import React, { useState } from 'react';
-import { X, FileText, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, FileText, Loader2, ChevronDown } from 'lucide-react';
+import { OrganSystem } from '@/types/TestsServiceTypes';
 
 interface CreateTopicModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; identifier?: string }) => Promise<void>;
-  organSystemName?: string;
+  onSubmit: (data: {
+    name: string;
+    identifier?: string;
+    organSystemId: string;
+  }) => Promise<void>;
+  organSystems: OrganSystem[];
+  defaultSystemId?: string;
+  initialData?: {
+    name: string;
+    identifier?: string;
+    organSystemId?: string;
+  } | null;
 }
 
 const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
-  organSystemName
+  organSystems,
+  defaultSystemId,
+  initialData,
 }) => {
-  const [name, setName] = useState('');
-  const [identifier, setIdentifier] = useState('');
+  const [name, setName] = useState(initialData?.name || '');
+  const [identifier, setIdentifier] = useState(initialData?.identifier || '');
+  const [selectedSystemId, setSelectedSystemId] = useState(
+    initialData?.organSystemId || defaultSystemId || '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +48,8 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
     try {
       await onSubmit({
         name: name.trim(),
-        identifier: identifier.trim() || undefined
+        identifier: identifier.trim() || undefined,
+        organSystemId: selectedSystemId,
       });
       // Reset form and close
       setName('');
@@ -54,16 +71,24 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (isOpen) {
+      setName(initialData?.name || '');
+      setIdentifier(initialData?.identifier || '');
+      setSelectedSystemId(initialData?.organSystemId || defaultSystemId || '');
+    }
+  }, [isOpen, initialData, defaultSystemId]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
         onClick={handleClose}
       />
-      
+
       {/* Modal */}
       <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-lg mx-4 animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
@@ -73,10 +98,12 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
               <FileText size={24} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900">Create New Topic</h2>
-              {organSystemName && (
-                <p className="text-sm text-slate-500 font-medium">{organSystemName}</p>
-              )}
+              <h2 className="text-xl font-black text-slate-900">
+                {initialData ? 'Edit Topic' : 'Create New Topic'}
+              </h2>
+              <p className="text-sm text-slate-500 font-medium">
+                Add a new topic to your curriculum
+              </p>
             </div>
           </div>
           <button
@@ -96,38 +123,56 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
             </div>
           )}
 
-          <div className="space-y-2">
-            <label htmlFor="topic-name" className="block text-sm font-bold text-slate-700">
-              Topic Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="topic-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Cardiac Arrhythmias"
-              disabled={isSubmitting}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-              autoFocus
-            />
-          </div>
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="organ-system"
+                className="block text-sm font-bold text-slate-700"
+              >
+                Organ System <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  id="organ-system"
+                  value={selectedSystemId}
+                  onChange={(e) => setSelectedSystemId(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                >
+                  <option value="" disabled>
+                    Select an Organ System
+                  </option>
+                  {organSystems.map((sys) => (
+                    <option key={sys.id} value={sys.id}>
+                      {sys.title}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={16}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+              </div>
+            </div>
 
-          <div className="space-y-2">
-            <label htmlFor="topic-identifier" className="block text-sm font-bold text-slate-700">
-              Identifier <span className="text-slate-400 font-normal">(optional)</span>
-            </label>
-            <input
-              id="topic-identifier"
-              type="text"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="e.g., CARDIAC-ARR-001"
-              disabled={isSubmitting}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-            />
-            <p className="text-xs text-slate-400">
-              A unique identifier for this topic. If left empty, one will be generated automatically.
-            </p>
+            <div className="space-y-2">
+              <label
+                htmlFor="topic-name"
+                className="block text-sm font-bold text-slate-700"
+              >
+                Topic Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="topic-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Cardiac Arrhythmias"
+                disabled={isSubmitting}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                autoFocus
+              />
+            </div>
           </div>
 
           {/* Actions */}
@@ -142,7 +187,7 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !name.trim()}
+              disabled={isSubmitting || !name.trim() || !selectedSystemId}
               className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#1BD183]/30 hover:shadow-xl hover:shadow-[#1BD183]/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg flex items-center gap-2"
             >
               {isSubmitting ? (
@@ -150,6 +195,8 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
                   <Loader2 size={16} className="animate-spin" />
                   Creating...
                 </>
+              ) : initialData ? (
+                'Update Topic'
               ) : (
                 'Create Topic'
               )}

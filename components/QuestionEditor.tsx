@@ -14,10 +14,14 @@ import {
   Layers,
   Search,
   Brain,
-  Loader2
+  Loader2,
+  Plus,
+  Trash2
 } from 'lucide-react';
-import { BloomsLevel, Question, QuestionOption, QuestionType, Reference } from '../types';
+import { QuestionOption, QuestionType, Reference } from '../types';
+import { Question, Choice } from '../types/TestsServiceTypes';
 import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
+import { useGlobal } from '../contexts/GlobalContext';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
 
 
@@ -57,17 +61,11 @@ const RenderMarkdown = ({ content }: { content: string }) => {
   );
 };
 
-// Cognitive Skill / Bloom's Level options
-const COGNITIVE_SKILLS = [
-  { id: 'remember', label: 'Remember', description: 'Recall facts and basic concepts' },
-  { id: 'understand', label: 'Understand', description: 'Explain ideas or concepts' },
-  { id: 'apply', label: 'Apply', description: 'Use information in new situations' },
-  { id: 'analyze', label: 'Analyze', description: 'Draw connections among ideas' },
-];
+
 
 const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
-  const [bloomsLevel, setBloomsLevel] = useState<BloomsLevel>(BloomsLevel.Understand);
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -96,6 +94,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     objectives,
     isLoadingOrganSystems,
     isLoadingTopics,
+    isLoadingSyndromes,
     isLoadingObjectives,
     selectedOrganSystemId,
     selectedTopicId,
@@ -109,8 +108,12 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     setObjectiveSearchQuery,
     searchObjectives,
     fillFiltersFromObjective,
+    setAllFilters,
     clearFilters
   } = useQuestionEditorData();
+
+  // Global cognitive skills
+  const { cognitiveSkills, isLoadingSkills } = useGlobal();
 
   // Transform data to SelectOption format for SearchableSelect
   const organSystemOptions: SelectOption[] = useMemo(() => 
@@ -139,6 +142,44 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     return () => clearTimeout(timer);
   }, [objectiveSearchQuery, searchObjectives]);
 
+  // Debug: Log options and selected values to check for mismatches
+  useEffect(() => {
+    if (selectedOrganSystemId) {
+        const match = organSystems.find(os => os.id === selectedOrganSystemId);
+        console.log("Organ System Match Check:", { 
+            selectedId: selectedOrganSystemId, 
+            found: !!match, 
+            sampleOptionId: organSystems[0]?.id 
+        });
+    }
+    if (selectedTopicId) {
+        const match = topics.find(t => t.id === selectedTopicId);
+        console.log("Topic Match Check:", { 
+            selectedId: selectedTopicId, 
+            found: !!match, 
+            sampleOptionId: topics[0]?.id 
+        });
+    }
+    if (selectedSyndromeId) {
+        const match = syndromes.find(s => s.id === selectedSyndromeId);
+        console.log("Syndrome Match Check:", { 
+            selectedId: selectedSyndromeId, 
+            found: !!match, 
+            syndromesCount: syndromes.length,
+            sampleOptionId: syndromes[0]?.id 
+        });
+    }
+    if (selectedObjectiveId) {
+        const match = objectives.find(o => o.id === selectedObjectiveId);
+        console.log("Objective Match Check:", { 
+            selectedId: selectedObjectiveId, 
+            found: !!match, 
+            objectivesCount: objectives.length,
+            sampleOptionId: objectives[0]?.id 
+        });
+    }
+  }, [selectedOrganSystemId, selectedTopicId, selectedSyndromeId, selectedObjectiveId, organSystems, topics, syndromes, objectives]);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
@@ -147,15 +188,75 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
 
   useEffect(() => {
     if (initialQuestion) {
-      setQuestionText(initialQuestion.text);
-      setExplanation(initialQuestion.explanation);
-      setOptions(initialQuestion.options);
-      setLearningObjectives(initialQuestion.learningObjectives);
-      setTags(initialQuestion.tags);
-      setBloomsLevel(initialQuestion.bloomsLevel);
-      if (initialQuestion.references) setReferences(initialQuestion.references);
+      console.log("QuestionEditor Initialized with:", initialQuestion);
+      setQuestionText(initialQuestion.title || '');
+      // setExplanation(initialQuestion.explanation); // Backend Question doesn't have explanation on root yet, it's on choices
+      // Find the correct choice to get the explanation
+      const correctChoice = initialQuestion.choices?.find(c => c.isCorrect);
+      if (correctChoice) {
+        setExplanation(correctChoice.explanation || '');
+      }
+
+      if (initialQuestion.choices) {
+        setOptions(initialQuestion.choices.map(c => ({
+          id: c.id,
+          text: c.content,
+          isCorrect: c.isCorrect,
+          explanation: c.explanation
+        })));
+      }
+      
+      if (initialQuestion.learningObjectiveId) {
+        setLearningObjectives([initialQuestion.learningObjectiveId]);
+      }
+      
+      setTags(initialQuestion.tags?.map(t => t.title) || []);
+      
+      // Set hierarchy filters
+      if (initialQuestion.organSystemId) {
+        let osId = initialQuestion.organSystemId;
+        
+        // Data Integrity Fix: 
+        // If topicId exists and is a URL, ensure organSystemId matches its parent path.
+        // This fixes cases where the question has a mismatched organSystemId (e.g. Cardio vs Nervous).
+        if (initialQuestion.topicId && initialQuestion.topicId.includes('/organ-systems/')) {
+           const expectedPrefix = initialQuestion.topicId.substring(0, initialQuestion.topicId.lastIndexOf('/'));
+           // Verify if the current osId is different (and strictly if topicId actually starts with the expected prefix structure)
+           if (osId !== expectedPrefix) {
+               osId = expectedPrefix;
+           }
+        }
+        
+        console.log("Setting filters with:", {
+          osId,
+          topicId: initialQuestion.topicId,
+          syndromeId: initialQuestion.syndromeId,
+          objectiveId: initialQuestion.learningObjectiveId
+        });
+
+        setAllFilters(
+          osId,
+          initialQuestion.topicId || '',
+          initialQuestion.syndromeId || '',
+          initialQuestion.learningObjectiveId || ''
+        );
+      } else {
+        console.log("initialQuestion.organSystemId is missing", initialQuestion.organSystemId);
+      }
+
+      // Set cognitive skill
+      if (initialQuestion.cognitiveSkillId) {
+        setSelectedSkillId(initialQuestion.cognitiveSkillId);
+      }
+
+      // References not on backend question yet
+      // if (initialQuestion.references) setReferences(initialQuestion.references);
+    } else {
+        console.log("No initialQuestion provided");
     }
-  }, [initialQuestion]);
+  }, [initialQuestion, setAllFilters]);
+
+
 
   const startResizing = (mouseDownEvent: React.MouseEvent) => {
     mouseDownEvent.preventDefault();
@@ -210,18 +311,28 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       return;
     }
     const newQuestion: Question = {
-      id: initialQuestion ? initialQuestion.id : `q-${Date.now()}`,
-      text: questionText,
-      bloomsLevel,
-      type: QuestionType.SingleBestAnswer,
-      options,
-      explanation,
-      learningObjectives: selectedObjectiveId ? [selectedObjectiveId, ...learningObjectives] : learningObjectives,
-      references,
-      tags: selectedOrganSystemId ? [selectedOrganSystemId, ...tags] : tags,
-      createdAt: initialQuestion ? initialQuestion.createdAt : new Date().toISOString(),
+      id: initialQuestion ? initialQuestion.id : '', // Backend handles ID generation if empty
+      identifier: initialQuestion ? initialQuestion.identifier : '',
+      title: questionText,
       status: targetStatus,
-      analysis: initialQuestion?.analysis 
+      exam: initialQuestion?.exam || 'USMLE Step 1', // Default or preserve
+      subjects: initialQuestion?.subjects || [],
+      metadata: initialQuestion?.metadata || {},
+      organSystemId: selectedOrganSystemId,
+      topicId: selectedTopicId,
+      syndromeId: selectedSyndromeId,
+      learningObjectiveId: selectedObjectiveId,
+      cognitiveSkillId: selectedSkillId,
+      choices: options.map(o => ({
+        id: (o.id.length > 5 && !o.id.startsWith('temp_')) ? o.id : '', // Only keep real IDs, temp IDs should be empty
+        content: o.text,
+        isCorrect: o.isCorrect,
+        explanation: o.isCorrect ? explanation : '', // Attach explanation to correct choice
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })),
+      createdAt: initialQuestion ? initialQuestion.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     onSave(newQuestion);
   };
@@ -290,7 +401,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 )}
               </div>
               {/* Search Results Dropdown */}
-              {objectiveSearchQuery && objectives.length > 0 && !selectedSyndromeId && (
+              {objectiveSearchQuery && objectives.length > 0 && (
                 <div className="mt-2 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {objectives.map(obj => (
                     <button
@@ -353,10 +464,15 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 options={syndromeOptions}
                 value={selectedSyndromeId || 'ALL'}
                 onChange={(val) => setSelectedSyndromeId(val === 'ALL' ? '' : val)}
-                disabled={!selectedTopicId || syndromes.length === 0}
+                disabled={!selectedTopicId || isLoadingSyndromes}
                 placeholder="Select Syndrome..."
                 allOption={{ id: 'ALL', name: 'Select Syndrome...' }}
               />
+              {isLoadingSyndromes && (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 size={12} className="animate-spin" /> Loading syndromes...
+                </div>
+              )}
 
               {/* Objective */}
               <SearchableSelect
@@ -391,21 +507,27 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
               <Brain className="text-[#1BD183]" size={18} /> Cognitive Skill
             </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.values(BloomsLevel).map((level) => (
-                <button
-                  key={level}
-                  onClick={() => setBloomsLevel(level)}
-                  className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                    bloomsLevel === level 
-                      ? 'bg-primary-gradient text-white shadow-md' 
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
+            {isLoadingSkills ? (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 size={12} className="animate-spin" /> Loading skills...
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {cognitiveSkills.map((skill) => (
+                  <button
+                    key={skill.id}
+                    onClick={() => setSelectedSkillId(skill.id)}
+                    className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      selectedSkillId === skill.id 
+                        ? 'bg-primary-gradient text-white shadow-md' 
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {skill.title}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* AI Generator Section */}
@@ -500,7 +622,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 <label className="block text-sm font-semibold text-slate-900 mb-4">Answer Options</label>
                 <div className="space-y-3">
                   {options.map((option, idx) => (
-                    <div key={option.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
+                    <div key={option.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all group ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
                       <button 
                         onClick={() => setOptions(options.map(o => ({...o, isCorrect: o.id === option.id})))} 
                         className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${option.isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'}`}
@@ -517,8 +639,22 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                         className="flex-1 bg-transparent text-slate-800 focus:outline-none" 
                         placeholder={`Option ${String.fromCharCode(65 + idx)}`}
                       />
+                      <button 
+                        onClick={() => setOptions(options.filter(o => o.id !== option.id))}
+                        className="mt-1 p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        title="Remove Option"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   ))}
+                  <button 
+                    onClick={() => setOptions([...options, { id: `temp_${Date.now()}`, text: '', isCorrect: false }])}
+                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-lg text-slate-500 font-medium hover:border-[#1BD183] hover:text-[#1BD183] transition-all flex items-center justify-center gap-2"
+                  >
+                    <Plus size={18} />
+                    Add Answer Option
+                  </button>
                 </div>
               </div>
               

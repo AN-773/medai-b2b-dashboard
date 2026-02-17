@@ -75,8 +75,18 @@ const DashboardLayout: React.FC = () => {
     return routes[view];
   };
 
-  const handleNavigate = (view: View) => {
-    navigate(getRoutePath(view));
+  const handleNavigate = (view: View, context?: Record<string, any>) => {
+    let path = getRoutePath(view);
+    
+    if (view === 'WORKBENCH' && context) {
+      const params = new URLSearchParams();
+      Object.entries(context).forEach(([key, value]) => {
+        if (value) params.append(key, String(value));
+      });
+      path += `?${params.toString()}`;
+    }
+
+    navigate(path);
     setIsMobileMenuOpen(false);
   };
 
@@ -154,14 +164,14 @@ const DashboardLayout: React.FC = () => {
               <Route path="/dashboard" element={<AIAgentCenter />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
-              <Route path="/bank-explorer" element={<BankExplorerView />} />
+              <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />
               <Route path="/mastery" element={<StudentMasteryView />} />
               <Route
                 path="/curriculum"
                 element={
                   <CurriculumHealthView
-                    onNavigate={(view) => handleNavigate(view)}
+                    onNavigate={(view, context) => handleNavigate(view, context)}
                   />
                 }
               />
