@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { testsService } from '../services/testsService';
-import { PaginatedApiResponse, Topic, OrganSystem, LearningObjective, Syndrome } from '../types/TestsServiceTypes';
+import { PaginatedApiResponse, Topic, OrganSystem, LearningObjective, Syndrome, Subject, QuestionStats } from '../types/TestsServiceTypes';
 import React from 'react';
 import { useGlobal } from '../contexts/GlobalContext';
 
@@ -48,6 +48,14 @@ export interface UseCurriculumReturn {
   updateSubTopic: (id: string, name: string, topicId: string) => Promise<void>;
   deleteSubTopic: (id: string) => Promise<void>;
   moveSubTopic: (id: string, name: string, newTopicId: string) => Promise<void>;
+  // Step 2
+  curriculumMode: 'step1' | 'step2';
+  handleModeChange: (mode: 'step1' | 'step2') => void;
+  subjects: Subject[];
+  activeSubjectId: string | null;
+  handleSubjectSelect: (id: string) => void;
+  questionStats: QuestionStats | null;
+  allowedSystemIds: string[];
 }
 
 export const useCurriculum = (): UseCurriculumReturn => {
@@ -66,7 +74,24 @@ export const useCurriculum = (): UseCurriculumReturn => {
   const activeTopicId = searchParams.get('topic');
   const activeSubTopicId = searchParams.get('subtopic');
 
-  // Filter State
+  // Step 2 state
+  const curriculumMode = (searchParams.get('mode') ?? 'step1') as 'step1' | 'step2';
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const activeSubjectId = searchParams.get('subject');
+  const [questionStats, setQuestionStats] = useState<QuestionStats | null>(null);
+
+  // Derived: organ system IDs allowed in step2 (total > 0), matched by trailing slug
+  const allowedSystemIds = useMemo<string[]>(() => {
+    if (!questionStats?.bySystem) return [];
+    return questionStats.bySystem
+      .filter(s => s.total > 0)
+      .map(s => {
+        // systemId is a full URL like https://.../organ-systems/slug
+        // OrganSystem.id is the full URL too — compare directly
+        return s.systemId;
+      });
+  }, [questionStats]);
+
   const [contentSearch, setContentSearch] = useState('');
   const [bloomFilter, setBloomFilter] = useState<string>('All');
 
@@ -78,26 +103,51 @@ export const useCurriculum = (): UseCurriculumReturn => {
   // Track last fetched objectives to prevent infinite loops
   const lastFetchedObjectivesKey = useRef<string>('');
 
-  // Fetch Data
+  // Fetch organ systems and subjects on mount
   useEffect(() => {
     const fetchOrganSystems = async () => {
       setIsLoading(true);
       try {
-        //Not handling pagination because it's not needed
         const response: PaginatedApiResponse<OrganSystem> = await testsService.getOrganSystems();
-        
         setCurriculumData(response.items);
       } catch (error) {
         console.error('Failed to fetch organ systems:', error);
-        // Fallback to mock data on error? Or just show error state
-        // setCurriculumData(USMLE_2024_OUTLINE); 
       } finally {
         setIsLoading(false);
       }
     };
 
+    const fetchSubjects = async () => {
+      try {
+        const response = await testsService.getSubjects();
+        setSubjects(response.items);
+      } catch (error) {
+        console.error('Failed to fetch subjects:', error);
+      }
+    };
+
     fetchOrganSystems();
+    fetchSubjects();
   }, []);
+
+  // Fetch question stats when a subject is selected in Step 2
+  useEffect(() => {
+    if (!activeSubjectId) {
+      setQuestionStats(null);
+      return;
+    }
+    let active = true;
+    const fetchStats = async () => {
+      try {
+        const stats = await testsService.getQuestionStats('STEP 2', [activeSubjectId]);
+        if (active) setQuestionStats(stats);
+      } catch (error) {
+        console.error('Failed to fetch question stats:', error);
+      }
+    };
+    fetchStats();
+    return () => { active = false; };
+  }, [activeSubjectId]);
 
   // Derived Data — declared BEFORE effects that depend on them
   const activeSystem = useMemo(() => 
@@ -650,6 +700,31 @@ export const useCurriculum = (): UseCurriculumReturn => {
     URL.revokeObjectURL(url);
   };
 
+  const handleSubjectSelect = (id: string): void => {
+    setSearchParams(params => {
+      params.set('subject', id);
+      params.delete('system');
+      params.delete('topic');
+      params.delete('subtopic');
+      return params;
+    });
+    setContentSearch('');
+  };
+
+  const handleModeChange = (newMode: 'step1' | 'step2'): void => {
+    setSearchParams(params => {
+      params.set('mode', newMode);
+      params.delete('subject');
+      params.delete('system');
+      params.delete('topic');
+      params.delete('subtopic');
+      return params;
+    });
+    setContentSearch('');
+    setBloomFilter('All');
+    setObjectivesPage(1);
+  };
+
   const handleReset = (): void => {
     setSearchParams(params => {
       params.delete('system');
@@ -705,5 +780,13 @@ export const useCurriculum = (): UseCurriculumReturn => {
     updateSubTopic,
     deleteSubTopic,
     moveSubTopic,
+    // Step 2
+    curriculumMode,
+    handleModeChange,
+    subjects,
+    activeSubjectId,
+    handleSubjectSelect,
+    questionStats,
+    allowedSystemIds,
   };
 };

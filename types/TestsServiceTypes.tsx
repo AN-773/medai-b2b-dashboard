@@ -130,6 +130,26 @@ export interface Subject {
   questions?: Question[];
 }
 
+export interface SystemStat {
+  systemId: string;
+  systemName: string;
+  total: number;
+  used: number;
+  unused: number;
+}
+
+export interface SubjectStat {
+  subjectId: string;
+  subjectName: string;
+  total: number;
+}
+
+export interface QuestionStats {
+  overall: { total: number; used: number; unused: number };
+  bySystem: SystemStat[] | null;
+  bySubject: SubjectStat[] | null;
+}
+
 export interface Competency {
   id: string;
   title: string;

@@ -166,8 +166,8 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj.cognitiveSkill.title] || 'bg-slate-100'}`}>
-                      {obj.cognitiveSkill.title}
+                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj?.cognitiveSkill?.title] || 'bg-slate-100'}`}>
+                      {obj?.cognitiveSkill?.title}
                     </span>
                     {(obj.questions?.length || 0) > 0 && (
                       <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-lg">

@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
-import { Search, LayoutGrid, ChevronRight, MoreVertical, Edit, Trash2, Plus, X, Check, Loader2 } from 'lucide-react';
-import { OrganSystem } from '../../types/TestsServiceTypes';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Search, LayoutGrid, ChevronRight, MoreVertical, Edit, Trash2, Plus, X, Check, Loader2, BookOpen } from 'lucide-react';
+import { OrganSystem, Subject } from '../../types/TestsServiceTypes';
 
 interface SidebarProps {
   systems: OrganSystem[];
@@ -10,9 +10,31 @@ interface SidebarProps {
   onCreate?: (name: string) => Promise<void>;
   onEdit?: (id: string, name: string) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  // Step mode
+  mode: 'step1' | 'step2';
+  onModeChange: (mode: 'step1' | 'step2') => void;
+  /** In step2, only these system IDs are shown (filtered by stats). Undefined = show all. */
+  filteredSystemIds?: string[];
+  // Step 2 subject picker
+  subjects?: Subject[];
+  activeSubjectId?: string | null;
+  onSubjectChange?: (id: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate, onEdit, onDelete }: SidebarProps) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  systems,
+  activeId,
+  onSelect,
+  onCreate,
+  onEdit,
+  onDelete,
+  mode,
+  onModeChange,
+  filteredSystemIds,
+  subjects,
+  activeSubjectId,
+  onSubjectChange,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -20,10 +42,36 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const filteredSystems: OrganSystem[] = useMemo(() => {
-    return systems.filter(system => system.title.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [systems, searchTerm]);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeDropdownId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        setActiveDropdownId(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveDropdownId(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeDropdownId]);
+
+  // In step2, filter to allowed system IDs only (when a subject has been selected)
+  const displaySystems: OrganSystem[] = useMemo(() => {
+    let result = systems;
+    if (mode === 'step2' && filteredSystemIds && filteredSystemIds.length > 0) {
+      result = systems.filter(s => filteredSystemIds.includes(s.id));
+    }
+    return result.filter(system =>
+      system.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [systems, searchTerm, mode, filteredSystemIds]);
 
   const handleStartEdit = (id: string, currentName: string) => {
     setEditingId(id);
@@ -72,25 +120,81 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate
   };
 
   return (
-    <div className="w-80 bg-white flex-shrink-0 flex flex-col border-r border-slate-100 h-full">
+    <div ref={sidebarRef} className="w-80 bg-white flex-shrink-0 flex flex-col border-r border-slate-100 h-full">
       <div className="p-8 pb-4">
-        <h2 className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+        <h2 className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
           <LayoutGrid size={14} /> MSAi® Curriculum
         </h2>
+
+        {/* Step Mode Toggle */}
+        <div className="flex items-center bg-slate-100 rounded-xl p-1 mb-5">
+          <button
+            onClick={() => onModeChange('step1')}
+            className={`flex-1 text-[10px] font-black uppercase tracking-wider py-2 rounded-lg transition-all ${
+              mode === 'step1'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Step 1
+          </button>
+          <button
+            onClick={() => onModeChange('step2')}
+            className={`flex-1 text-[10px] font-black uppercase tracking-wider py-2 rounded-lg transition-all ${
+              mode === 'step2'
+                ? 'bg-[#1BD183] text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            Step 2
+          </button>
+        </div>
+
+        {/* Step 2: Subject selector */}
+        {mode === 'step2' && (
+          <div className="mb-4">
+            <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+              <BookOpen size={11} /> Subject
+            </label>
+            <div className="relative">
+              <select
+                value={activeSubjectId ?? ''}
+                onChange={(e) => e.target.value && onSubjectChange?.(e.target.value)}
+                className="w-full appearance-none bg-slate-50 text-xs font-bold text-slate-700 px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all hover:bg-slate-100 cursor-pointer"
+              >
+                <option value="">Select a subject...</option>
+                {(subjects ?? []).map(s => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
+              <ChevronRight size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" />
+            </div>
+          </div>
+        )}
+
         <div className="relative group">
           <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
-          <input 
-            type="text" 
-            placeholder="Search Systems..." 
+          <input
+            type="text"
+            placeholder="Search Systems..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-50 text-xs font-bold text-slate-700 pl-11 pr-4 py-3.5 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white"
           />
         </div>
       </div>
-      
+
+      {/* Step 2 hint when no subject selected yet */}
+      {mode === 'step2' && filteredSystemIds && filteredSystemIds.length === 0 && (
+        <div className="px-6 py-2">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center border border-dashed border-slate-200 rounded-xl py-3">
+            Select a subject first
+          </p>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1 custom-scrollbar">
-        {filteredSystems.map(system => (
+        {displaySystems.map(system => (
           <div key={system.id} className="relative group/item">
             {editingId === system.id ? (
               <div className="flex items-center gap-2 p-2">
@@ -118,8 +222,8 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate
                 <button
                   onClick={() => onSelect(system.id)}
                   className={`flex-1 min-w-0 flex items-center justify-between p-4 rounded-2xl text-xs font-bold transition-all ${
-                    activeId === system.id 
-                      ? 'bg-[#1BD183] text-black' 
+                    activeId === system.id
+                      ? 'bg-[#1BD183] text-black'
                       : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
@@ -139,7 +243,7 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate
                     </button>
 
                     {activeDropdownId === system.id && (
-                      <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-slate-100 z-[999] max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                      <div ref={sidebarRef} className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-slate-100 z-[999] max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                         {onEdit && (
                           <button
                             onClick={(e) => {
@@ -172,15 +276,15 @@ const Sidebar: React.FC<SidebarProps> = ({ systems, activeId, onSelect, onCreate
             )}
           </div>
         ))}
-        {filteredSystems.length === 0 && (
+        {displaySystems.length === 0 && !(mode === 'step2' && filteredSystemIds && filteredSystemIds.length === 0) && (
           <div className="px-6 py-4 text-center">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">No systems found</p>
           </div>
         )}
       </div>
 
-      {/* Add New System */}
-      {onCreate && (
+      {/* Add New System — only shown in Step 1 */}
+      {onCreate && mode === 'step1' && (
         <div className="p-4 border-t border-slate-100">
           {isCreating ? (
             <div className="flex items-center gap-2">

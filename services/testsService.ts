@@ -14,6 +14,7 @@ import {
   Competency,
   Subject,
   GeneratedQuestion,
+  QuestionStats,
 } from '../types/TestsServiceTypes';
 import { apiClient } from './apiClient';
 
@@ -177,6 +178,17 @@ export const testsService = {
     return apiClient.get<PaginatedApiResponse<Subject>>(
       'TESTS',
       `/subjects?page=${page}&limit=${limit}`,
+    );
+  },
+
+  getQuestionStats: async (
+    examType: string,
+    subjectIds: string[],
+  ): Promise<QuestionStats> => {
+    const ids = subjectIds.map(encodeURIComponent).join(',');
+    return apiClient.get<QuestionStats>(
+      'TESTS',
+      `/questions/stats?examType=${encodeURIComponent(examType)}&subjectIds=${ids}`,
     );
   },
 
