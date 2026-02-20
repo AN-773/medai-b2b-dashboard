@@ -91,7 +91,7 @@ export interface QuestionType {
 }
 
 export interface Choice {
-  id: string;
+  id?: string;
   content: string;
   isCorrect: boolean;
   multimediaId?: string;
@@ -321,4 +321,21 @@ export interface Psychometric {
   title: string;
 }
 
+export interface GeneratedOption {
+  id: string;
+  text: string;
+}
 
+export interface GeneratedDistractorExplanation {
+  id: string;
+  explanation: string;
+}
+
+export interface GeneratedQuestion {
+  stem: string;
+  options: GeneratedOption[];
+  correct_option_id: string;
+  correct_explanation: string;
+  distractor_explanations: GeneratedDistractorExplanation[];
+  references: string[];
+}

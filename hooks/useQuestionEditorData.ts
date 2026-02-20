@@ -3,8 +3,13 @@ import { testsService } from '../services/testsService';
 import { 
   OrganSystem, 
   Topic, 
-  Syndrome, 
-  LearningObjective, 
+  Tag,
+  Discipline,
+  Competency,
+  Subject,
+  Difficulty,
+  Syndrome,
+  LearningObjective,
   PaginatedApiResponse 
 } from '../types/TestsServiceTypes';
 
@@ -14,12 +19,22 @@ interface UseQuestionEditorDataReturn {
   topics: Topic[];
   syndromes: Syndrome[];
   objectives: LearningObjective[];
+  tags: Tag[];
+  disciplines: Discipline[];
+  competencies: Competency[];
+  subjects: Subject[];
+  difficulties: Difficulty[];
   
   // Loading States
   isLoadingOrganSystems: boolean;
   isLoadingTopics: boolean;
   isLoadingSyndromes: boolean;
   isLoadingObjectives: boolean;
+  isLoadingTags: boolean;
+  isLoadingDisciplines: boolean;
+  isLoadingCompetencies: boolean;
+  isLoadingSubjects: boolean;
+  isLoadingDifficulties: boolean;
   
   // Selected Values
   selectedOrganSystemId: string;
@@ -52,12 +67,22 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   const [topicsCache, setTopicsCache] = useState<Record<string, Topic[]>>({});
   const [syndromes, setSyndromes] = useState<Syndrome[]>([]);
   const [objectives, setObjectives] = useState<LearningObjective[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [competencies, setCompetencies] = useState<Competency[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [difficulties, setDifficulties] = useState<Difficulty[]>([]);
   
   // Loading States
   const [isLoadingOrganSystems, setIsLoadingOrganSystems] = useState(true);
   const [isLoadingTopics, setIsLoadingTopics] = useState(false);
   const [isLoadingSyndromes, setIsLoadingSyndromes] = useState(false);
   const [isLoadingObjectives, setIsLoadingObjectives] = useState(false);
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [isLoadingDisciplines, setIsLoadingDisciplines] = useState(false);
+  const [isLoadingCompetencies, setIsLoadingCompetencies] = useState(false);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+  const [isLoadingDifficulties, setIsLoadingDifficulties] = useState(false);
   
   // Selected Values
   const [selectedOrganSystemId, setSelectedOrganSystemId] = useState('');
@@ -80,6 +105,42 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
       }
     };
     fetchOrganSystems();
+  }, []);
+
+  // Fetch Metadata (Tags, Disciplines, Competencies, Subjects, Difficulties) on mount
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      setIsLoadingTags(true);
+      setIsLoadingDisciplines(true);
+      setIsLoadingCompetencies(true);
+      setIsLoadingSubjects(true);
+      setIsLoadingDifficulties(true);
+
+      try {
+        const [tagsRes, disciplinesRes, competenciesRes, subjectsRes, difficultiesRes] = await Promise.all([
+          testsService.getTags(),
+          testsService.getDisciplines(),
+          testsService.getCompetencies(),
+          testsService.getSubjects(),
+          testsService.getDifficultyLevels()
+        ]);
+
+        setTags(tagsRes.items);
+        setDisciplines(disciplinesRes.items);
+        setCompetencies(competenciesRes.items);
+        setSubjects(subjectsRes.items);
+        setDifficulties(difficultiesRes.items);
+      } catch (error) {
+        console.error('Failed to fetch metadata:', error);
+      } finally {
+        setIsLoadingTags(false);
+        setIsLoadingDisciplines(false);
+        setIsLoadingCompetencies(false);
+        setIsLoadingSubjects(false);
+        setIsLoadingDifficulties(false);
+      }
+    };
+    fetchMetadata();
   }, []);
 
   // Fetch Topics when Organ System changes
@@ -254,12 +315,22 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     topics,
     syndromes,
     objectives,
+    tags,
+    disciplines,
+    competencies,
+    subjects,
+    difficulties,
     
     // Loading States
     isLoadingOrganSystems,
     isLoadingTopics,
     isLoadingSyndromes,
     isLoadingObjectives,
+    isLoadingTags,
+    isLoadingDisciplines,
+    isLoadingCompetencies,
+    isLoadingSubjects,
+    isLoadingDifficulties,
     
     // Selected Values
     selectedOrganSystemId,

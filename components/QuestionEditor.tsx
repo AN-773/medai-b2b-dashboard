@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { testsService } from '../services/testsService'; // Import testsService
 import { 
   Sparkles, 
   ArrowLeft, 
@@ -18,11 +19,12 @@ import {
   Plus,
   Trash2
 } from 'lucide-react';
-import { QuestionOption, QuestionType, Reference } from '../types';
-import { Question, Choice } from '../types/TestsServiceTypes';
+import { QuestionOption, QuestionType } from '../types';
+import { Question, Choice, GeneratedQuestion } from '../types/TestsServiceTypes';
 import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
 import { useGlobal } from '../contexts/GlobalContext';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
+import MultiSearchableSelect from './MultiSearchableSelect';
 
 
 interface QuestionEditorProps {
@@ -66,22 +68,29 @@ const RenderMarkdown = ({ content }: { content: string }) => {
 const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
   const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+  const [selectedExam, setSelectedExam] = useState<'step1' | 'step2'>('step1'); // Default to step1
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
-  const [explanation, setExplanation] = useState('');
+
   const [options, setOptions] = useState<QuestionOption[]>([
-    { id: '1', text: '', isCorrect: false },
-    { id: '2', text: '', isCorrect: false },
-    { id: '3', text: '', isCorrect: false },
-    { id: '4', text: '', isCorrect: false },
+    { id: '1', text: '', isCorrect: false, explanation: '' },
+    { id: '2', text: '', isCorrect: false, explanation: '' },
+    { id: '3', text: '', isCorrect: false, explanation: '' },
+    { id: '4', text: '', isCorrect: false, explanation: '' },
   ]);
   const [learningObjectives, setLearningObjectives] = useState<string[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
-  const [references, setReferences] = useState<Reference[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
+  const [selectedCompetencies, setSelectedCompetencies] = useState<string[]>([]);
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedDifficultyId, setSelectedDifficultyId] = useState<string>('');
+  
+  const [tags, setTags] = useState<string[]>([]); // Keep for backward compatibility if needed, but we use selectedTags now
+  const [references, setReferences] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
@@ -107,9 +116,21 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     setSelectedObjectiveId,
     setObjectiveSearchQuery,
     searchObjectives,
+
     fillFiltersFromObjective,
     setAllFilters,
-    clearFilters
+    clearFilters,
+    // Metadata
+    tags: availableTags,
+    disciplines: availableDisciplines,
+    competencies: availableCompetencies,
+    subjects: availableSubjects,
+    difficulties: availableDifficulties,
+    isLoadingTags,
+    isLoadingDisciplines,
+    isLoadingCompetencies,
+    isLoadingSubjects,
+    isLoadingDifficulties
   } = useQuestionEditorData();
 
   // Global cognitive skills
@@ -131,6 +152,26 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   const objectiveOptions: SelectOption[] = useMemo(() => 
     objectives.map(obj => ({ id: obj.id, name: obj.title || 'Untitled Objective' })),
   [objectives]);
+
+  const tagOptions: SelectOption[] = useMemo(() => 
+    availableTags.map(t => ({ id: t.id, name: t.title })),
+  [availableTags]);
+
+  const disciplineOptions: SelectOption[] = useMemo(() => 
+    availableDisciplines.map(d => ({ id: d.id, name: d.title })),
+  [availableDisciplines]);
+
+  const competencyOptions: SelectOption[] = useMemo(() => 
+    availableCompetencies.map(c => ({ id: c.id, name: c.title })),
+  [availableCompetencies]);
+
+  const subjectOptions: SelectOption[] = useMemo(() => 
+    availableSubjects.map(s => ({ id: s.id, name: s.title })),
+  [availableSubjects]);
+
+  const difficultyOptions: SelectOption[] = useMemo(() => 
+    availableDifficulties.map(d => ({ id: d.id, name: d.title })),
+  [availableDifficulties]);
 
   // Debounced objective search
   useEffect(() => {
@@ -192,17 +233,17 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       setQuestionText(initialQuestion.title || '');
       // setExplanation(initialQuestion.explanation); // Backend Question doesn't have explanation on root yet, it's on choices
       // Find the correct choice to get the explanation
-      const correctChoice = initialQuestion.choices?.find(c => c.isCorrect);
-      if (correctChoice) {
-        setExplanation(correctChoice.explanation || '');
-      }
+      // const correctChoice = initialQuestion.choices?.find(c => c.isCorrect);
+      // if (correctChoice) {
+      //   setExplanation(correctChoice.explanation || '');
+      // }
 
       if (initialQuestion.choices) {
         setOptions(initialQuestion.choices.map(c => ({
           id: c.id,
           text: c.content,
           isCorrect: c.isCorrect,
-          explanation: c.explanation
+          explanation: c.explanation || ''
         })));
       }
       
@@ -248,9 +289,22 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       if (initialQuestion.cognitiveSkillId) {
         setSelectedSkillId(initialQuestion.cognitiveSkillId);
       }
+      
+      if (initialQuestion.exam && (initialQuestion.exam === 'step1' || initialQuestion.exam === 'step2')) {
+          setSelectedExam(initialQuestion.exam as 'step1' | 'step2');
+      }
 
-      // References not on backend question yet
-      // if (initialQuestion.references) setReferences(initialQuestion.references);
+      // Set Metadata
+      if (initialQuestion.difficultyId) setSelectedDifficultyId(initialQuestion.difficultyId);
+      if (initialQuestion.tags) setSelectedTags(initialQuestion.tags.map(t => t.id));
+      if (initialQuestion.disciplines) setSelectedDisciplines(initialQuestion.disciplines.map(d => d.id));
+      if (initialQuestion.competencies) setSelectedCompetencies(initialQuestion.competencies.map(c => c.id));
+      if (initialQuestion.dbSubjects) setSelectedSubjects(initialQuestion.dbSubjects.map(s => s.id));
+
+      // Load references from metadata
+      if (initialQuestion.metadata?.references && Array.isArray(initialQuestion.metadata.references)) {
+        setReferences(initialQuestion.metadata.references as string[]);
+      }
     } else {
         console.log("No initialQuestion provided");
     }
@@ -273,17 +327,43 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   };
 
   const handleGenerate = async () => {
-    if (!selectedTopicId) return;
+    if (!selectedObjectiveId) {
+        setError("Please select a learning objective first.");
+        return;
+    }
+    
     setIsGenerating(true);
     setError(null);
     try {
-      // AI generation placeholder
-      const generated = null;
-      if (generated) {
-        // Handle generated content
+      const difficulty = availableDifficulties.find(d => d.id === selectedDifficultyId)?.title || "Medium";
+      const tags = selectedTags; // IDs is fine, backend expects strings
+      
+      const generatedQuestion: GeneratedQuestion = await testsService.generateQuestion(
+          `Organ System ${selectedOrganSystem?.title} - Topic ${selectedTopic?.title} - Syndrome ${selectedSyndrome?.title} - Learning Objective ${selectedObjective?.title}`,
+          difficulty,
+          tags,
+          selectedExam
+      );
+      
+      if (generatedQuestion) {
+          setQuestionText(generatedQuestion.stem);
+          setReferences(generatedQuestion.references);
+          setOptions(generatedQuestion.options.map((opt) => ({
+              id: opt.id,
+              text: opt.text,
+              isCorrect: generatedQuestion.correct_option_id === opt.id,
+              explanation: generatedQuestion.correct_option_id === opt.id 
+                  ? generatedQuestion.correct_explanation 
+                  : (generatedQuestion.distractor_explanations.find((d) => d.id === opt.id)?.explanation || '')
+          })));
+          
+          // Auto-save generated references if needed/supported
+          // if (generatedQuestion.references) ...
       }
-    } catch (e) {
-      setError("Failed to generate question. Please try again.");
+      
+    } catch (e: any) {
+      console.error("Generation error:", e);
+      setError("Failed to generate question. Please try again. " + (e.message || ""));
     } finally {
       setIsGenerating(false);
     }
@@ -315,19 +395,28 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
       identifier: initialQuestion ? initialQuestion.identifier : '',
       title: questionText,
       status: targetStatus,
-      exam: initialQuestion?.exam || 'USMLE Step 1', // Default or preserve
-      subjects: initialQuestion?.subjects || [],
-      metadata: initialQuestion?.metadata || {},
+      exam: selectedExam, 
+      metadata: {
+        ...(initialQuestion?.metadata || {}),
+        references: references,
+      },
       organSystemId: selectedOrganSystemId,
       topicId: selectedTopicId,
       syndromeId: selectedSyndromeId,
       learningObjectiveId: selectedObjectiveId,
       cognitiveSkillId: selectedSkillId,
+      difficultyId: selectedDifficultyId,
+      tags: selectedTags.map(id => ({ id, title: '', identifier: '', createdAt: '', updatedAt: '' })),
+      disciplines: selectedDisciplines.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
+      competencies: selectedCompetencies.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
+      dbSubjects: selectedSubjects.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
+      subjects: selectedSubjects,
+      
       choices: options.map(o => ({
-        id: (o.id.length > 5 && !o.id.startsWith('temp_')) ? o.id : '', // Only keep real IDs, temp IDs should be empty
+        ...((o.id.length > 5 && !o.id.startsWith('temp_')) ? { id: o.id } : {}),
         content: o.text,
         isCorrect: o.isCorrect,
-        explanation: o.isCorrect ? explanation : '', // Attach explanation to correct choice
+        explanation: o.explanation || '', // Attach explanation to choice
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })),
@@ -366,12 +455,12 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
               <Eye size={16} /> <span className="hidden sm:inline">Preview</span>
             </button>
           </div>
-          <button onClick={() => handleSave('Draft')} className="shrink-0 flex items-center gap-2 text-sm bg-[#191A19] border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
-            <FileText size={18} /> <span className="hidden sm:inline">Save Draft</span><span className="inline sm:hidden">Draft</span>
+          <button onClick={() => handleSave('Draft')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+            <FileText size={18} /> <span className="hidden sm:inline">Save</span><span className="inline sm:hidden">Draft</span>
           </button>
-          <button onClick={() => handleSave('Published')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+          {/* <button onClick={() => handleSave('Published')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <Save size={18} /> <span className="hidden sm:inline">Publish</span><span className="inline sm:hidden">Save</span>
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -384,6 +473,28 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
               <Layers className="text-[#1BD183]" size={18} /> Curriculum Alignment
             </h3>
+            
+            {/* Exam Selector */}
+            <div className="mb-4">
+                <SearchableSelect
+                label="Exam Type"
+                options={[
+                  {
+                    id: 'step1',
+                    name: 'USMLE Step 1'
+                  },
+                  {
+                    id: 'step2',
+                    name: 'USMLE Step 2'
+                  }
+                ]}
+                value={selectedExam || 'ALL'}
+                onChange={(val) => setSelectedExam(val === 'ALL' ? '' : val)}
+                disabled={isLoadingOrganSystems}
+                placeholder="Select Exam Type..."
+                allOption={{ id: 'ALL', name: 'Select Exam Type...' }}
+              />
+            </div>
             
             {/* Objective Search */}
             <div className="mb-4">
@@ -530,6 +641,101 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             )}
           </div>
 
+          {/* Metadata Section */}
+          <div className="p-5 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+              <FileText className="text-[#1BD183]" size={18} /> Metadata
+            </h3>
+            <div className="space-y-4">
+              {/* Difficulty */}
+              <SearchableSelect
+                label="Difficulty Level"
+                options={difficultyOptions}
+                value={selectedDifficultyId || 'ALL'}
+                onChange={(val) => setSelectedDifficultyId(val === 'ALL' ? '' : val)}
+                disabled={isLoadingDifficulties}
+                placeholder="Select Difficulty..."
+                allOption={{ id: 'ALL', name: 'Select Difficulty...' }}
+              />
+
+              {/* Disciplines */}
+              <MultiSearchableSelect
+                label="Disciplines"
+                options={disciplineOptions}
+                values={selectedDisciplines}
+                onChange={setSelectedDisciplines}
+                disabled={isLoadingDisciplines}
+                placeholder="Select Disciplines..."
+              />
+
+              {/* Competencies */}
+              <MultiSearchableSelect
+                label="Competencies"
+                options={competencyOptions}
+                values={selectedCompetencies}
+                onChange={setSelectedCompetencies}
+                disabled={isLoadingCompetencies}
+                placeholder="Select Competencies..."
+              />
+
+              {/* Subjects */}
+              <MultiSearchableSelect
+                label="Subjects"
+                options={subjectOptions}
+                values={selectedSubjects}
+                onChange={setSelectedSubjects}
+                disabled={isLoadingSubjects}
+                placeholder="Select Subjects..."
+              />
+
+              {/* Tags */}
+              <MultiSearchableSelect
+                label="Tags"
+                options={tagOptions}
+                values={selectedTags}
+                onChange={setSelectedTags}
+                disabled={isLoadingTags}
+                placeholder="Select Tags..."
+              />
+            </div>
+          </div>
+
+          {/* References Section */}
+          <div className="p-5 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+              <FileText className="text-[#1BD183]" size={18} /> References
+            </h3>
+            <div className="space-y-2">
+              {references.map((ref, idx) => (
+                <div key={idx} className="flex items-center gap-2 group">
+                  <input
+                    value={ref}
+                    onChange={(e) => {
+                      const updated = [...references];
+                      updated[idx] = e.target.value;
+                      setReferences(updated);
+                    }}
+                    className="flex-1 text-sm px-2 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all bg-white"
+                    placeholder="Reference title..."
+                  />
+                  <button
+                    onClick={() => setReferences(references.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setReferences([...references, ''])}
+                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] transition-all"
+              >
+                <Plus size={14} /> Add Reference
+              </button>
+            </div>
+          </div>
+
           {/* AI Generator Section */}
           <div className="p-5 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
@@ -547,7 +753,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
               </div>
               <button 
                 onClick={handleGenerate} 
-                disabled={isGenerating || !selectedTopicId} 
+                disabled={isGenerating || (!selectedDifficultyId || !selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
                 className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50"
               >
                 {isGenerating ? (
@@ -622,34 +828,51 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 <label className="block text-sm font-semibold text-slate-900 mb-4">Answer Options</label>
                 <div className="space-y-3">
                   {options.map((option, idx) => (
-                    <div key={option.id} className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all group ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
-                      <button 
-                        onClick={() => setOptions(options.map(o => ({...o, isCorrect: o.id === option.id})))} 
-                        className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${option.isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'}`}
-                      >
-                        {option.isCorrect && <Check size={14} />}
-                      </button>
-                      <input 
-                        value={option.text} 
-                        onChange={(e) => { 
-                          const newOpts = [...options]; 
-                          newOpts[idx].text = e.target.value; 
-                          setOptions(newOpts); 
-                        }} 
-                        className="flex-1 bg-transparent text-slate-800 focus:outline-none" 
-                        placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                      />
-                      <button 
-                        onClick={() => setOptions(options.filter(o => o.id !== option.id))}
-                        className="mt-1 p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                        title="Remove Option"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <div key={option.id} className={`flex flex-col gap-2 p-4 rounded-lg border-2 transition-all group ${option.isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-transparent bg-slate-50'}`}>
+                      <div className="flex items-start gap-3">
+                        <button 
+                          onClick={() => setOptions(options.map(o => ({...o, isCorrect: o.id === option.id})))} 
+                          className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${option.isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'}`}
+                        >
+                          {option.isCorrect && <Check size={14} />}
+                        </button>
+                        <input 
+                          value={option.text} 
+                          onChange={(e) => { 
+                            const newOpts = [...options]; 
+                            newOpts[idx].text = e.target.value; 
+                            setOptions(newOpts); 
+                          }} 
+                          className="flex-1 bg-transparent text-slate-800 focus:outline-none font-medium" 
+                          placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                        />
+                        <button 
+                          onClick={() => setOptions(options.filter(o => o.id !== option.id))}
+                          className="mt-1 p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          title="Remove Option"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      
+                      {/* Per-Option Explanation */}
+                      <div className="pl-9 mt-1">
+                        <label className="text-xs font-semibold text-slate-400 uppercase mb-1 block">Explanation</label>
+                        <textarea
+                          value={option.explanation || ''}
+                          onChange={(e) => {
+                            const newOpts = [...options];
+                            newOpts[idx].explanation = e.target.value;
+                            setOptions(newOpts);
+                          }}
+                          className="w-full min-h-[110px] p-2 text-sm border border-slate-200 rounded bg-white/50 focus:bg-white focus:ring-1 focus:ring-[#1BD183]/50 focus:border-[#1BD183] transition-all min-h-[120px] resize-y"
+                          placeholder={`Why is option ${String.fromCharCode(65 + idx)} ${option.isCorrect ? 'correct' : 'incorrect'}?`}
+                        />
+                      </div>
                     </div>
                   ))}
                   <button 
-                    onClick={() => setOptions([...options, { id: `temp_${Date.now()}`, text: '', isCorrect: false }])}
+                    onClick={() => setOptions([...options, { id: `temp_${Date.now()}`, text: '', isCorrect: false, explanation: '' }])}
                     className="w-full py-3 border-2 border-dashed border-slate-200 rounded-lg text-slate-500 font-medium hover:border-[#1BD183] hover:text-[#1BD183] transition-all flex items-center justify-center gap-2"
                   >
                     <Plus size={18} />
@@ -658,15 +881,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 </div>
               </div>
               
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <label className="block text-sm font-semibold text-slate-900 mb-2">Explanation</label>
-                <textarea 
-                  value={explanation} 
-                  onChange={(e) => setExplanation(e.target.value)} 
-                  className="w-full p-4 text-sm border border-slate-200 rounded-lg min-h-[200px] bg-indigo-50/20 focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
-                  placeholder="Support Markdown..."
-                />
-              </div>
+
             </div>
           ) : (
             <div className="max-w-2xl mx-auto">
@@ -674,21 +889,26 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 <div className="p-8">
                   {attachedImage && <img src={attachedImage} className="w-full h-80 object-cover mb-8 rounded-xl shadow-md" />}
                   <p className="text-lg text-slate-900 leading-relaxed mb-8 font-serif">{questionText || "Question text..."}</p>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {options.map((opt, idx) => (
-                      <div key={opt.id} className="p-4 rounded-xl border border-slate-200 flex gap-4">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500">{String.fromCharCode(65 + idx)}</span>
-                        <span className="text-slate-700">{opt.text}</span>
+                      <div key={opt.id} className="cursor-pointer">
+                        <div className={`p-4 rounded-xl border flex gap-4 transition-colors ${opt.isCorrect ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                          <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${opt.isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{String.fromCharCode(65 + idx)}</span>
+                          <div className="flex-1">
+                            <span className="text-slate-700 font-medium">{opt.text}</span>
+                            {opt.explanation && (
+                              <div className="mt-3 text-sm text-slate-600 bg-white/60 p-3 rounded-lg border border-slate-200/50">
+                                <span className="font-semibold text-xs uppercase tracking-wider text-slate-400 mb-1 block">Explanation</span>
+                                <RenderMarkdown content={opt.explanation} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
-                {explanation && (
-                  <div className="bg-indigo-50 border-t border-indigo-100 p-8">
-                    <h4 className="text-sm font-bold text-indigo-900 mb-2 uppercase tracking-widest">Psychometric Explanation</h4>
-                    <RenderMarkdown content={explanation} />
-                  </div>
-                )}
+
               </div>
             </div>
           )}

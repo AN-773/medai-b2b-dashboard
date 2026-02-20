@@ -41,7 +41,7 @@ const QuestionWorkbenchView: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeItemType, setActiveItemType] = useState<ItemType>(ItemType.MCQ);
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('DASHBOARD');
-  const [viewMode, setViewMode] = useState<WorkbenchViewMode>('DASHBOARD');
+  const [viewMode, setViewMode] = useState<WorkbenchViewMode>(searchParams.get('questionId') ? 'QUESTION_EDITOR' : 'DASHBOARD');
   const [selectedItem, setSelectedItem] = useState<BackendItem | LectureAsset | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<ApiQuestion | null>(null);
   
@@ -52,6 +52,10 @@ const QuestionWorkbenchView: React.FC = () => {
   const [lectures, setLectures] = useState<LectureAsset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  console.log("Question ID", searchParams.get('questionId'));
+  console.log("View mode", viewMode);
+  
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -230,13 +234,8 @@ const QuestionWorkbenchView: React.FC = () => {
   };
 
   const handleBackToDashboard = () => {
-    setViewMode('DASHBOARD');
+    setSearchParams({});
     setEditingQuestion(null);
-    setSearchParams(prev => {
-      const newParams = new URLSearchParams(prev);
-      newParams.delete('questionId');
-      return newParams;
-    });
   };
 
   const handleSaveQuestion = async (q: ApiQuestion) => {

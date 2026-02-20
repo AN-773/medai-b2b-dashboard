@@ -85,6 +85,7 @@ export interface QuestionOption {
   label?: string;
   plausibilityNote?: string;
   highPerformerSelectionRate?: number; // Added for RB distractor analysis
+  explanation?: string;
 }
 
 export interface Taxonomy {

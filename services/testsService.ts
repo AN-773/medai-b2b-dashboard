@@ -12,6 +12,8 @@ import {
   Discipline,
   Difficulty,
   Competency,
+  Subject,
+  GeneratedQuestion,
 } from '../types/TestsServiceTypes';
 import { apiClient } from './apiClient';
 
@@ -168,6 +170,16 @@ export const testsService = {
     );
   },
 
+  getSubjects: async (
+    page = 1,
+    limit = 200,
+  ): Promise<PaginatedApiResponse<Subject>> => {
+    return apiClient.get<PaginatedApiResponse<Subject>>(
+      'TESTS',
+      `/subjects?page=${page}&limit=${limit}`,
+    );
+  },
+
   upsertOrganSystem: async (
     name: string,
     id?: string,
@@ -252,6 +264,7 @@ export const testsService = {
       difficultyId: question.difficultyId,
       exam: question.exam,
       subjects: question.subjects || [],
+      metadata: question.metadata || {},
       multimedia: {
         fileId: question.multimedia?.fileId || null,
         multimedia: {
@@ -272,5 +285,19 @@ export const testsService = {
 
   deleteSyndrome: async (id: string): Promise<void> => {
     return apiClient.delete<void>('TESTS', `/syndromes/${id}`);
+  },
+
+  generateQuestion: async (
+    learningObjective: string,
+    difficulty: string,
+    tags: string[],
+    exam: string,
+  ): Promise<GeneratedQuestion> => {
+    return apiClient.post<GeneratedQuestion>('TESTS', '/question-gen', {
+      learningObjective,
+      difficulty,
+      tags,
+      exam,
+    });
   },
 };
