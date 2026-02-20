@@ -68,7 +68,7 @@ const RenderMarkdown = ({ content }: { content: string }) => {
 const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
   const [selectedSkillId, setSelectedSkillId] = useState<string>('');
-  const [selectedExam, setSelectedExam] = useState<'step1' | 'step2'>('step1'); // Default to step1
+  const [selectedExam, setSelectedExam] = useState<'STEP 1' | 'STEP 2'>('STEP 1');
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -290,8 +290,8 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
         setSelectedSkillId(initialQuestion.cognitiveSkillId);
       }
       
-      if (initialQuestion.exam && (initialQuestion.exam === 'step1' || initialQuestion.exam === 'step2')) {
-          setSelectedExam(initialQuestion.exam as 'step1' | 'step2');
+      if (initialQuestion.exam && (initialQuestion.exam === 'STEP 1' || initialQuestion.exam === 'STEP 2')) {
+          setSelectedExam(initialQuestion.exam as 'STEP 1' | 'STEP 2');
       }
 
       // Set Metadata
@@ -480,12 +480,12 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 label="Exam Type"
                 options={[
                   {
-                    id: 'step1',
-                    name: 'USMLE Step 1'
+                    id: 'STEP 1',
+                    name: 'STEP 1'
                   },
                   {
-                    id: 'step2',
-                    name: 'USMLE Step 2'
+                    id: 'STEP 2',
+                    name: 'STEP 2'
                   }
                 ]}
                 value={selectedExam || 'ALL'}
