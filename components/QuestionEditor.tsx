@@ -342,7 +342,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           `Organ System ${selectedOrganSystem?.title} - Topic ${selectedTopic?.title} - Syndrome ${selectedSyndrome?.title} - Learning Objective ${selectedObjective?.title}`,
           difficulty,
           tags,
-          selectedExam
+          selectedExam == 'STEP 1' ? 'step1' : selectedExam == 'STEP 2' ? 'step2' : ''
       );
       
       if (generatedQuestion) {
