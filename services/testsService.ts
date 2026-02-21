@@ -256,6 +256,36 @@ export const testsService = {
     );
   },
 
+  uploadFile: async (file: File): Promise<string> => {
+    const token = localStorage.getItem('msai_educator_token');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const baseUrl = (import.meta as any).env.VITE_TEST_API_URL || 'http://localhost:3000/tests';
+    const response = await fetch(`${baseUrl}/files`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    // Assuming backend returns an array with file objects e.g., [{ id: 'some-id', ... }]
+    return data[0]?.id || data.id;
+  },
+
+  importLearningObjectives: async (fileId: string, exam: string): Promise<any> => {
+    return apiClient.post<any>('TESTS', '/learning-objectives/import', {
+      fileId,
+      exam
+    });
+  },
+
   upsertQuestion: async (question: Question): Promise<Question> => {
     const payload = {
       question: {

@@ -41,6 +41,25 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
   const hasMorePages = currentPage < totalPages;
   const loadedCount = itemsPerPage * currentPage;
 
+  const filteredObjectives = useMemo(() => {
+    let filtered = topic?.objectives || [];
+    
+    if (searchTerm) {
+      const lowerQuery = searchTerm.toLowerCase();
+      filtered = filtered.filter(obj => 
+        obj.title.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    if (bloomFilter && bloomFilter !== 'All') {
+      filtered = filtered.filter(obj => 
+        obj.cognitiveSkill?.title === bloomFilter
+      );
+    }
+
+    return filtered;
+  }, [topic?.objectives, searchTerm, bloomFilter]);
+
   const handleStartEdit = (e: React.MouseEvent, obj: LearningObjective) => {
     e.stopPropagation();
     setEditingId(obj.id);
@@ -113,7 +132,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
         </div>
       ) : (
       <div className="space-y-6">
-        {topic?.objectives?.map((obj) => (
+        {filteredObjectives.map((obj) => (
           <div key={obj.id} className="relative group">
             {editingId === obj.id ? (
               <div className="flex flex-col gap-6 bg-white p-8 rounded-[2rem] border-2 border-[#1BA6D1] shadow-2xl animate-in zoom-in-95 duration-200 relative z-10">
@@ -199,7 +218,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           </div>
         ))}
         
-        {topic?.objectives?.length === 0 && (
+        {filteredObjectives.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-slate-400">
                 <Filter size={24} className="mb-2 opacity-50" />
                 <p className="text-xs font-black uppercase tracking-widest">No objectives found</p>

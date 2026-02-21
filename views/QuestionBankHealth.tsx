@@ -1,16 +1,43 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
   ScatterChart, Scatter, ZAxis, ReferenceArea, ReferenceLine
 } from 'recharts';
 import { MOCK_ITEMS, MOCK_ITEM_PSYCHOMETRICS } from '../constants';
 import DashboardCard from '../components/DashboardCard';
-import { AlertTriangle, CheckCircle2, XCircle, Info, X, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, XCircle, Info, X, ExternalLink, Loader2 } from 'lucide-react';
 import { ItemType } from '../types';
+import { testsService } from '../services/testsService';
+import { Psychometric } from '../types/TestsServiceTypes';
+import CustomTooltip from '../components/Tooltip';
 
 const QuestionBankHealth: React.FC = () => {
   const [isStandardsModalOpen, setIsStandardsModalOpen] = useState(false);
+  const [psychometrics, setPsychometrics] = useState<Psychometric[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const limit = 10;
+  const totalPages = Math.ceil(totalItems / limit);
+
+  useEffect(() => {
+    const fetchPsychometrics = async () => {
+      try {
+        setLoading(true);
+        const res = await testsService.getPyschometrics(page, limit);
+        setPsychometrics(res.items || []);
+        setTotalItems(res.total || 0);
+      } catch (err) {
+        console.error("Failed to fetch psychometrics", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPsychometrics();
+  }, [page]);
 
   // Map items to their psychometric data
   const mcqItems = useMemo(() => {
@@ -94,7 +121,7 @@ const QuestionBankHealth: React.FC = () => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700}} />
                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                <Tooltip cursor={{fill: 'transparent'}} />
+                <RechartsTooltip cursor={{fill: 'transparent'}} />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                   {pValueDist.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.8} />
@@ -116,7 +143,7 @@ const QuestionBankHealth: React.FC = () => {
                 <ReferenceArea x1={0.3} x2={0.7} y1={0.3} y2={1} fill="#10b981" fillOpacity={0.05} />
                 <ReferenceLine y={0.3} stroke="#10b981" strokeDasharray="5 5" />
                 <ReferenceLine y={0} stroke="#ef4444" strokeWidth={2} />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} />
                 <Scatter name="Items" data={scatterData}>
                   {scatterData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.y < 0 ? '#ef4444' : entry.y < 0.3 ? '#fbbf24' : '#10b981'} />
@@ -128,18 +155,18 @@ const QuestionBankHealth: React.FC = () => {
         </DashboardCard>
       </div>
 
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-visible">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
            <h3 className="font-black text-slate-900 uppercase tracking-tight">Per-Item Psychometric Audit</h3>
            <button onClick={() => setIsStandardsModalOpen(true)} className="text-[#1BD183] text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
               <Info size={14} /> See Standards
            </button>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" style={{overflow:"visible"}}>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item ID</th>
+                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item</th>
                 <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Attempts</th>
                 <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">P-Value</th>
                 <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">D-Value</th>
@@ -148,18 +175,45 @@ const QuestionBankHealth: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {mcqItems.map(item => {
-                const nfdCount = item.statsDistractors.filter(d => d.selectionRate < 0.05).length;
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-8">
+                    <div className="flex flex-col items-center justify-center gap-2 text-slate-500 text-sm font-bold">
+                      <Loader2 className="animate-spin text-slate-400" size={24} />
+                      Loading psychometric data...
+                    </div>
+                  </td>
+                </tr>
+              ) : psychometrics.map(item => {
+                const questionIdMatch = item.question_id?.match(/\/questions\/([^/]+)$/);
+                const displayId = questionIdMatch ? questionIdMatch[1] : item.question_id || 'Unknown';
+                
+                const nfdString = item.stats?.Flawed_Distractor_Choice || "";
+                const nfdCount = nfdString ? nfdString.split(',').filter(Boolean).length : 0;
+                
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50 transition">
-                    <td className="py-5 px-6 font-bold text-slate-900">{item.id}</td>
-                    <td className="py-5 px-6 text-center text-xs font-bold text-slate-500">{item.sampleSize}</td>
-                    <td className="py-5 px-6 text-center font-black text-slate-800">{item.pValue.toFixed(2)}</td>
-                    <td className="py-5 px-6 text-center font-black text-[#5D1AEC]">{item.dIndex.toFixed(2)}</td>
+                  <tr key={item.question_id} className="hover:bg-slate-50 transition">
+                    <td className="py-4 px-6">
+                      <div className="flex flex-col gap-1 max-w-[280px]">
+                        <CustomTooltip content={item.title || 'Untitled Question'} position="top">
+                          <span 
+                            className="font-bold text-slate-900 text-sm truncate max-w-[280px] block" 
+                          >
+                            {item.title || 'Untitled Question'}
+                          </span>
+                        </CustomTooltip>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {displayId}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 text-center text-xs font-bold text-slate-500">{item.stats?.Total_Answer_Count || 0}</td>
+                    <td className="py-5 px-6 text-center font-black text-slate-800">{item.stats?.P_value?.toFixed(2) || '0.00'}</td>
+                    <td className="py-5 px-6 text-center font-black text-[#5D1AEC]">{item.stats?.R_B?.toFixed(2) || '0.00'}</td>
                     <td className="py-5 px-6">
-                       {nfdCount > 0 ? (
+                       {item.stats?.must_revise || nfdCount > 0 ? (
                          <div className="flex items-center gap-2 text-[10px] font-bold text-rose-500 bg-rose-50 px-3 py-1 rounded-full w-fit">
-                            <AlertTriangle size={12} /> {nfdCount} Non-functional options
+                            <AlertTriangle size={12} /> {item.stats?.must_revise ? 'Revision Required' : `${nfdCount} Non-functional options`}
                          </div>
                        ) : (
                          <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full w-fit">
@@ -177,6 +231,32 @@ const QuestionBankHealth: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+        
+        {/* Pagination Controls */}
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+          <span className="text-xs font-bold text-slate-500">
+            Showing {psychometrics.length > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalItems)} of {totalItems} items
+          </span>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+            >
+              Previous
+            </button>
+            <span className="text-xs font-bold text-slate-600 px-2">
+              Page {page} of {totalPages || 1}
+            </span>
+            <button 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import TopicGrid from '../components/curriculum/TopicGrid';
 import SubTopicGrid from '../components/curriculum/SubTopicGrid';
 import ObjectiveList from '../components/curriculum/ObjectiveList';
 import LinkedItemsPanel from '../components/curriculum/LinkedItemsPanel';
+import ImportLearningObjectivesModal from '../components/curriculum/ImportLearningObjectivesModal';
 import { LearningObjective, Taxonomy, View } from '../types';
 
 interface CurriculumHealthViewProps {
@@ -56,10 +57,11 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
     handleSubjectSelect,
     questionStats,
     allowedSystemIds,
+    handleReset,
   } = useCurriculum();
 
   const [viewLinkedItems, setViewLinkedItems] = useState<LearningObjective | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -254,7 +256,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
 
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-white/50 backdrop-blur-sm relative">
         <WorkbenchHeader
-          onImport={() => fileInputRef.current?.click()}
+          onImport={() => setIsImportModalOpen(true)}
           onExport={() => console.log('export')}
           searchTerm={contentSearch}
           setSearch={setContentSearch}
@@ -281,12 +283,13 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         />
       )}
 
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={() => {}}
-        className="hidden"
-        accept=".csv"
+      <ImportLearningObjectivesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => {
+          // You could trigger a refresh of the curriculum here if needed
+          handleReset();
+        }}
       />
     </div>
   );
