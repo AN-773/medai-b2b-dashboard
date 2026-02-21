@@ -288,8 +288,25 @@ const QuestionWorkbenchView: React.FC = () => {
       showToast("Failed to save question", "error");
     }
   };
+  const handleChangeStatus = async (identifier: string, newStatus: string) => {
+    try {
+      showToast("Updating status...", "success");
+      const updatedQ = await testsService.updateQuestionStatus(identifier, newStatus as any);
+      
+      // Update local state
+      setEditingQuestion(prev => prev ? { ...prev, status: updatedQ.status } : null);
+      
+      // Update list
+      setQuestionsList(prev => prev.map(item => item.identifier === identifier ? { ...item, status: updatedQ.status as any } : item));
+      
+      showToast("Status updated successfully");
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      showToast("Failed to update status", "error");
+    }
+  };
 
-  if (viewMode === 'QUESTION_EDITOR') return <QuestionEditor onBack={handleBackToDashboard} onSave={handleSaveQuestion} initialQuestion={editingQuestion} />;
+  if (viewMode === 'QUESTION_EDITOR') return <QuestionEditor onBack={handleBackToDashboard} onSave={handleSaveQuestion} onChangeStatus={handleChangeStatus} initialQuestion={editingQuestion} />;
   if (viewMode === 'LECTURE_WIZARD') return <LectureCreationWizard onBack={() => setViewMode('DASHBOARD')} onComplete={(l) => { setLectures(prev => [l, ...prev]); showToast("Lecture Created"); setViewMode('DASHBOARD'); }} />;
   if (viewMode === 'LECTURE_EDITOR') return <LectureEditor initialData={selectedItem} onBack={() => setViewMode('DASHBOARD')} onSave={() => { showToast("Saved"); setViewMode('DASHBOARD'); }} />;
   if (viewMode === 'LECTURE_PLAYER' && selectedItem) return <LecturePlayerView lectureId={selectedItem.id} onBack={() => setViewMode('DASHBOARD')} onEdit={(l) => { setSelectedItem(l); setViewMode('LECTURE_EDITOR'); }} />;

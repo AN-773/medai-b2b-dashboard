@@ -30,6 +30,7 @@ import MultiSearchableSelect from './MultiSearchableSelect';
 interface QuestionEditorProps {
   onBack: () => void;
   onSave: (question: Question) => void;
+  onChangeStatus?: (identifier: string, status: string) => void;
   initialQuestion?: Question | null;
 }
 
@@ -65,9 +66,9 @@ const RenderMarkdown = ({ content }: { content: string }) => {
 
 
 
-const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
+const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChangeStatus, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
-  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+
   const [selectedExam, setSelectedExam] = useState<'STEP 1' | 'STEP 2'>('STEP 1');
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
@@ -130,7 +131,9 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
     isLoadingDisciplines,
     isLoadingCompetencies,
     isLoadingSubjects,
-    isLoadingDifficulties
+    isLoadingDifficulties,
+    selectedSkillId,
+    setSelectedSkillId
   } = useQuestionEditorData();
 
   // Global cognitive skills
@@ -177,7 +180,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
   useEffect(() => {
     const timer = setTimeout(() => {
       if (objectiveSearchQuery && objectiveSearchQuery.length >= 2) {
-        searchObjectives(objectiveSearchQuery);
+        searchObjectives(objectiveSearchQuery, true);
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -279,17 +282,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           osId,
           initialQuestion.topicId || '',
           initialQuestion.syndromeId || '',
-          initialQuestion.learningObjectiveId || ''
+          initialQuestion.learningObjectiveId || '',
+          initialQuestion.cognitiveSkillId
         );
       } else {
         console.log("initialQuestion.organSystemId is missing", initialQuestion.organSystemId);
       }
 
-      // Set cognitive skill
-      if (initialQuestion.cognitiveSkillId) {
-        setSelectedSkillId(initialQuestion.cognitiveSkillId);
-      }
-      
+
       if (initialQuestion.exam && (initialQuestion.exam === 'STEP 1' || initialQuestion.exam === 'STEP 2')) {
           setSelectedExam(initialQuestion.exam as 'STEP 1' | 'STEP 2');
       }
@@ -455,6 +455,18 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
               <Eye size={16} /> <span className="hidden sm:inline">Preview</span>
             </button>
           </div>
+          {initialQuestion?.identifier && onChangeStatus && (
+            <select
+              value={initialQuestion.status.toLowerCase()}
+              onChange={(e) => onChangeStatus(initialQuestion.identifier, e.target.value)}
+              className="shrink-0 bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[#1BD183]"
+            >
+              <option value="draft">Draft</option>
+              <option value="pending">Pending</option>
+              <option value="live">Live</option>
+            </select>
+          )}
+
           <button onClick={() => handleSave('Draft')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <FileText size={18} /> <span className="hidden sm:inline">Save</span><span className="inline sm:hidden">Draft</span>
           </button>
@@ -585,6 +597,32 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 </div>
               )}
 
+              {/* Cognitive Skill */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Cognitive Skill</label>
+                {isLoadingSkills ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Loader2 size={12} className="animate-spin" /> Loading skills...
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {cognitiveSkills.map((skill) => (
+                      <button
+                        key={skill.id}
+                        onClick={() => setSelectedSkillId(selectedSkillId === skill.id ? '' : skill.id)}
+                        className={`px-3 py-2 text-xs font-semibold transition-all ${
+                          selectedSkillId === skill.id 
+                            ? 'bg-primary-gradient text-white shadow-md' 
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {skill.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Objective */}
               <SearchableSelect
                 label="Learning Objective"
@@ -613,33 +651,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             </div>
           </div>
 
-          {/* Cognitive Skill (Bloom's Level) Section */}
-          <div className="p-5 border-b border-slate-100">
-            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-              <Brain className="text-[#1BD183]" size={18} /> Cognitive Skill
-            </h3>
-            {isLoadingSkills ? (
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Loader2 size={12} className="animate-spin" /> Loading skills...
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {cognitiveSkills.map((skill) => (
-                  <button
-                    key={skill.id}
-                    onClick={() => setSelectedSkillId(skill.id)}
-                    className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                      selectedSkillId === skill.id 
-                        ? 'bg-primary-gradient text-white shadow-md' 
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {skill.title}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+
 
           {/* Metadata Section */}
           <div className="p-5 border-b border-slate-100">
@@ -647,17 +659,6 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
               <FileText className="text-[#1BD183]" size={18} /> Metadata
             </h3>
             <div className="space-y-4">
-              {/* Difficulty */}
-              <SearchableSelect
-                label="Difficulty Level"
-                options={difficultyOptions}
-                value={selectedDifficultyId || 'ALL'}
-                onChange={(val) => setSelectedDifficultyId(val === 'ALL' ? '' : val)}
-                disabled={isLoadingDifficulties}
-                placeholder="Select Difficulty..."
-                allOption={{ id: 'ALL', name: 'Select Difficulty...' }}
-              />
-
               {/* Disciplines */}
               <MultiSearchableSelect
                 label="Disciplines"
@@ -700,41 +701,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
             </div>
           </div>
 
-          {/* References Section */}
-          <div className="p-5 border-b border-slate-100">
-            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-              <FileText className="text-[#1BD183]" size={18} /> References
-            </h3>
-            <div className="space-y-2">
-              {references.map((ref, idx) => (
-                <div key={idx} className="flex items-center gap-2 group">
-                  <input
-                    value={ref}
-                    onChange={(e) => {
-                      const updated = [...references];
-                      updated[idx] = e.target.value;
-                      setReferences(updated);
-                    }}
-                    className="flex-1 text-sm px-2 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all bg-white"
-                    placeholder="Reference title..."
-                  />
-                  <button
-                    onClick={() => setReferences(references.filter((_, i) => i !== idx))}
-                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                    title="Remove"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={() => setReferences([...references, ''])}
-                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] transition-all"
-              >
-                <Plus size={14} /> Add Reference
-              </button>
-            </div>
-          </div>
+
 
           {/* AI Generator Section */}
           <div className="p-5 border-b border-slate-100">
@@ -742,7 +709,17 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
               <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
             </h3>
             <div className="space-y-4">
-              <div>
+              {/* Difficulty */}
+              <SearchableSelect
+                label="Difficulty Level"
+                options={difficultyOptions}
+                value={selectedDifficultyId || 'ALL'}
+                onChange={(val) => setSelectedDifficultyId(val === 'ALL' ? '' : val)}
+                disabled={isLoadingDifficulties}
+                placeholder="Select Difficulty..."
+                allOption={{ id: 'ALL', name: 'Select Difficulty...' }}
+              />
+              {/* <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context</label>
                 <textarea 
                   value={additionalContext}
@@ -750,7 +727,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none" 
                   placeholder="Add specific focus areas, clinical scenarios, or patient demographics..." 
                 />
-              </div>
+              </div> */}
               <button 
                 onClick={handleGenerate} 
                 disabled={isGenerating || (!selectedDifficultyId || !selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
@@ -775,7 +752,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
           </div>
           
           {/* Clinical Visuals Section */}
-          <div className="p-5 border-b border-slate-100">
+          {/* <div className="p-5 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
               <ImageIcon className="text-[#1BD183]" size={18} /> Clinical Visuals
             </h3>
@@ -796,7 +773,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                 </button>
               )}
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Main Editor Area */}
@@ -880,7 +857,42 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initial
                   </button>
                 </div>
               </div>
-              
+
+              {/* References Section */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <FileText className="text-[#1BD183]" size={16} /> References
+                </label>
+                <div className="space-y-2">
+                  {references.map((ref, idx) => (
+                    <div key={idx} className="flex items-center gap-2 group">
+                      <input
+                        value={ref}
+                        onChange={(e) => {
+                          const updated = [...references];
+                          updated[idx] = e.target.value;
+                          setReferences(updated);
+                        }}
+                        className="flex-1 text-sm px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all bg-white"
+                        placeholder="Reference title or URL..."
+                      />
+                      <button
+                        onClick={() => setReferences(references.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        title="Remove"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setReferences([...references, ''])}
+                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] transition-all"
+                  >
+                    <Plus size={14} /> Add Reference
+                  </button>
+                </div>
+              </div>
 
             </div>
           ) : (

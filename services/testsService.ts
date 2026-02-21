@@ -30,25 +30,27 @@ export const testsService = {
   },
 
   getTopics: async (
-    organSystemId: string,
+    organSystemId?: string,
     page = 1,
     limit = 200,
+    id?: string,
   ): Promise<PaginatedApiResponse<Topic>> => {
-    return apiClient.get<PaginatedApiResponse<Topic>>(
-      'TESTS',
-      `/topics?page=${page}&limit=${limit}&_filters[organSystemId][eq]=${organSystemId}`,
-    );
+    let url = `/topics?page=${page}&limit=${limit}`;
+    if (organSystemId) url += `&_filters[organSystemId][eq]=${organSystemId}`;
+    if (id) url += `&_filters[id][eq]=${id}`;
+    return apiClient.get<PaginatedApiResponse<Topic>>('TESTS', url);
   },
 
   getSyndromes: async (
-    topicId: string,
+    topicId?: string,
     page = 1,
     limit = 200,
+    id?: string,
   ): Promise<PaginatedApiResponse<Syndrome>> => {
-    return apiClient.get<PaginatedApiResponse<Syndrome>>(
-      'TESTS',
-      `/syndromes?page=${page}&limit=${limit}&_filters[topicId][eq]=${topicId}`,
-    );
+    let url = `/syndromes?page=${page}&limit=${limit}`;
+    if (topicId) url += `&_filters[topicId][eq]=${topicId}`;
+    if (id) url += `&_filters[id][eq]=${id}`;
+    return apiClient.get<PaginatedApiResponse<Syndrome>>('TESTS', url);
   },
 
   getLearningObjectives: async (
@@ -56,10 +58,14 @@ export const testsService = {
     limit = 20,
     syndromeId?: string,
     q?: string,
+    cognitiveSkillId?: string,
   ): Promise<PaginatedApiResponse<LearningObjective>> => {
     let url = `/learning-objectives?limit=${limit}&page=${page}`;
     if (syndromeId) {
       url += `&_filters[syndromeId][eq]=${syndromeId}`;
+    }
+    if (cognitiveSkillId) {
+      url += `&_filters[cognitiveSkillId][eq]=${cognitiveSkillId}`;
     }
     if (q) {
       url += `&q=${q}`;
@@ -287,16 +293,26 @@ export const testsService = {
     return apiClient.post<Question>('TESTS', '/questions', payload);
   },
 
+  updateQuestionStatus: async (
+    identifier: string,
+    status: 'live' | 'draft' | 'pending',
+  ): Promise<Question> => {
+    return apiClient.put<Question>('TESTS', '/questions/status', {
+      identifier,
+      status,
+    });
+  },
+
   deleteOrganSystem: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', `/organ-systems/${id}`);
+    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
   },
 
   deleteTopic: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', `/topics/${id}`);
+    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
   },
 
   deleteSyndrome: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', `/syndromes/${id}`);
+    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
   },
 
   generateQuestion: async (

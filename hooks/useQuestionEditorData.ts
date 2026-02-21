@@ -41,6 +41,7 @@ interface UseQuestionEditorDataReturn {
   selectedTopicId: string;
   selectedSyndromeId: string;
   selectedObjectiveId: string;
+  selectedSkillId: string;
   objectiveSearchQuery: string;
   
   // Setters
@@ -48,17 +49,18 @@ interface UseQuestionEditorDataReturn {
   setSelectedTopicId: (id: string) => void;
   setSelectedSyndromeId: (id: string) => void;
   setSelectedObjectiveId: (id: string) => void;
+  setSelectedSkillId: (id: string) => void;
   setObjectiveSearchQuery: (query: string) => void;
   
   // Utilities
-  searchObjectives: (query: string) => void;
+  searchObjectives: (query: string, usingSearchQuery?: boolean) => void;
   clearFilters: () => void;
   
   // Auto-fill from objective (for search path)
   fillFiltersFromObjective: (objective: LearningObjective) => void;
   
   // Batch set all filters
-  setAllFilters: (organSystemId: string, topicId: string, syndromeId: string, objectiveId: string) => void;
+  setAllFilters: (organSystemId: string, topicId: string, syndromeId: string, objectiveId: string, skillId?: string) => void;
 }
 
 export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
@@ -89,6 +91,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   const [selectedTopicId, setSelectedTopicId] = useState('');
   const [selectedSyndromeId, setSelectedSyndromeId] = useState('');
   const [selectedObjectiveId, setSelectedObjectiveId] = useState('');
+  const [selectedSkillId, setSelectedSkillId] = useState('');
   const [objectiveSearchQuery, setObjectiveSearchQuery] = useState('');
 
   // Fetch Organ Systems on mount
@@ -188,7 +191,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     fetchSyndromes();
   }, [selectedTopicId]);
 
-  // Fetch Objectives when Syndrome changes
+  // Fetch Objectives when Syndrome or Skill changes
   useEffect(() => {
     if (!selectedSyndromeId) {
       // Only clear objectives if not in search mode
@@ -201,7 +204,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     const fetchObjectives = async () => {
       setIsLoadingObjectives(true);
       try {
-        const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId);
+        const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId, undefined, selectedSkillId);
         setObjectives(response.items);
       } catch (error) {
         console.error('Failed to fetch objectives:', error);
@@ -210,7 +213,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
       }
     };
     fetchObjectives();
-  }, [selectedSyndromeId]);
+  }, [selectedSyndromeId, selectedSkillId]);
 
   // Derived data
   const topics = useMemo(() => {
@@ -243,12 +246,12 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   }, []);
 
   // Search objectives by text
-  const searchObjectives = useCallback(async (query: string) => {
+  const searchObjectives = useCallback(async (query: string , usingSearchQuery: boolean = false) => {
     if (!query || query.length < 2) {
       // If a syndrome is selected, re-fetch its objectives; otherwise clear
-      if (selectedSyndromeId) {
+      if (!usingSearchQuery) {
         try {
-          const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId);
+          const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId, undefined, selectedSkillId);
           setObjectives(response.items);
         } catch (error) {
           console.error('Failed to fetch objectives:', error);
@@ -261,22 +264,61 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     
     setIsLoadingObjectives(true);
     try {
-      const response = await testsService.getLearningObjectives(1, 200, undefined, query);
+      const response = await testsService.getLearningObjectives(1, 200, undefined, query, undefined);
       setObjectives(response.items);
     } catch (error) {
       console.error('Failed to search objectives:', error);
     } finally {
       setIsLoadingObjectives(false);
     }
-  }, [selectedSyndromeId]);
+  }, [selectedSyndromeId, selectedSkillId]);
 
   // Fill filters from selected objective (for search path)
-  const fillFiltersFromObjective = useCallback((objective: LearningObjective) => {
-    // Reset hierarchy filters when selecting from search
-    setSelectedOrganSystemId('');
-    setSelectedTopicId('');
-    setSelectedSyndromeId('');
-    setSyndromes([]);
+  const fillFiltersFromObjective = useCallback(async (objective: LearningObjective) => {
+    let syndromeId = objective.syndromeId || objective.syndrome?.id || '';
+    let topicId = objective.syndrome?.topicId || objective.syndrome?.topic?.id || '';
+    let organSystemId = objective.syndrome?.topic?.organSystemId || objective.syndrome?.topic?.organSystem?.id || '';
+
+    // If we have syndromeId but are missing topicId, fetch the syndrome to get topicId
+    if (syndromeId && !topicId) {
+      try {
+        const synRes = await testsService.getSyndromes(undefined, 1, 1, syndromeId);
+        if (synRes.items && synRes.items.length > 0) {
+          topicId = synRes.items[0].topicId || '';
+          
+          // The returned syndrome might also have the nested topic
+          if (!organSystemId && synRes.items[0].topic?.organSystemId) {
+            organSystemId = synRes.items[0].topic.organSystemId;
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch syndrome for hierarchy:", e);
+      }
+    }
+
+    // If we have topicId but are missing organSystemId, fetch the topic to get organSystemId
+    if (topicId && !organSystemId) {
+      try {
+        const topRes = await testsService.getTopics(undefined, 1, 1, topicId);
+        if (topRes.items && topRes.items.length > 0) {
+          organSystemId = topRes.items[0].organSystemId || '';
+        }
+      } catch (e) {
+        console.error("Failed to fetch topic for hierarchy:", e);
+      }
+    }
+
+    // We need to fetch the intermediate data to populate the options properly,
+    // assuming we just know the IDs, but the easiest path is just setting 
+    // the selected IDs, and the existing `useEffects` will trigger fetching Topics and Syndromes.
+    if (organSystemId) setSelectedOrganSystemId(organSystemId);
+    if (topicId) setSelectedTopicId(topicId);
+    if (syndromeId) setSelectedSyndromeId(syndromeId);
+    
+    // Also extract the cognitive skill ID
+    const skillId = objective.cognitiveSkillId || objective.cognitiveSkill?.id || '';
+    if (skillId) setSelectedSkillId(skillId);
+    
     setSelectedObjectiveId(objective.id);
   }, []);
 
@@ -285,13 +327,15 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     organSystemId: string, 
     topicId: string, 
     syndromeId: string, 
-    objectiveId: string
+    objectiveId: string,
+    skillId?: string
   ) => {
     // Set values directly to avoid cascading clears
     setSelectedOrganSystemId(organSystemId);
     setSelectedTopicId(topicId);
     setSelectedSyndromeId(syndromeId);
     setSelectedObjectiveId(objectiveId);
+    if (skillId) setSelectedSkillId(skillId);
     
     // We also need to ensure data is fetched for these levels if not already
     // The existing useEffects will react to the ID changes and fetch data
@@ -304,6 +348,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedTopicId('');
     setSelectedSyndromeId('');
     setSelectedObjectiveId('');
+    setSelectedSkillId('');
     setObjectiveSearchQuery('');
     setSyndromes([]);
     setObjectives([]);
@@ -337,6 +382,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     selectedTopicId,
     selectedSyndromeId,
     selectedObjectiveId,
+    selectedSkillId,
     objectiveSearchQuery,
     
     // Setters
@@ -344,6 +390,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedTopicId: handleSetTopicId,
     setSelectedSyndromeId: handleSetSyndromeId,
     setSelectedObjectiveId,
+    setSelectedSkillId,
     setObjectiveSearchQuery,
     setAllFilters,    
     // Utilities
