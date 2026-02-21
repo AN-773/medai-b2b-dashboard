@@ -304,15 +304,15 @@ export const testsService = {
   },
 
   deleteOrganSystem: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
+    return apiClient.delete<void>('TESTS', id.split("/local")[1]);
   },
 
   deleteTopic: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
+    return apiClient.delete<void>('TESTS', id.split("/local")[1]);
   },
 
   deleteSyndrome: async (id: string): Promise<void> => {
-    return apiClient.delete<void>('TESTS', id.split("/local/")[1]);
+    return apiClient.delete<void>('TESTS', id.split("/local")[1]);
   },
 
   generateQuestion: async (
