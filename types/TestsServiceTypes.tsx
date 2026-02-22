@@ -189,6 +189,7 @@ export interface LearningObjective {
   cognitiveSkill?: CognitiveSkill;
   blocks?: Block[];
   questions?: Question[];
+  exam?: "STEP 1" | "STEP 2" | "STEP 3";
 }
 
 export interface LearningObjectiveImport {

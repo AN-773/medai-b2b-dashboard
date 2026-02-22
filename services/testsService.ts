@@ -59,6 +59,7 @@ export const testsService = {
     syndromeId?: string,
     q?: string,
     cognitiveSkillId?: string,
+    examType?: string,
   ): Promise<PaginatedApiResponse<LearningObjective>> => {
     let url = `/learning-objectives?limit=${limit}&page=${page}`;
     if (syndromeId) {
@@ -69,6 +70,9 @@ export const testsService = {
     }
     if (q) {
       url += `&q=${q}`;
+    }
+    if (examType) {
+      url += `&_filters[exam][eq]=${examType}`;
     }
     const res = await apiClient.get<PaginatedApiResponse<LearningObjective>>(
       'TESTS',
@@ -239,12 +243,14 @@ export const testsService = {
     cognitiveSkillId: string,
     disciplines: string[],
     id?: string,
+    examType?: string,
   ): Promise<LearningObjective> => {
     let payload = {
       learningObjective: { title: name },
       syndromeId,
       cognitiveSkillId,
       disciplines,
+      examType,
     };
     if (id) {
       payload.learningObjective['id'] = id;

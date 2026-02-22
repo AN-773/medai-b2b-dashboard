@@ -43,6 +43,7 @@ interface UseQuestionEditorDataReturn {
   selectedObjectiveId: string;
   selectedSkillId: string;
   objectiveSearchQuery: string;
+  selectedExam: 'STEP 1' | 'STEP 2' | '';
   
   // Setters
   setSelectedOrganSystemId: (id: string) => void;
@@ -51,6 +52,7 @@ interface UseQuestionEditorDataReturn {
   setSelectedObjectiveId: (id: string) => void;
   setSelectedSkillId: (id: string) => void;
   setObjectiveSearchQuery: (query: string) => void;
+  setSelectedExam: (exam: 'STEP 1' | 'STEP 2' | '') => void;
   
   // Utilities
   searchObjectives: (query: string, usingSearchQuery?: boolean) => void;
@@ -93,6 +95,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
   const [selectedObjectiveId, setSelectedObjectiveId] = useState('');
   const [selectedSkillId, setSelectedSkillId] = useState('');
   const [objectiveSearchQuery, setObjectiveSearchQuery] = useState('');
+  const [selectedExam, setSelectedExam] = useState<'STEP 1' | 'STEP 2' | ''>('STEP 1');
 
   // Fetch Organ Systems on mount
   useEffect(() => {
@@ -204,7 +207,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     const fetchObjectives = async () => {
       setIsLoadingObjectives(true);
       try {
-        const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId, undefined, selectedSkillId);
+        const response = await testsService.getLearningObjectives(1, 200, selectedSyndromeId, undefined, selectedSkillId, selectedExam);
         setObjectives(response.items);
       } catch (error) {
         console.error('Failed to fetch objectives:', error);
@@ -213,7 +216,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
       }
     };
     fetchObjectives();
-  }, [selectedSyndromeId, selectedSkillId]);
+  }, [selectedSyndromeId, selectedSkillId, selectedExam]);
 
   // Derived data
   const topics = useMemo(() => {
@@ -264,7 +267,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     
     setIsLoadingObjectives(true);
     try {
-      const response = await testsService.getLearningObjectives(1, 200, undefined, query, undefined);
+      const response = await testsService.getLearningObjectives(1, 200, undefined, query, undefined, selectedExam);
       setObjectives(response.items);
     } catch (error) {
       console.error('Failed to search objectives:', error);
@@ -318,6 +321,11 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     // Also extract the cognitive skill ID
     const skillId = objective.cognitiveSkillId || objective.cognitiveSkill?.id || '';
     if (skillId) setSelectedSkillId(skillId);
+
+    // Also extract the exam
+    if (objective.exam === 'STEP 1' || objective.exam === 'STEP 2') {
+      setSelectedExam(objective.exam);
+    }
     
     setSelectedObjectiveId(objective.id);
   }, []);
@@ -384,6 +392,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     selectedObjectiveId,
     selectedSkillId,
     objectiveSearchQuery,
+    selectedExam,
     
     // Setters
     setSelectedOrganSystemId: handleSetOrganSystemId,
@@ -392,6 +401,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedObjectiveId,
     setSelectedSkillId,
     setObjectiveSearchQuery,
+    setSelectedExam,
     setAllFilters,    
     // Utilities
     searchObjectives,

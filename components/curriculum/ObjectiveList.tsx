@@ -225,15 +225,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             </div>
         )}
 
-        {!searchTerm && bloomFilter === 'All' && (
-            <button className="w-full py-8 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2.5rem] flex items-center justify-center gap-3 text-slate-400 hover:text-[#1BD183] hover:border-[#1BD183] hover:bg-[#1BD183]/30 transition-all group">
-            <div className="p-2 bg-white border border-slate-200 rounded-xl group-hover:border-[#1BD183]/30 transition-colors shadow-sm">
-                <Plus size={20} />
-            </div>
-            <span className="font-black text-xs uppercase tracking-widest">Add Learning Objective</span>
-            </button>
-        )}
-
+       
         {/* Load More Button */}
         {hasMorePages && !searchTerm && bloomFilter === 'All' && (
           <button 

@@ -69,7 +69,6 @@ const RenderMarkdown = ({ content }: { content: string }) => {
 const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChangeStatus, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
 
-  const [selectedExam, setSelectedExam] = useState<'STEP 1' | 'STEP 2'>('STEP 1');
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -133,7 +132,9 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     isLoadingSubjects,
     isLoadingDifficulties,
     selectedSkillId,
-    setSelectedSkillId
+    setSelectedSkillId,
+    selectedExam,
+    setSelectedExam
   } = useQuestionEditorData();
 
   // Global cognitive skills
@@ -486,28 +487,6 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               <Layers className="text-[#1BD183]" size={18} /> Curriculum Alignment
             </h3>
             
-            {/* Exam Selector */}
-            <div className="mb-4">
-                <SearchableSelect
-                label="Exam Type"
-                options={[
-                  {
-                    id: 'STEP 1',
-                    name: 'STEP 1'
-                  },
-                  {
-                    id: 'STEP 2',
-                    name: 'STEP 2'
-                  }
-                ]}
-                value={selectedExam || 'ALL'}
-                onChange={(val) => setSelectedExam(val === 'ALL' ? '' : val)}
-                disabled={isLoadingOrganSystems}
-                placeholder="Select Exam Type..."
-                allOption={{ id: 'ALL', name: 'Select Exam Type...' }}
-              />
-            </div>
-            
             {/* Objective Search */}
             <div className="mb-4">
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Search Objectives</label>
@@ -549,6 +528,27 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
 
             {/* Cascading Filters */}
             <div className="space-y-3">
+
+              {/* Exam Selector */}
+              <SearchableSelect
+                  label="Exam Type"
+                  options={[
+                    {
+                      id: 'STEP 1',
+                      name: 'STEP 1'
+                    },
+                    {
+                      id: 'STEP 2',
+                      name: 'STEP 2'
+                    }
+                  ]}
+                  value={selectedExam || 'ALL'}
+                  onChange={(val) => setSelectedExam(val === 'ALL' ? '' : val as 'STEP 1' | 'STEP 2')}
+                  disabled={isLoadingOrganSystems}
+                  placeholder="Select Exam Type..."
+                  allOption={{ id: 'ALL', name: 'Select Exam Type...' }}
+              />
+
               {/* Organ System */}
               <SearchableSelect
                 label="Organ System"

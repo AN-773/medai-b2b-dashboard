@@ -272,7 +272,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
       setAreObjectivesLoading(true);
       try {
-        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id);
+        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode === 'step2' ? 'STEP 2' : curriculumMode === 'step1' ? 'STEP 1' : undefined);
 
         if (active) {
           lastFetchedObjectivesKey.current = currentKey; // Mark as fetched
