@@ -267,7 +267,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     
     setIsLoadingObjectives(true);
     try {
-      const response = await testsService.getLearningObjectives(1, 200, undefined, query, undefined, selectedExam);
+      const response = await testsService.getLearningObjectives(1, 200, undefined, query);
       setObjectives(response.items);
     } catch (error) {
       console.error('Failed to search objectives:', error);
