@@ -134,7 +134,7 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
         setTags(tagsRes.items);
         setDisciplines(disciplinesRes.items);
         setCompetencies(competenciesRes.items);
-        setSubjects(subjectsRes.items);
+        setSubjects(subjectsRes.items.filter(s => s.title !== ''));
         setDifficulties(difficultiesRes.items);
       } catch (error) {
         console.error('Failed to fetch metadata:', error);
