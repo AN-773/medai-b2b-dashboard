@@ -343,12 +343,24 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           `Organ System ${selectedOrganSystem?.title} - Topic ${selectedTopic?.title} - Syndrome ${selectedSyndrome?.title} - Learning Objective ${selectedObjective?.title}`,
           difficulty,
           tags,
-          selectedExam == 'STEP 1' ? 'step1' : selectedExam == 'STEP 2' ? 'step2' : ''
+          selectedExam == 'STEP 1' ? 'step1' : selectedExam == 'STEP 2' ? 'step2' : '',
+          additionalContext
       );
       
       if (generatedQuestion) {
           setQuestionText(generatedQuestion.stem);
           setReferences(generatedQuestion.references);
+          if (generatedQuestion.subject) {
+              const newSub = generatedQuestion.subject.trim();
+              if (newSub) {
+                  setSelectedSubjects(prev => {
+                      if (!prev.includes(newSub)) {
+                          return [...prev, newSub];
+                      }
+                      return prev;
+                  });
+              }
+          }
           setOptions(generatedQuestion.options.map((opt) => ({
               id: opt.id,
               text: opt.text,
@@ -719,15 +731,15 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                 placeholder="Select Difficulty..."
                 allOption={{ id: 'ALL', name: 'Select Difficulty...' }}
               />
-              {/* <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context (Optional)</label>
                 <textarea 
                   value={additionalContext}
                   onChange={(e) => setAdditionalContext(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none" 
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
                   placeholder="Add specific focus areas, clinical scenarios, or patient demographics..." 
                 />
-              </div> */}
+              </div>
               <button 
                 onClick={handleGenerate} 
                 disabled={isGenerating || (!selectedDifficultyId || !selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 

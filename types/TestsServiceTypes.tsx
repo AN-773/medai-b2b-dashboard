@@ -353,6 +353,7 @@ export interface GeneratedDistractorExplanation {
 }
 
 export interface GeneratedQuestion {
+  subject: string;
   stem: string;
   options: GeneratedOption[];
   correct_option_id: string;

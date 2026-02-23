@@ -333,7 +333,7 @@ export const testsService = {
     identifier: string,
     status: 'live' | 'draft' | 'pending',
   ): Promise<Question> => {
-    return apiClient.put<Question>('TESTS', '/questions/status', {
+    return apiClient.post<Question>('TESTS', '/questions/status', {
       identifier,
       status,
     });
@@ -356,12 +356,14 @@ export const testsService = {
     difficulty: string,
     tags: string[],
     exam: string,
+    additionalContext?: string,
   ): Promise<GeneratedQuestion> => {
     return apiClient.post<GeneratedQuestion>('TESTS', '/question-gen', {
       learningObjective,
       difficulty,
       tags,
       exam,
+      additionalContext,
     });
   },
 };
