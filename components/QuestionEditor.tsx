@@ -336,7 +336,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     setIsGenerating(true);
     setError(null);
     try {
-      const difficulty = availableDifficulties.find(d => d.id === selectedDifficultyId)?.title || "Medium";
+      const difficulty = "Medium";
       const tags = selectedTags; // IDs is fine, backend expects strings
       
       const generatedQuestion: GeneratedQuestion = await testsService.generateQuestion(
@@ -418,7 +418,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       syndromeId: selectedSyndromeId,
       learningObjectiveId: selectedObjectiveId,
       cognitiveSkillId: selectedSkillId,
-      difficultyId: selectedDifficultyId,
+      difficultyId: selectedDifficultyId || availableDifficulties.find(d => d.title.toLowerCase() === 'medium')?.id || '',
       tags: selectedTags.map(id => ({ id, title: '', identifier: '', createdAt: '', updatedAt: '' })),
       disciplines: selectedDisciplines.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
       competencies: selectedCompetencies.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
@@ -520,8 +520,11 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                   {objectives.map(obj => (
                     <button
                       key={obj.id}
-                      onClick={() => {
-                        fillFiltersFromObjective(obj);
+                      onClick={async () => {
+                        const fullObj = await fillFiltersFromObjective(obj);
+                        if (fullObj && fullObj.disciplines) {
+                          setSelectedDisciplines(fullObj.disciplines.map(d => d.id));
+                        }
                         setObjectiveSearchQuery('');
                       }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0"
@@ -721,16 +724,6 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
             </h3>
             <div className="space-y-4">
-              {/* Difficulty */}
-              <SearchableSelect
-                label="Difficulty Level"
-                options={difficultyOptions}
-                value={selectedDifficultyId || 'ALL'}
-                onChange={(val) => setSelectedDifficultyId(val === 'ALL' ? '' : val)}
-                disabled={isLoadingDifficulties}
-                placeholder="Select Difficulty..."
-                allOption={{ id: 'ALL', name: 'Select Difficulty...' }}
-              />
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context (Optional)</label>
                 <textarea 
@@ -742,7 +735,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               </div>
               <button 
                 onClick={handleGenerate} 
-                disabled={isGenerating || (!selectedDifficultyId || !selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
+                disabled={isGenerating || (!selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
                 className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50"
               >
                 {isGenerating ? (

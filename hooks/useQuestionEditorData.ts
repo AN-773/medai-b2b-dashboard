@@ -59,7 +59,7 @@ interface UseQuestionEditorDataReturn {
   clearFilters: () => void;
   
   // Auto-fill from objective (for search path)
-  fillFiltersFromObjective: (objective: LearningObjective) => void;
+  fillFiltersFromObjective: (objective: LearningObjective) => Promise<LearningObjective>;
   
   // Batch set all filters
   setAllFilters: (organSystemId: string, topicId: string, syndromeId: string, objectiveId: string, skillId?: string) => void;
@@ -278,38 +278,16 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
 
   // Fill filters from selected objective (for search path)
   const fillFiltersFromObjective = useCallback(async (objective: LearningObjective) => {
-    let syndromeId = objective.syndromeId || objective.syndrome?.id || '';
-    let topicId = objective.syndrome?.topicId || objective.syndrome?.topic?.id || '';
-    let organSystemId = objective.syndrome?.topic?.organSystemId || objective.syndrome?.topic?.organSystem?.id || '';
-
-    // If we have syndromeId but are missing topicId, fetch the syndrome to get topicId
-    if (syndromeId && !topicId) {
-      try {
-        const synRes = await testsService.getSyndromes(undefined, 1, 1, syndromeId);
-        if (synRes.items && synRes.items.length > 0) {
-          topicId = synRes.items[0].topicId || '';
-          
-          // The returned syndrome might also have the nested topic
-          if (!organSystemId && synRes.items[0].topic?.organSystemId) {
-            organSystemId = synRes.items[0].topic.organSystemId;
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch syndrome for hierarchy:", e);
-      }
+    let fullObjective = objective;
+    try {
+      fullObjective = await testsService.getLearningObjective(objective.id.split('/').pop() || '');
+    } catch (e) {
+      console.error("Failed to fetch full objective details:", e);
     }
 
-    // If we have topicId but are missing organSystemId, fetch the topic to get organSystemId
-    if (topicId && !organSystemId) {
-      try {
-        const topRes = await testsService.getTopics(undefined, 1, 1, topicId);
-        if (topRes.items && topRes.items.length > 0) {
-          organSystemId = topRes.items[0].organSystemId || '';
-        }
-      } catch (e) {
-        console.error("Failed to fetch topic for hierarchy:", e);
-      }
-    }
+    let syndromeId = fullObjective.syndromeId || fullObjective.syndrome?.id || '';
+    let topicId = fullObjective.syndrome?.topicId || fullObjective.syndrome?.topic?.id || '';
+    let organSystemId = fullObjective.syndrome?.topic?.organSystemId || fullObjective.syndrome?.topic?.organSystem?.id || '';
 
     // We need to fetch the intermediate data to populate the options properly,
     // assuming we just know the IDs, but the easiest path is just setting 
@@ -319,15 +297,17 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     if (syndromeId) setSelectedSyndromeId(syndromeId);
     
     // Also extract the cognitive skill ID
-    const skillId = objective.cognitiveSkillId || objective.cognitiveSkill?.id || '';
+    const skillId = fullObjective.cognitiveSkillId || fullObjective.cognitiveSkill?.id || '';
     if (skillId) setSelectedSkillId(skillId);
 
     // Also extract the exam
-    if (objective.exam === 'STEP 1' || objective.exam === 'STEP 2') {
-      setSelectedExam(objective.exam);
+    if (fullObjective.exam === 'STEP 1' || fullObjective.exam === 'STEP 2') {
+      setSelectedExam(fullObjective.exam);
     }
     
-    setSelectedObjectiveId(objective.id);
+    setSelectedObjectiveId(fullObjective.id);
+
+    return fullObjective;
   }, []);
 
   // Batch set all filters (for initialization)

@@ -81,6 +81,10 @@ export const testsService = {
     return res;
   },
 
+  getLearningObjective: async (id: string): Promise<LearningObjective> => {
+    return apiClient.get<LearningObjective>('TESTS', `/learning-objectives/${id}`);
+  },
+
   getCognitiveSkills: async (
     page = 1,
     limit = 200,
