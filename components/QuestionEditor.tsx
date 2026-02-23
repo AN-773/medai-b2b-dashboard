@@ -170,7 +170,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   [availableCompetencies]);
 
   const subjectOptions: SelectOption[] = useMemo(() => 
-    availableSubjects.map(s => ({ id: s.id, name: s.title })),
+    availableSubjects.map(s => ({ id: s.title, name: s.title })),
   [availableSubjects]);
 
   const difficultyOptions: SelectOption[] = useMemo(() => 
