@@ -300,7 +300,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       if (initialQuestion.tags) setSelectedTags(initialQuestion.tags.map(t => t.id));
       if (initialQuestion.disciplines) setSelectedDisciplines(initialQuestion.disciplines.map(d => d.id));
       if (initialQuestion.competencies) setSelectedCompetencies(initialQuestion.competencies.map(c => c.id));
-      if (initialQuestion.dbSubjects) setSelectedSubjects(initialQuestion.dbSubjects.map(s => s.id));
+      if (initialQuestion.dbSubjects) setSelectedSubjects(initialQuestion.dbSubjects.map(s => s.title));
 
       // Load references from metadata
       if (initialQuestion.metadata?.references && Array.isArray(initialQuestion.metadata.references)) {
