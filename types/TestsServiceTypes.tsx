@@ -361,3 +361,8 @@ export interface GeneratedQuestion {
   distractor_explanations: GeneratedDistractorExplanation[];
   references: string[];
 }
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}

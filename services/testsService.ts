@@ -15,6 +15,7 @@ import {
   Subject,
   GeneratedQuestion,
   QuestionStats,
+  ChatMessage,
 } from '../types/TestsServiceTypes';
 import { apiClient } from './apiClient';
 
@@ -361,6 +362,7 @@ export const testsService = {
     tags: string[],
     exam: string,
     additionalContext?: string,
+    chatHistory?: ChatMessage[],
   ): Promise<GeneratedQuestion> => {
     return apiClient.post<GeneratedQuestion>('TESTS', '/question-gen', {
       learningObjective,
@@ -368,6 +370,7 @@ export const testsService = {
       tags,
       exam,
       additionalContext,
+      chatHistory,
     });
   },
 };

@@ -20,7 +20,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { QuestionOption, QuestionType } from '../types';
-import { Question, Choice, GeneratedQuestion } from '../types/TestsServiceTypes';
+import { Question, Choice, GeneratedQuestion, ChatMessage } from '../types/TestsServiceTypes';
 import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
 import { useGlobal } from '../contexts/GlobalContext';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
@@ -77,6 +77,9 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
+  
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [followUpPrompt, setFollowUpPrompt] = useState('');
 
   const [options, setOptions] = useState<QuestionOption[]>([
     { id: '1', text: '', isCorrect: false, explanation: '' },
@@ -124,6 +127,8 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     fillFiltersFromObjective,
     setAllFilters,
     clearFilters,
+    refreshTopics,
+    refreshSyndromes,
     // Metadata
     tags: availableTags,
     disciplines: availableDisciplines,
@@ -331,7 +336,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     document.addEventListener("mouseup", onMouseUp);
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (isFollowUp = false) => {
     if (!selectedObjectiveId) {
         setError("Please select a learning objective first.");
         return;
@@ -343,12 +348,23 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       const difficulty = "Medium";
       const tags = selectedTags; // IDs is fine, backend expects strings
       
+      let currentHistory = [...chatHistory];
+      if (isFollowUp && followUpPrompt.trim()) {
+        currentHistory.push({ role: 'user', content: followUpPrompt });
+        setFollowUpPrompt('');
+        setChatHistory(currentHistory);
+      } else if (!isFollowUp) {
+        currentHistory = [];
+        setChatHistory(currentHistory);
+      }
+      
       const generatedQuestion: GeneratedQuestion = await testsService.generateQuestion(
           `Organ System ${selectedOrganSystem?.title} - Topic ${selectedTopic?.title} - Syndrome ${selectedSyndrome?.title} - Learning Objective ${selectedObjective?.title}`,
           difficulty,
           tags,
           selectedExam == 'STEP 1' ? 'step1' : selectedExam == 'STEP 2' ? 'step2' : '',
-          additionalContext
+          additionalContext,
+          currentHistory.length > 0 ? currentHistory : undefined
       );
       
       if (generatedQuestion) {
@@ -374,8 +390,10 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                   : (generatedQuestion.distractor_explanations.find((d) => d.id === opt.id)?.explanation || '')
           })));
           
-          // Auto-save generated references if needed/supported
-          // if (generatedQuestion.references) ...
+          setChatHistory([
+            ...currentHistory,
+            { role: 'assistant', content: JSON.stringify(generatedQuestion) }
+          ]);
       }
       
     } catch (e: any) {
@@ -752,34 +770,82 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               <Sparkles className="text-[#1BD183]" size={18} /> AI Generator
             </h3>
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context (Optional)</label>
-                <textarea 
-                  value={additionalContext}
-                  onChange={(e) => setAdditionalContext(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
-                  placeholder="Add specific focus areas, clinical scenarios, or patient demographics..." 
-                />
-              </div>
-              <button 
-                onClick={handleGenerate} 
-                disabled={isGenerating || (!selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
-                className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    Generate Draft
-                  </>
-                )}
-              </button>
-              {!selectedTopicId && (
-                <p className="text-xs text-slate-400 text-center">Select a topic to enable AI generation</p>
+              {chatHistory.length === 0 ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Additional Context (Optional)</label>
+                    <textarea 
+                      value={additionalContext}
+                      onChange={(e) => setAdditionalContext(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[80px] resize-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
+                      placeholder="Add specific focus areas, clinical scenarios, or patient demographics..." 
+                    />
+                  </div>
+                  <button 
+                    onClick={() => handleGenerate(false)} 
+                    disabled={isGenerating || (!selectedObjectiveId || !selectedSkillId || !selectedOrganSystemId || !selectedExam)} 
+                    className="w-full flex items-center justify-center gap-2 primary-button text-white py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Generate Draft
+                      </>
+                    )}
+                  </button>
+                  {!selectedTopicId && (
+                    <p className="text-xs text-slate-400 text-center">Select a topic to enable AI generation</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(chatHistory.some(msg => msg.role === 'user') || isGenerating) && (
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+                      {chatHistory.filter(msg => msg.role === 'user').map((msg, idx) => (
+                         <div key={idx} className="bg-white p-2 rounded border border-slate-100 text-sm text-slate-700 shadow-sm">
+                           <span className="font-semibold text-xs text-indigo-500 block mb-1">You</span>
+                           {msg.content}
+                         </div>
+                      ))}
+                      {isGenerating && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500 p-2">
+                          <Loader2 size={14} className="animate-spin" /> AI is thinking...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div>
+                     <textarea 
+                       value={followUpPrompt}
+                       onChange={(e) => setFollowUpPrompt(e.target.value)}
+                       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg min-h-[60px] resize-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
+                       placeholder="Ask the AI to modify the question (e.g., 'change option A')..." 
+                     />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleGenerate(false)}
+                      disabled={isGenerating}
+                      className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+                    >
+                      Reset
+                    </button>
+                    <button 
+                      onClick={() => handleGenerate(true)} 
+                      disabled={isGenerating || !followUpPrompt.trim()} 
+                      className="flex-[2] flex items-center justify-center gap-2 primary-button text-white py-2 rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50"
+                    >
+                      {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <span>Send Update</span>}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>
