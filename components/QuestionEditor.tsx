@@ -25,6 +25,8 @@ import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
 import { useGlobal } from '../contexts/GlobalContext';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
 import MultiSearchableSelect from './MultiSearchableSelect';
+import CreateTopicModal from './curriculum/CreateTopicModal';
+import CreateSubTopicModal from './curriculum/CreateSubTopicModal';
 
 
 interface QuestionEditorProps {
@@ -92,6 +94,8 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [tags, setTags] = useState<string[]>([]); // Keep for backward compatibility if needed, but we use selectedTags now
   const [references, setReferences] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
+  const [isCreateTopicModalOpen, setIsCreateTopicModalOpen] = useState(false);
+  const [isCreateSubTopicModalOpen, setIsCreateSubTopicModalOpen] = useState(false);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
@@ -439,6 +443,28 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     onSave(newQuestion);
   };
 
+  const handleCreateTopic = async (data: { name: string; identifier?: string; organSystemId: string }) => {
+    try {
+      const result = await testsService.upsertTopic(data.name, data.organSystemId);
+      await refreshTopics();
+      setSelectedTopicId(result.id);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  };
+
+  const handleCreateSubTopic = async (data: { name: string; identifier?: string; topicId: string }) => {
+    try {
+      const result = await testsService.upsertSyndrome('', data.name, data.topicId);
+      await refreshSyndromes();
+      setSelectedSyndromeId(result.id);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  };
+
   // Find display names for selected items
   const selectedOrganSystem = organSystems.find(os => os.id === selectedOrganSystemId);
   const selectedTopic = topics.find(t => t.id === selectedTopicId);
@@ -589,6 +615,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                 disabled={!selectedOrganSystemId || isLoadingTopics}
                 placeholder="Select Topic..."
                 allOption={{ id: 'ALL', name: 'Select Topic...' }}
+                onAddClick={() => setIsCreateTopicModalOpen(true)}
               />
               {isLoadingTopics && (
                 <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -605,6 +632,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                 disabled={!selectedTopicId || isLoadingSyndromes}
                 placeholder="Select Syndrome..."
                 allOption={{ id: 'ALL', name: 'Select Syndrome...' }}
+                onAddClick={() => setIsCreateSubTopicModalOpen(true)}
               />
               {isLoadingSyndromes && (
                 <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -931,6 +959,23 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           )}
         </div>
       </div>
+      
+      <CreateTopicModal
+        isOpen={isCreateTopicModalOpen}
+        onClose={() => setIsCreateTopicModalOpen(false)}
+        onSubmit={handleCreateTopic}
+        organSystems={organSystems}
+        defaultSystemId={selectedOrganSystemId}
+      />
+
+      <CreateSubTopicModal
+        isOpen={isCreateSubTopicModalOpen}
+        onClose={() => setIsCreateSubTopicModalOpen(false)}
+        onSubmit={handleCreateSubTopic}
+        organSystems={organSystems}
+        defaultOrganSystemId={selectedOrganSystemId}
+        defaultTopicId={selectedTopicId}
+      />
     </div>
   );
 };

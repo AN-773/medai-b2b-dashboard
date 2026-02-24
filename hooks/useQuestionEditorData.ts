@@ -57,6 +57,8 @@ interface UseQuestionEditorDataReturn {
   // Utilities
   searchObjectives: (query: string, usingSearchQuery?: boolean) => void;
   clearFilters: () => void;
+  refreshTopics: () => Promise<void>;
+  refreshSyndromes: () => Promise<void>;
   
   // Auto-fill from objective (for search path)
   fillFiltersFromObjective: (objective: LearningObjective) => Promise<LearningObjective>;
@@ -248,6 +250,35 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     setSelectedObjectiveId('');
   }, []);
 
+  const refreshTopics = useCallback(async () => {
+    if (!selectedOrganSystemId) return;
+    setIsLoadingTopics(true);
+    try {
+      const response = await testsService.getTopics(selectedOrganSystemId);
+      setTopicsCache(prev => ({
+        ...prev,
+        [selectedOrganSystemId]: response.items || []
+      }));
+    } catch (error) {
+      console.error('Failed to fetch topics:', error);
+    } finally {
+      setIsLoadingTopics(false);
+    }
+  }, [selectedOrganSystemId]);
+
+  const refreshSyndromes = useCallback(async () => {
+    if (!selectedTopicId) return;
+    setIsLoadingSyndromes(true);
+    try {
+      const response = await testsService.getSyndromes(selectedTopicId);
+      setSyndromes(response.items);
+    } catch (error) {
+      console.error('Failed to fetch syndromes:', error);
+    } finally {
+      setIsLoadingSyndromes(false);
+    }
+  }, [selectedTopicId]);
+
   // Search objectives by text
   const searchObjectives = useCallback(async (query: string , usingSearchQuery: boolean = false) => {
     if (!query || query.length < 2) {
@@ -386,6 +417,8 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     // Utilities
     searchObjectives,
     clearFilters,
-    fillFiltersFromObjective
+    fillFiltersFromObjective,
+    refreshTopics,
+    refreshSyndromes
   };
 };

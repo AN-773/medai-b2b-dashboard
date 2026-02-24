@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Search, X, Check } from 'lucide-react';
+import { ChevronDown, Search, X, Check, Plus } from 'lucide-react';
 
 export interface SelectOption {
   id: string;
@@ -15,6 +15,8 @@ interface SearchableSelectProps {
   disabled?: boolean;
   allOption?: { id: string; name: string };
   className?: string;
+  onAddClick?: () => void;
+  addLabel?: string;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -26,6 +28,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   disabled = false,
   allOption = { id: 'ALL', name: 'All' },
   className = '',
+  onAddClick,
+  addLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,9 +80,20 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   return (
     <div className={`space-y-2 ${className}`} ref={containerRef}>
       {label && (
-        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
-          {label}
-        </label>
+        <div className="flex justify-between items-center px-1">
+          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            {label}
+          </label>
+          {onAddClick && (
+            <button 
+              type="button" 
+              onClick={(e) => { e.preventDefault(); onAddClick(); }} 
+              className="text-[9px] font-bold text-[#1BD183] uppercase tracking-widest hover:text-[#14A567] flex items-center gap-1"
+            >
+              <Plus size={10} strokeWidth={3} /> {addLabel || 'Add'}
+            </button>
+          )}
+        </div>
       )}
       
       <div className="relative">
