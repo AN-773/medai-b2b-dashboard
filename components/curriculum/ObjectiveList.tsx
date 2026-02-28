@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus, ChevronDown, Loader2 } from 'lucide-react';
 import { LearningObjective, Syndrome, Topic } from '@/types/TestsServiceTypes';
 import { useGlobal } from '@/contexts/GlobalContext';
+import CreateObjectiveModal from './CreateObjectiveModal';
 
 interface ObjectiveListProps {
   topic: Topic;
@@ -13,6 +14,7 @@ interface ObjectiveListProps {
   onBack: () => void;
   onEdit: (id: string, text: string, bloom: string) => void;
   onDelete: (id: string) => void;
+  onCreateObjective?: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   onViewLinked: (obj: LearningObjective) => void;
   isLoading?: boolean;
   currentPage?: number;
@@ -29,13 +31,14 @@ const BLOOM_COLORS: Record<string, string> = {
 };
 
 const ObjectiveList: React.FC<ObjectiveListProps> = ({
-  topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onViewLinked, isLoading,
+  topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onCreateObjective, onViewLinked, isLoading,
   currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange
 }: ObjectiveListProps) => {
   const { cognitiveSkills } = useGlobal();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editBloom, setEditBloom] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const hasMorePages = currentPage < totalPages;
@@ -122,6 +125,16 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 </select>
                 <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={12} />
             </div>
+            
+            {onCreateObjective && (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="flex items-center gap-2 px-5 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm active:scale-95 whitespace-nowrap"
+              >
+                <Plus size={16} />
+                Create Objective
+              </button>
+            )}
         </div>
       </div>
 
@@ -244,6 +257,16 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           </button>
         )}
       </div>
+      )}
+
+      {onCreateObjective && (
+        <CreateObjectiveModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          topic={topic}
+          subTopic={subTopic}
+          onSubmit={onCreateObjective}
+        />
       )}
     </div>
   );

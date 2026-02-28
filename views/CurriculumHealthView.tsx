@@ -49,6 +49,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
     createSubTopic,
     updateSubTopic,
     deleteSubTopic,
+    createObjective,
     // Step 2
     curriculumMode,
     handleModeChange,
@@ -227,6 +228,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         onBack={() => handleSubTopicSelect(null)}
         onEdit={updateObjective}
         onDelete={deleteObjective}
+        onCreateObjective={createObjective}
         onViewLinked={setViewLinkedItems}
         isLoading={areObjectivesLoading}
         currentPage={objectivesPage}

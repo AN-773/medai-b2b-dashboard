@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Upload, Loader2, ChevronDown, File } from 'lucide-react';
 import { testsService } from '../../services/testsService';
 
@@ -18,12 +19,39 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   if (!isOpen) return null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
+      setError(null);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv')) {
+        setFile(droppedFile);
+        setError(null);
+      } else {
+        setError('Please drop a valid CSV file.');
+      }
     }
   };
 
@@ -32,6 +60,7 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
       setExam('');
       setFile(null);
       setError(null);
+      setIsDragging(false);
       onClose();
     }
   };
@@ -65,8 +94,8 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
@@ -108,8 +137,15 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
               <label className="block text-sm font-bold text-slate-700">CSV File <span className="text-red-500">*</span></label>
               
               <div 
-                className="border-2 border-dashed border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center hover:bg-slate-50 cursor-pointer transition-colors"
+                className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                  isDragging 
+                    ? 'border-[#1BD183] bg-[#1BD183]/5' 
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
                  <File size={32} className="text-slate-400 mb-2" />
                  {file ? (
@@ -172,6 +208,10 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modalContent, document.body);
 };
+
 
 export default ImportLearningObjectivesModal;

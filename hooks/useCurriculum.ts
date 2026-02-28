@@ -37,6 +37,7 @@ export interface UseCurriculumReturn {
   setBloomFilter: (value: string) => void;
   setObjectivesPage: (value: number) => void;
   deleteObjective: (id: string) => void;
+  createObjective: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   createOrganSystem: (name: string) => Promise<void>;
   updateOrganSystem: (id: string, name: string) => Promise<void>;
   deleteOrganSystem: (id: string) => Promise<void>;
@@ -394,6 +395,55 @@ export const useCurriculum = (): UseCurriculumReturn => {
         objectives: topic.objectives?.filter(obj => obj.id !== id) || []
       }))
     })));
+  };
+
+  const createObjective = async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+    try {
+      const newObjective = await testsService.upsertLearningObjective(
+        data.title,
+        data.syndromeId,
+        data.cognitiveSkillId,
+        data.disciplines,
+        undefined,
+        data.exam
+      );
+
+      // Force a re-fetch of objectives by mimicking a dependency change or updating the specific subtopic.
+      // To simplify, we can clear the `lastFetchedObjectivesKey` and trigger a re-fetch.
+      lastFetchedObjectivesKey.current = '';
+      
+      // We can also optimistically update the state, but re-fetching ensures consistency with IDs and refs.
+      // We will trigger a refetch by clearing the cached objectives for the active topic if needed,
+      // but since we cleared the key, the useEffect will re-run if we temporarily alter a dependency or just wait for the next render.
+      // Easiest is to manually push it to the list if we know the parent topic.
+      if (activeSystemId && activeTopicId) {
+        setCurriculumData(prev => prev.map(sys => {
+          if (sys.id === activeSystemId) {
+            return {
+              ...sys,
+              topics: sys.topics?.map(topic => {
+                if (topic.id === activeTopicId) {
+                  // Attach full cognitive skill object if possible
+                  const skill = cognitiveSkills.find(s => s.id === data.cognitiveSkillId);
+                  const enrichedNewObjective = { ...newObjective, cognitiveSkill: skill };
+                  
+                  return {
+                    ...topic,
+                    objectives: [enrichedNewObjective, ...(topic.objectives || [])]
+                  };
+                }
+                return topic;
+              })
+            };
+          }
+          return sys;
+        }));
+      }
+
+    } catch (error) {
+      console.error('Failed to create learning objective:', error);
+      throw error;
+    }
   };
 
   const createOrganSystem = async (name: string) => {
@@ -769,6 +819,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     setBloomFilter,
     setObjectivesPage,
     deleteObjective,
+    createObjective,
     createOrganSystem,
     updateOrganSystem,
     deleteOrganSystem,

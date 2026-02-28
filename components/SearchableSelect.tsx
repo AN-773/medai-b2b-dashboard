@@ -33,8 +33,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [popupDirection, setPopupDirection] = useState<'down' | 'up'>('down');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -53,6 +55,19 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
+    }
+
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropdownHeight = 320; // Approx height of search input + max-h-60 list
+
+      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+        setPopupDirection('up');
+      } else {
+        setPopupDirection('down');
+      }
     }
   }, [isOpen]);
 
@@ -99,6 +114,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       <div className="relative">
         {/* Trigger Button */}
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -126,7 +142,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
         {/* Dropdown */}
         {isOpen && (
-          <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div 
+            className={`absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200 ${
+              popupDirection === 'up' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'
+            }`}
+          >
             {/* Search Input */}
             <div className="p-3 border-b border-slate-100">
               <div className="relative">

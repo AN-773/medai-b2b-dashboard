@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Network, Loader2, ChevronDown } from 'lucide-react';
 import { OrganSystem, Topic } from '@/types/TestsServiceTypes';
 import { testsService } from '@/services/testsService';
@@ -112,8 +113,8 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
@@ -275,6 +276,10 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modalContent, document.body);
 };
+
 
 export default CreateSubTopicModal;
