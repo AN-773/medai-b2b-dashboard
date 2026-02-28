@@ -80,6 +80,8 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
       subTopicId: obj.subTopic,
       learningObjectiveId: obj.id,
       bloomLevel: obj.bloomLevel,
+      cognitiveSkillId: obj.cognitiveSkillId || '',
+      exam: obj.exam || '',
     };
     setViewLinkedItems(null);
     if (onNavigate) onNavigate('WORKBENCH', context);

@@ -689,7 +689,22 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                 label="Learning Objective"
                 options={objectiveOptions}
                 value={selectedObjectiveId || 'ALL'}
-                onChange={(val) => setSelectedObjectiveId(val === 'ALL' ? '' : val)}
+                onChange={async (val) => {
+                  const id = val === 'ALL' ? '' : val;
+                  setSelectedObjectiveId(id);
+                  if (id) {
+                    try {
+                      const fullObj = await testsService.getLearningObjective(id.split('/').pop() || '');
+                      if (fullObj) {
+                        if (fullObj.disciplines && fullObj.disciplines.length > 0) {
+                          setSelectedDisciplines(fullObj.disciplines.map(d => d.id));
+                        }
+                      }
+                    } catch (e) {
+                      console.error('Failed to fetch full objective details:', e);
+                    }
+                  }
+                }}
                 disabled={!selectedSyndromeId || objectives.length === 0}
                 placeholder="Select Objective..."
                 allOption={{ id: 'ALL', name: 'Select Objective...' }}

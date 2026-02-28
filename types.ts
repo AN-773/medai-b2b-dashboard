@@ -137,6 +137,8 @@ export interface LearningObjective {
   organSystemId?: string;
   disciplineId: string;
   bloomLevel: string;
+  cognitiveSkillId?: string;
+  exam?: string;
   usmleContentId: string;
   usmleCodes?: string[]; // Added: Array of USMLE codes for precise mapping
   targetItemCount?: number;
