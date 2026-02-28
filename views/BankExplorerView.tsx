@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Search, 
   Filter, 
@@ -12,12 +12,21 @@ import {
   XCircle,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronUp,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  X
 } from 'lucide-react';
 import { questionService } from '../services/questionService';
 import { testsService } from '../services/testsService';
 import SearchableSelect from '../components/SearchableSelect';
-import { OrganSystem, Topic, Syndrome, Question } from '@/types/TestsServiceTypes';
+import MultiSearchableSelect from '../components/MultiSearchableSelect';
+import ConfirmationModal from '../components/ConfirmationModal';
+import BulkProgressModal from '../components/BulkProgressModal';
+import { useGlobal } from '@/contexts/GlobalContext';
+import { OrganSystem, Topic, Syndrome, Question, Discipline, Tag, Subject } from '@/types/TestsServiceTypes';
 
 interface BankExplorerViewProps {
   onEditItem?: (itemId: string) => void;
@@ -32,16 +41,48 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
 
+  const { cognitiveSkills } = useGlobal();
+
   // Filter data from testsService
   const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subTopics, setSubTopics] = useState<Syndrome[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
 
   const [selectedSystemId, setSelectedSystemId] = useState<string>('ALL');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('ALL');
   const [selectedSubTopic, setSelectedSubTopic] = useState<string>('ALL');
   
+  const [selectedQID, setSelectedQID] = useState<string>('');
+  const [selectedCognitiveSkillId, setSelectedCognitiveSkillId] = useState<string>('ALL');
+  const [selectedExamType, setSelectedExamType] = useState<string>('ALL');
+  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ALL');
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Multi-select state
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close status menu on outside click
+  useEffect(() => {
+    if (!showStatusMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showStatusMenu]);
+
   // Search states
   const [searchQuery, setSearchQuery] = useState(''); // Actual query sent to API
   const [localSearchQuery, setLocalSearchQuery] = useState(''); // Input value
@@ -59,13 +100,31 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
 
   useEffect(() => {
     fetchQuestions();
-  }, [page, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic, filterType]);
+    setSelectedItems([]);
+  }, [page, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic, filterType, selectedQID, selectedCognitiveSkillId, selectedExamType, selectedStatus, selectedSubjectId, selectedDisciplines, selectedTags]);
 
   const fetchQuestions = async () => {
     try {
       setLoading(true);
       
-      const response = await questionService.getQuestions(page, limit, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic);
+      const response = await questionService.getQuestions(
+        page, 
+        limit, 
+        searchQuery || undefined, 
+        selectedSystemId === 'ALL' ? undefined : selectedSystemId, 
+        selectedTopicId === 'ALL' ? undefined : selectedTopicId, 
+        selectedSubTopic === 'ALL' ? undefined : selectedSubTopic,
+        selectedQID || undefined,
+        selectedCognitiveSkillId === 'ALL' ? undefined : selectedCognitiveSkillId,
+        undefined, // disciplineId
+        undefined, // tagId
+        selectedExamType === 'ALL' ? undefined : selectedExamType,
+        selectedSubjectId === 'ALL' ? undefined : selectedSubjectId,
+        selectedStatus === 'ALL' ? undefined : selectedStatus,
+        selectedDisciplines.length > 0 ? selectedDisciplines.join(',') : undefined,
+        undefined, // competencies
+        selectedTags.length > 0 ? selectedTags.join(',') : undefined
+      );
       
       let fetchedItems = response.items;
       
@@ -101,24 +160,32 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
 
   const totalPages = Math.ceil(total / limit);
 
-  // Fetch organ systems on mount
+  // Fetch initial filter data on mount
   useEffect(() => {
-    const fetchOrganSystems = async () => {
+    const fetchInitialData = async () => {
       try {
         setFiltersLoading(true);
-        const response = await testsService.getOrganSystems();
-        const systems = (response.items || []).map((sys: any) => ({
-          id: sys.id,
-          name: sys.title || sys.name
-        }));
-        setOrganSystems(systems);
+        const [sysRes, discRes, tagsRes, subjRes] = await Promise.all([
+          testsService.getOrganSystems(),
+          testsService.getDisciplines(1, 200),
+          testsService.getTags(1, 200),
+          testsService.getSubjects(1, 200)
+        ]);
+        
+        setOrganSystems((sysRes.items || []).map((sys: any) => ({ 
+          id: sys.id, 
+          name: sys.title || sys.name 
+        })));
+        setDisciplines(discRes.items || []);
+        setTags(tagsRes.items || []);
+        setSubjects(subjRes.items || []);
       } catch (error) {
-        console.error('Failed to fetch organ systems:', error);
+        console.error('Failed to fetch initial filter data:', error);
       } finally {
         setFiltersLoading(false);
       }
     };
-    fetchOrganSystems();
+    fetchInitialData();
   }, []);
 
   // Fetch topics when organ system changes
@@ -131,7 +198,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
       }
       try {
         const response = await testsService.getTopics(selectedSystemId);
-        const topicItems = (response || []).map((t: any) => ({
+        const topicItems = (response.items || []).map((t: any) => ({
           id: t.id,
           name: t.title || t.name,
           syndromes: (t.syndromes || []).map((s: any) => ({
@@ -147,19 +214,26 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     fetchTopics();
   }, [selectedSystemId]);
 
-  // Extract syndromes from selected topic
+  // Fetch syndromes when topic changes
   useEffect(() => {
-    if (selectedTopicId === 'ALL') {
-      setSubTopics([]);
-      return;
-    }
-    const selectedTopic = topics.find(t => t.id === selectedTopicId);
-    if (selectedTopic && (selectedTopic as any).syndromes) {
-      setSubTopics((selectedTopic as any).syndromes);
-    } else {
-      setSubTopics([]);
-    }
-  }, [selectedTopicId, topics]);
+    const fetchSyndromes = async () => {
+      if (selectedTopicId === 'ALL') {
+        setSubTopics([]);
+        return;
+      }
+      try {
+        const response = await testsService.getSyndromes(selectedTopicId);
+        const subTopicItems = (response.items || []).map((s: any) => ({
+          id: s.id,
+          name: s.title || s.name
+        }));
+        setSubTopics(subTopicItems);
+      } catch (error) {
+        console.error('Failed to fetch syndromes:', error);
+      }
+    };
+    fetchSyndromes();
+  }, [selectedTopicId]);
 
   // --- HELPER LOGIC ---
   const checkGold = (item: Question) => {
@@ -195,13 +269,160 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     return { gold, remediation, emerging };
   }, [items]);
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  // --- MODAL STATES ---
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', confirmLabel: 'Confirm', variant: 'danger', onConfirm: () => {} });
+
+  const [bulkProgress, setBulkProgress] = useState({
+    isOpen: false,
+    title: '',
+    totalItems: 0,
+    completedItems: 0,
+    failedItems: 0,
+    isProcessing: false,
+  });
+
+  const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
+
+  // Single item delete
+  const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this item?")) {
-      // Delete logic would go here
-      console.log('Delete item:', id);
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Item',
+      message: 'Are you sure you want to delete this item? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirmModal();
+        try {
+          await questionService.deleteQuestion(id);
+          fetchQuestions();
+        } catch (error) {
+          console.error('Failed to delete item:', error);
+        }
+      },
+    });
+  };
+
+  // Multi-select handlers
+  const toggleSelectItem = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedItems(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === items.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(items.map(i => i.id));
     }
   };
+
+  // Bulk delete with progress
+  const handleBulkDelete = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Selected Items',
+      message: `Are you sure you want to delete ${selectedItems.length} item(s)? This action cannot be undone.`,
+      confirmLabel: `Delete ${selectedItems.length} Items`,
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirmModal();
+        const itemsToProcess = [...selectedItems];
+        setBulkProgress({
+          isOpen: true,
+          title: `Deleting ${itemsToProcess.length} items...`,
+          totalItems: itemsToProcess.length,
+          completedItems: 0,
+          failedItems: 0,
+          isProcessing: true,
+        });
+
+        let completed = 0;
+        let failed = 0;
+        for (const id of itemsToProcess) {
+          try {
+            await questionService.deleteQuestion(id);
+            completed++;
+          } catch {
+            failed++;
+          }
+          setBulkProgress(prev => ({
+            ...prev,
+            completedItems: completed,
+            failedItems: failed,
+          }));
+        }
+
+        setBulkProgress(prev => ({
+          ...prev,
+          title: failed > 0 ? `Completed with ${failed} error(s)` : 'All items deleted successfully',
+          isProcessing: false,
+        }));
+        setSelectedItems([]);
+        fetchQuestions();
+      },
+    });
+  };
+
+  // Bulk status change with progress
+  const handleBulkStatusChange = (newStatus: "live" | "draft" | "pending") => {
+    setShowStatusMenu(false);
+    setConfirmModal({
+      isOpen: true,
+      title: 'Change Status',
+      message: `Change the status of ${selectedItems.length} item(s) to "${newStatus}"?`,
+      confirmLabel: `Update ${selectedItems.length} Items`,
+      variant: 'info',
+      onConfirm: async () => {
+        closeConfirmModal();
+        const itemsToProcess = [...selectedItems];
+        setBulkProgress({
+          isOpen: true,
+          title: `Updating status to "${newStatus}"...`,
+          totalItems: itemsToProcess.length,
+          completedItems: 0,
+          failedItems: 0,
+          isProcessing: true,
+        });
+
+        let completed = 0;
+        let failed = 0;
+        for (const id of itemsToProcess) {
+          try {
+            await testsService.updateQuestionStatus(id.split('/').pop() || '', newStatus);
+            completed++;
+          } catch {
+            failed++;
+          }
+          setBulkProgress(prev => ({
+            ...prev,
+            completedItems: completed,
+            failedItems: failed,
+          }));
+        }
+
+        setBulkProgress(prev => ({
+          ...prev,
+          title: failed > 0 ? `Completed with ${failed} error(s)` : 'All items updated successfully',
+          isProcessing: false,
+        }));
+        setSelectedItems([]);
+        fetchQuestions();
+      },
+    });
+  };
+
+  const clearSelection = () => setSelectedItems([]);
 
   const handleCardClick = (type: FilterType) => {
     if (filterType === type) {
@@ -217,11 +438,18 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     setSelectedSystemId('ALL');
     setSelectedTopicId('ALL');
     setSelectedSubTopic('ALL');
+    setSelectedQID('');
+    setSelectedCognitiveSkillId('ALL');
+    setSelectedExamType('ALL');
+    setSelectedStatus('ALL');
+    setSelectedSubjectId('ALL');
+    setSelectedDisciplines([]);
+    setSelectedTags([]);
     setFilterType('ALL');
     setPage(1);
   };
 
-  const hasActiveFilters = localSearchQuery !== '' || selectedSystemId !== 'ALL' || selectedTopicId !== 'ALL' || selectedSubTopic !== 'ALL' || filterType !== 'ALL';
+  const hasActiveFilters = localSearchQuery !== '' || selectedSystemId !== 'ALL' || selectedTopicId !== 'ALL' || selectedSubTopic !== 'ALL' || filterType !== 'ALL' || selectedQID !== '' || selectedCognitiveSkillId !== 'ALL' || selectedExamType !== 'ALL' || selectedStatus !== 'ALL' || selectedSubjectId !== 'ALL' || selectedDisciplines.length > 0 || selectedTags.length > 0;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
@@ -326,20 +554,48 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
                 </div>
             </div>
             
-            <div className="relative group w-full md:w-96">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
-                <input 
-                    type="text" 
-                    placeholder="Search by ID, stem, or keyword..."
-                    value={localSearchQuery}
-                    onChange={(e) => setLocalSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                />
+            <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                <div className="relative group w-full md:w-48">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Search Word..."
+                        value={localSearchQuery}
+                        onChange={(e) => setLocalSearchQuery(e.target.value)}
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
+                    />
+                </div>
+                <div className="relative group w-full md:w-48">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Search QID..."
+                        value={selectedQID}
+                        onChange={(e) => {
+                          setSelectedQID(e.target.value);
+                          setPage(1);
+                        }}
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
+                    />
+                </div>
             </div>
         </div>
 
+        {/* Filters Toggle Button */}
+        <div className="flex items-center justify-end mt-4">
+          <button 
+             onClick={() => setShowFilters(!showFilters)}
+             className="flex items-center gap-2 text-[#1BD183] px-4 py-2 rounded-xl text-sm font-bold transition-colors hover:bg-[#1BD183]/20"
+          >
+             <Filter size={16} />
+             {showFilters ? 'Hide Advanced Filters' : 'Show Advanced Filters'}
+             {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        </div>
+
         {/* Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 pt-6 border-t border-slate-50">
+        {showFilters && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 pt-6 border-t border-slate-50 mt-6 animate-in fade-in slide-in-from-top-4 duration-300">
            {/* Organ System Selection */}
            <SearchableSelect
              label="Organ System"
@@ -368,8 +624,109 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
              disabled={selectedTopicId === 'ALL'}
              allOption={{ id: 'ALL', name: 'All Subtopics' }}
            />
+
+           {/* Cognitive Skill Selection */}
+           <SearchableSelect
+             label="Cognitive Skill"
+             options={(cognitiveSkills || []).map(cs => ({ id: cs.id, name: cs.title }))}
+             value={selectedCognitiveSkillId}
+             onChange={(value) => setSelectedCognitiveSkillId(value)}
+             allOption={{ id: 'ALL', name: 'All Skills' }}
+           />
+           
+           {/* Exam Selection */}
+           <SearchableSelect
+             label="Exam"
+             options={[{ id: 'STEP 1', name: 'STEP 1' }, { id: 'STEP 2', name: 'STEP 2' }, { id: 'STEP 3', name: 'STEP 3' }]}
+             value={selectedExamType}
+             onChange={(value) => setSelectedExamType(value)}
+             allOption={{ id: 'ALL', name: 'All Exams' }}
+           />
+           
+           {/* Status Selection */}
+           <SearchableSelect
+             label="Status"
+             options={[{ id: 'live', name: 'Live' }, { id: 'draft', name: 'Draft' }, { id: 'pending', name: 'Pending' }, { id: 'published', name: 'Published' }]}
+             value={selectedStatus}
+             onChange={(value) => setSelectedStatus(value)}
+             allOption={{ id: 'ALL', name: 'All Status' }}
+           />
+           
+           {/* Subject Selection */}
+           <SearchableSelect
+             label="Subject"
+             options={subjects.map(s => ({ id: s.title, name: s.title }))}
+             value={selectedSubjectId}
+             onChange={(value) => setSelectedSubjectId(value)}
+             allOption={{ id: 'ALL', name: 'All Subjects' }}
+           />
+           
+           {/* Disciplines Selection */}
+           <MultiSearchableSelect
+             label="Disciplines"
+             options={disciplines.map(d => ({ id: d.id, name: d.title }))}
+             values={selectedDisciplines}
+             onChange={setSelectedDisciplines}
+             placeholder={filtersLoading ? "Loading..." : "Select disciplines..."}
+             disabled={filtersLoading}
+           />
+           
+           {/* Tags Selection */}
+           <MultiSearchableSelect
+             label="Tags"
+             options={tags.map(t => ({ id: t.id, name: t.title }))}
+             values={selectedTags}
+             onChange={setSelectedTags}
+             placeholder={filtersLoading ? "Loading..." : "Select tags..."}
+             disabled={filtersLoading}
+           />
         </div>
+        )}
       </div>
+
+      {/* Bulk Actions Bar */}
+      {selectedItems.length > 0 && (
+        <div className="sticky top-4 z-20 bg-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl border border-[#1BD183]/20 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-[#1BD183] to-[#15a968] rounded-xl shadow-lg shadow-[#1BD183]/20">
+              <CheckSquare size={16} className="text-white" />
+            </div>
+            <span className="text-sm font-black text-slate-900">{selectedItems.length} item{selectedItems.length > 1 ? 's' : ''} selected</span>
+            <button onClick={clearSelection} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors"><X size={16} /></button>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Change Status */}
+            <div className="relative" ref={statusMenuRef}>
+              <button 
+                onClick={() => setShowStatusMenu(!showStatusMenu)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white rounded-xl text-xs font-bold  transition-all"
+              >
+                Change Status <ChevronDown size={14} />
+              </button>
+              {showStatusMenu && (
+                <div className="absolute bottom-full mb-2 right-0 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 min-w-[160px] animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  {['live', 'draft', 'pending'].map(status => (
+                    <button
+                      key={status}
+                      onClick={() => handleBulkStatusChange(status as "live" | "draft" | "pending")}
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 capitalize transition-colors"
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Delete */}
+            <button 
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 text-white rounded-xl text-xs font-bold  hover:-translate-y-0.5 transition-all"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Item Grid */}
       <div className="space-y-4 relative">
@@ -379,15 +736,42 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
             <Loader2 size={32} className="animate-spin text-[#1BD183]" />
           </div>
         )}
+
+        {/* Select All Row */}
+        {items.length > 0 && (
+          <div className="flex items-center gap-3 px-2">
+            <button onClick={toggleSelectAll} className="text-slate-400 hover:text-[#1BD183] transition-colors">
+              {selectedItems.length === items.length && items.length > 0
+                ? <CheckSquare size={20} className="text-[#1BD183]" />
+                : selectedItems.length > 0
+                  ? <MinusSquare size={20} className="text-[#1BD183]" />
+                  : <Square size={20} />
+              }
+            </button>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              {selectedItems.length === items.length && items.length > 0 ? 'Deselect All' : 'Select All'}
+            </span>
+          </div>
+        )}
         
         {items.map(item => (
             <div 
                 key={item.id}
-                onClick={() => onEditItem?.(item.identifier || item.id)}
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-[#1BD183]/30 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => selectedItems.length > 0 ? toggleSelectItem({stopPropagation: () => {}} as React.MouseEvent, item.id) : onEditItem?.(item.identifier || item.id)}
+                className={`bg-white p-6 rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-pointer group ${
+                  selectedItems.includes(item.id) 
+                    ? 'border-[#1BD183] ring-2 ring-[#1BD183]/20 bg-[#1BD183]/5' 
+                    : 'border-slate-200 hover:border-[#1BD183]/30'
+                }`}
             >
                 <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-3">
+                        <button onClick={(e) => toggleSelectItem(e, item.id)} className="text-slate-300 hover:text-[#1BD183] transition-colors shrink-0">
+                          {selectedItems.includes(item.id) 
+                            ? <CheckSquare size={18} className="text-[#1BD183]" /> 
+                            : <Square size={18} />
+                          }
+                        </button>
                         <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[#1BD183]/10 text-[#1BD183]">
                             MCQ
                         </span>
@@ -423,7 +807,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
                     </div>
                     {item.cognitiveSkillId && (
                         <span className="text-[10px] font-bold text-slate-400 uppercase px-2 py-0.5 bg-slate-100 rounded">
-                            {item.cognitiveSkillId.split('/').pop()}
+                            {cognitiveSkills?.find(cs => cs.id === item.cognitiveSkillId)?.title || item.cognitiveSkillId.split('/').pop()}
                         </span>
                     )}
                      <div className="flex-1 text-right">
@@ -475,6 +859,28 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+      />
+
+      {/* Bulk Progress Modal */}
+      <BulkProgressModal
+        isOpen={bulkProgress.isOpen}
+        title={bulkProgress.title}
+        totalItems={bulkProgress.totalItems}
+        completedItems={bulkProgress.completedItems}
+        failedItems={bulkProgress.failedItems}
+        isProcessing={bulkProgress.isProcessing}
+        onClose={() => { setBulkProgress(prev => ({ ...prev, isOpen: false })); }}
+      />
     </div>
   );
 };

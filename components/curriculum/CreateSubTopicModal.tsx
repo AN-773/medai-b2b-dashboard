@@ -258,7 +258,7 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !name.trim() || !selectedTopicId}
-              className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#1BD183]/30 hover:shadow-xl hover:shadow-[#1BD183]/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg flex items-center gap-2"
+              className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl  transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg flex items-center gap-2"
             >
               {isSubmitting ? (
                 <>
