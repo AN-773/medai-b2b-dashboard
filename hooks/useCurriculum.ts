@@ -140,7 +140,11 @@ export const useCurriculum = (): UseCurriculumReturn => {
     let active = true;
     const fetchStats = async () => {
       try {
-        const stats = await testsService.getQuestionStats('STEP 2', [activeSubjectId]);
+        const subjectIds = activeSubjectId === 'all'
+          ? subjects.map(s => s.id)
+          : [activeSubjectId];
+        if (subjectIds.length === 0) return;
+        const stats = await testsService.getQuestionStats('STEP 2', subjectIds);
         if (active) setQuestionStats(stats);
       } catch (error) {
         console.error('Failed to fetch question stats:', error);
@@ -148,7 +152,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     };
     fetchStats();
     return () => { active = false; };
-  }, [activeSubjectId]);
+  }, [activeSubjectId, subjects]);
 
   // Derived Data — declared BEFORE effects that depend on them
   const activeSystem = useMemo(() => 

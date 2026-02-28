@@ -163,6 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full appearance-none bg-slate-50 text-xs font-bold text-slate-700 px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all hover:bg-slate-100 cursor-pointer"
               >
                 <option value="">Select a subject...</option>
+                <option value="all">All Subjects</option>
                 {(subjects ?? []).map(s => (
                   <option key={s.id} value={s.id}>{s.title}</option>
                 ))}

@@ -93,11 +93,11 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
   const renderBreadcrumbs = () => (
     <div className="flex items-center text-sm text-slate-500 mb-8 overflow-x-auto whitespace-nowrap pb-2 scrollbar-hide">
       {/* Step 2: show Subject breadcrumb */}
-      {curriculumMode === 'step2' && activeSubject && (
+      {curriculumMode === 'step2' && (activeSubject || activeSubjectId === 'all') && (
         <>
           <span className="font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
             <Activity size={16} className="text-[#1BD183]" />
-            {activeSubject.title}
+            {activeSubjectId === 'all' ? 'All Subjects' : activeSubject?.title}
           </span>
           {activeSystemId && <ChevronRight size={14} className="mx-2 flex-shrink-0 text-slate-300" />}
         </>
@@ -153,7 +153,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
   }
 
   const renderMainContent = () => {
-    // Step 2 — no system selected yet
+    // Step 2 — no subject selected yet
     if (curriculumMode === 'step2' && !activeSubjectId) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
@@ -222,6 +222,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
 
     return (
       <ObjectiveList
+        organSystemName={activeSystem?.title || ''}
         topic={activeTopic!}
         subTopic={activeSubTopic}
         searchTerm={contentSearch}
@@ -253,7 +254,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         mode={curriculumMode}
         onModeChange={handleModeChange}
         filteredSystemIds={curriculumMode === 'step2' ? allowedSystemIds : undefined}
-        subjects={subjects}
+        subjects={subjects.filter(s => s.title)}
         activeSubjectId={activeSubjectId}
         onSubjectChange={handleSubjectSelect}
       />
