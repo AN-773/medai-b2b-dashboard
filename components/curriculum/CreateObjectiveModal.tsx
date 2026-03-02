@@ -248,7 +248,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   if (!isOpen) return null;
 
   const topicName = subTopic?.title || topic.title;
-  const canGenerate = selectedBloom && selectedDisciplineId && additionalContext.trim().length > 0;
+  const canGenerate = selectedBloom && selectedDisciplineId;
 
   const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -541,7 +541,12 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
                       )}
                     </div>
                     <div className="px-5 py-5">
-                      <p className="text-sm text-slate-800 leading-relaxed">{generatedObjective.title}</p>
+                      <textarea
+                        value={generatedObjective.title}
+                        onChange={(e) => setGeneratedObjective({ ...generatedObjective, title: e.target.value })}
+                        disabled={isSavingGen || isSavedGen}
+                        className="w-full text-sm text-slate-800 leading-relaxed bg-transparent border-0 focus:ring-0 p-0 resize-none min-h-[60px]"
+                      />
                     </div>
                   </div>
 

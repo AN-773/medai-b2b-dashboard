@@ -26,7 +26,7 @@ export interface UseCurriculumReturn {
   handleSystemSelect: (id: string) => void;
   handleTopicSelect: (id: string | null) => void;
   handleSubTopicSelect: (subTopic: Syndrome | null) => void;
-  updateObjective: (id: string, text: string, bloomLevel: string) => void;
+  updateObjective: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   handleContentSearchChange: (value: string) => void;
   handleBloomFilterChange: (value: string) => void;
   handleLoadMoreObjectives: () => void;
@@ -36,7 +36,7 @@ export interface UseCurriculumReturn {
   setContentSearch: (value: string) => void;
   setBloomFilter: (value: string) => void;
   setObjectivesPage: (value: number) => void;
-  deleteObjective: (id: string) => void;
+  deleteObjective: (id: string) => Promise<void>;
   createObjective: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   createOrganSystem: (name: string) => Promise<void>;
   updateOrganSystem: (id: string, name: string) => Promise<void>;
@@ -379,26 +379,60 @@ export const useCurriculum = (): UseCurriculumReturn => {
     setContentSearch('');
   };
 
-  const updateObjective = (id: string, text: string, bloomLevel: string) => {
-    setCurriculumData(prev => prev.map(system => ({
-      ...system,
-      topics: system.topics.map(topic => ({
-        ...topic,
-        objectives: topic.objectives?.map(obj => 
-          obj.id === id ? { ...obj, text, bloomLevel } : obj
-        ) || []
-      }))
-    })));
+  const updateObjective = async (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+    try {
+      const updatedObjective = await testsService.upsertLearningObjective(
+        data.title,
+        data.syndromeId,
+        data.cognitiveSkillId,
+        data.disciplines,
+        id,
+        data.exam
+      );
+
+      if (activeSystemId && activeTopicId) {
+        setCurriculumData(prev => prev.map(sys => {
+          if (sys.id === activeSystemId) {
+            return {
+              ...sys,
+              topics: sys.topics?.map(topic => {
+                if (topic.id === activeTopicId) {
+                  const skill = cognitiveSkills.find(s => s.id === data.cognitiveSkillId);
+                  const enrichedUpdatedObjective = { ...updatedObjective, cognitiveSkill: skill };
+                  return {
+                    ...topic,
+                    objectives: topic.objectives?.map(obj => 
+                      obj.id === id ? enrichedUpdatedObjective : obj
+                    ) || []
+                  };
+                }
+                return topic;
+              })
+            };
+          }
+          return sys;
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to update learning objective:', error);
+      throw error;
+    }
   };
 
-  const deleteObjective = (id: string): void => {
-    setCurriculumData(prev => prev.map(system => ({
-      ...system,
-      topics: system.topics.map(topic => ({
-        ...topic,
-        objectives: topic.objectives?.filter(obj => obj.id !== id) || []
-      }))
-    })));
+  const deleteObjective = async (id: string): Promise<void> => {
+    try {
+      await testsService.deleteLearningObjective(id);
+      setCurriculumData(prev => prev.map(system => ({
+        ...system,
+        topics: (system.topics || []).map(topic => ({
+          ...topic,
+          objectives: topic.objectives?.filter(obj => obj.id !== id) || []
+        }))
+      })));
+    } catch (error) {
+      console.error('Failed to delete learning objective:', error);
+      throw error;
+    }
   };
 
   const createObjective = async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {

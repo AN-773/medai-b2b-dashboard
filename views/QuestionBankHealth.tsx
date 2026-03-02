@@ -23,11 +23,15 @@ const QuestionBankHealth: React.FC = () => {
   const limit = 10;
   const totalPages = Math.ceil(totalItems / limit);
 
+  // Sorting State
+  const [sortColumn, setSortColumn] = useState<string>('p_value');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
   useEffect(() => {
     const fetchPsychometrics = async () => {
       try {
         setLoading(true);
-        const res = await testsService.getPyschometrics(page, limit);
+        const res = await testsService.getPyschometrics(page, limit, sortColumn, sortDirection);
         setPsychometrics(res.items || []);
         setTotalItems(res.total || 0);
       } catch (err) {
@@ -37,7 +41,17 @@ const QuestionBankHealth: React.FC = () => {
       }
     };
     fetchPsychometrics();
-  }, [page]);
+  }, [page, sortColumn, sortDirection]);
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('desc'); // Default to descending for new sorts
+    }
+    setPage(1); // Reset to first page on sort
+  };
 
   // Map items to their psychometric data
   const mcqItems = useMemo(() => {
@@ -167,10 +181,50 @@ const QuestionBankHealth: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
                 <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item</th>
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Attempts</th>
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">P-Value</th>
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">D-Value</th>
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">NFD Audit</th>
+                <th 
+                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
+                  onClick={() => handleSort('total_answer_count')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Attempts
+                    {sortColumn === 'total_answer_count' && (
+                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
+                  onClick={() => handleSort('p_value')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    P-Value
+                    {sortColumn === 'p_value' && (
+                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
+                  onClick={() => handleSort('r_b')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    D-Value
+                    {sortColumn === 'r_b' && (
+                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-slate-600 transition"
+                  onClick={() => handleSort('must_revise')}
+                >
+                  <div className="flex items-center gap-1">
+                    NFD Audit
+                    {sortColumn === 'must_revise' && (
+                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
                 <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
               </tr>
             </thead>
