@@ -14,6 +14,7 @@ import {
   Competency,
   Subject,
   GeneratedQuestion,
+  GeneratedObjective,
   QuestionStats,
   ChatMessage,
 } from '../types/TestsServiceTypes';
@@ -372,5 +373,46 @@ export const testsService = {
       additionalContext,
       chatHistory,
     });
+  },
+
+  generateLearningObjective: async (
+    organSystem: string,
+    topic: string,
+    syndrome: string,
+    exam: string,
+    bloomLevel: string,
+    discipline: string,
+    additionalContext?: string,
+    chatHistory?: ChatMessage[],
+  ): Promise<GeneratedObjective> => {
+    const raw = await apiClient.post<any>('TESTS', '/lo-gen', {
+      organSystem,
+      topic,
+      syndrome,
+      exam,
+      bloomLevel,
+      discipline,
+      additionalContext,
+      chatHistory,
+    });
+
+    // Handle both formats:
+    // 1. Structured response with title field (single objective)
+    // 2. Raw content string: { content: "...json..." }
+    if (raw.title) {
+      return raw as GeneratedObjective;
+    }
+
+    if (raw.content && typeof raw.content === 'string') {
+      try {
+        const parsed = JSON.parse(raw.content);
+        return parsed as GeneratedObjective;
+      } catch (e) {
+        console.error('Failed to parse LO generation response:', e);
+        throw new Error('Failed to parse generated learning objective');
+      }
+    }
+
+    throw new Error('Unexpected response format from LO generation');
   },
 };

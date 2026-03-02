@@ -366,3 +366,16 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+export interface GeneratedObjective {
+  title: string;
+  competency: string;
+  bloom_level: string;
+  usmle_subtopic: string;
+}
+
+export interface GeneratedLearningObjectives {
+  topic: string;
+  disciplines: string[];
+  objectives: GeneratedObjective[];
+}
