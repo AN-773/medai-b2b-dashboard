@@ -3,7 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { LearningObjective, Syndrome, Topic } from '@/types/TestsServiceTypes';
 import { useGlobal } from '@/contexts/GlobalContext';
+import { testsService } from '../../services/testsService';
 import CreateObjectiveModal from './CreateObjectiveModal';
+import ConfirmationModal from '../ConfirmationModal';
 
 interface ObjectiveListProps {
   organSystemName: string;
@@ -13,7 +15,7 @@ interface ObjectiveListProps {
   bloomFilter: string;
   setBloomFilter: (val: string) => void;
   onBack: () => void;
-  onEdit: (id: string, text: string, bloom: string) => void;
+  onEdit: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   onDelete: (id: string) => void;
   onCreateObjective?: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
   onViewLinked: (obj: LearningObjective) => void;
@@ -36,9 +38,9 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
   currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange
 }: ObjectiveListProps) => {
   const { cognitiveSkills } = useGlobal();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-  const [editBloom, setEditBloom] = useState('');
+  const [editingObj, setEditingObj] = useState<LearningObjective | null>(null);
+  const [isFetchingObj, setIsFetchingObj] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'manual' | 'generate'>('manual');
 
@@ -65,24 +67,34 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
     return filtered;
   }, [topic?.objectives, searchTerm, bloomFilter]);
 
-  const handleStartEdit = (e: React.MouseEvent, obj: LearningObjective) => {
+  const handleStartEdit = async (e: React.MouseEvent, obj: LearningObjective) => {
     e.stopPropagation();
-    setEditingId(obj.id);
-    setEditText(obj.title);
-    setEditBloom(obj.cognitiveSkillId);
-  };
-
-  const handleSave = () => {
-    if (editingId) {
-      onEdit(editingId, editText, editBloom);
-      setEditingId(null);
+    try {
+      setIsFetchingObj(true);
+      const fullObj = await testsService.getLearningObjective(obj.id?.split("/")?.pop() || "");
+      setEditingObj(fullObj);
+      setModalMode('manual');
+      setIsCreateModalOpen(true);
+    } catch (err) {
+      console.error('Failed to fetch full learning objective', err);
+      // Fallback
+      setEditingObj(obj);
+      setModalMode('manual');
+      setIsCreateModalOpen(true);
+    } finally {
+      setIsFetchingObj(false);
     }
   };
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm("Delete this learning objective?")) {
-      onDelete(id);
+    setDeleteId(id);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteId) {
+      onDelete(deleteId);
+      setDeleteId(null);
     }
   };
 
@@ -152,46 +164,6 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
       <div className="space-y-6">
         {filteredObjectives.map((obj) => (
           <div key={obj.id} className="relative group">
-            {editingId === obj.id ? (
-              <div className="flex flex-col gap-6 bg-white p-8 rounded-[2rem] border-2 border-[#1BA6D1] shadow-2xl animate-in zoom-in-95 duration-200 relative z-10">
-                <div>
-                   <label className="text-[10px] font-black text-[#1BA6D1] uppercase tracking-widest mb-3 block">Objective Definition</label>
-                   <textarea
-                     value={editText}
-                     onChange={(e) => setEditText(e.target.value)}
-                     className="w-full text-lg text-slate-900 font-medium bg-slate-50 border border-slate-200 rounded-2xl p-6 focus:outline-none focus:ring-4 focus:ring-[#1BD183]/10 focus:border-[#1BD183] min-h-[140px] resize-none leading-relaxed"
-                   />
-                </div>
-                <div className="flex flex-col md:flex-row justify-between items-end gap-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="w-full md:w-auto flex-1">
-                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Cognitive Level (Bloom's)</label>
-                     <select
-                       value={editBloom}
-                       onChange={(e) => setEditBloom(e.target.value)}
-                       className="w-full bg-white border border-slate-200 text-slate-800 text-sm font-bold rounded-xl p-3 pr-10 focus:ring-[#1BD183] focus:border-[#1BD183] outline-none cursor-pointer hover:border-indigo-300 transition-colors"
-                     >
-                        {cognitiveSkills.map(skill => (
-                          <option key={skill.id} value={skill.id}>{skill.title}</option>
-                        ))}
-                     </select>
-                  </div>
-                  <div className="flex gap-3 w-full md:w-auto">
-                    <button 
-                      onClick={() => setEditingId(null)}
-                      className="flex-1 md:flex-none px-6 py-3.5 text-white text-xs uppercase tracking-widest bg-[#191A19] hover:bg-[#191A19]/90 rounded-xl transition-colors border border-transparent"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={handleSave}
-                      className="flex-1 md:flex-none px-8 py-3.5 bg-primary-gradient hover:bg-primary-gradient-hover text-white font-black text-xs uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                      <Check size={16} /> Save Changes
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
               <div 
                 onClick={() => onViewLinked(obj)}
                 className="flex items-start gap-6 p-8 bg-white border border-slate-100 rounded-[2.5rem] hover:shadow-xl hover:border-indigo-100 transition-all duration-300 cursor-pointer"
@@ -218,21 +190,22 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
                   <button 
                     onClick={(e) => handleStartEdit(e, obj)}
-                    className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-indigo-50 rounded-xl transition-colors"
+                    disabled={isFetchingObj}
+                    className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-indigo-50 rounded-xl transition-colors disabled:opacity-50"
                     title="Edit Objective"
                   >
                     <Edit3 size={18} />
                   </button>
                   <button 
-                    className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors" 
+                    className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50" 
                     title="Delete Objective"
-                    onClick={(e) => handleDelete(e, obj.id)}
+                    disabled={isFetchingObj}
+                    onClick={(e) => handleDeleteClick(e, obj.id)}
                   >
                     <Trash2 size={18} />
                   </button>
                 </div>
               </div>
-            )}
           </div>
         ))}
         
@@ -264,17 +237,43 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
       </div>
       )}
 
-      {onCreateObjective && (
+      {(onCreateObjective || onEdit) && (
         <CreateObjectiveModal
           isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setEditingObj(null);
+          }}
           topic={topic}
           subTopic={subTopic}
-          onSubmit={onCreateObjective}
+          onSubmit={async (data) => {
+            if (editingObj) {
+              await onEdit(editingObj.id, data);
+            } else if (onCreateObjective) {
+              await onCreateObjective(data);
+            }
+          }}
           initialMode={modalMode}
+          initialData={editingObj ? {
+            title: editingObj.title,
+            syndromeId: editingObj.syndromeId,
+            cognitiveSkillId: editingObj.cognitiveSkillId,
+            disciplines: editingObj.disciplines?.map(d => d.id) || [],
+            exam: editingObj.exam
+          } : null}
           organSystemName={organSystemName}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={!!deleteId}
+        title="Delete Objective"
+        message="Are you sure you want to delete this learning objective? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 };

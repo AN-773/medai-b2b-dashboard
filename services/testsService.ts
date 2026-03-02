@@ -100,10 +100,18 @@ export const testsService = {
   getPyschometrics: async (
     page = 1,
     limit = 200,
+    sortBy?: string,
+    order?: 'asc' | 'desc',
+    examType?: string,
   ): Promise<PaginatedApiResponse<Psychometric>> => {
+    let url = `/psychometrics/stats?page=${page}&limit=${limit}`;
+    if (sortBy) url += `&sort_by=${sortBy}`;
+    if (order) url += `&order=${order}`;
+    if (examType) url += `&examType=${examType}`;
+    
     return apiClient.get<PaginatedApiResponse<Psychometric>>(
       'TESTS',
-      `/psychometrics/stats?page=${page}&limit=${limit}`,
+      url,
     );
   },
 
@@ -354,6 +362,10 @@ export const testsService = {
   },
 
   deleteSyndrome: async (id: string): Promise<void> => {
+    return apiClient.delete<void>('TESTS', id.split("/local")[1]);
+  },
+
+  deleteLearningObjective: async (id: string): Promise<void> => {
     return apiClient.delete<void>('TESTS', id.split("/local")[1]);
   },
 
