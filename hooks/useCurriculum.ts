@@ -50,8 +50,8 @@ export interface UseCurriculumReturn {
   deleteSubTopic: (id: string) => Promise<void>;
   moveSubTopic: (id: string, name: string, newTopicId: string) => Promise<void>;
   // Step 2
-  curriculumMode: 'step1' | 'step2';
-  handleModeChange: (mode: 'step1' | 'step2') => void;
+  curriculumMode: 'STEP 1' | 'STEP 2';
+  handleModeChange: (mode: 'STEP 1' | 'STEP 2') => void;
   subjects: Subject[];
   activeSubjectId: string | null;
   handleSubjectSelect: (id: string) => void;
@@ -71,17 +71,17 @@ export const useCurriculum = (): UseCurriculumReturn => {
   // Navigation State
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const activeSystemId = searchParams.get('system') || curriculumData[0]?.id;
+  const activeSystemId = searchParams.get('system');
   const activeTopicId = searchParams.get('topic');
   const activeSubTopicId = searchParams.get('subtopic');
 
   // Step 2 state
-  const curriculumMode = (searchParams.get('mode') ?? 'step1') as 'step1' | 'step2';
+  const curriculumMode = (searchParams.get('mode') ?? 'STEP 1') as 'STEP 1' | 'STEP 2';
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const activeSubjectId = searchParams.get('subject');
   const [questionStats, setQuestionStats] = useState<QuestionStats | null>(null);
 
-  // Derived: organ system IDs allowed in step2 (total > 0), matched by trailing slug
+  // Derived: organ system IDs allowed in STEP 2 (total > 0), matched by trailing slug
   const allowedSystemIds = useMemo<string[]>(() => {
     if (!questionStats?.bySystem) return [];
     return questionStats.bySystem
@@ -129,7 +129,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
     fetchOrganSystems();
     fetchSubjects();
-  }, []);
+  }, [curriculumMode]);
 
   // Fetch question stats when a subject is selected in Step 2
   useEffect(() => {
@@ -146,6 +146,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
         if (subjectIds.length === 0) return;
         const stats = await testsService.getQuestionStats('STEP 2', subjectIds);
         if (active) setQuestionStats(stats);
+        
       } catch (error) {
         console.error('Failed to fetch question stats:', error);
       }
@@ -167,11 +168,9 @@ export const useCurriculum = (): UseCurriculumReturn => {
     activeTopic?.syndromes?.find(s => s.id === activeSubTopicId), 
   [activeTopic, activeSubTopicId]);
     
-  // Fetch Topics (and Syndromes as they are now nested)
-
   useEffect(() => {
     let active = true;
-
+    console.log('activeSystem', activeSystem);
     const fetchTopics = async () => {
       // Ensure we have the parent system loaded before fetching likely dependent data
       if (!activeSystem) return;
@@ -181,6 +180,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
       setAreTopicsLoading(true);
       try {
         const response = await testsService.getTopics(activeSystem.id);
+        console.log('response', response);
         if (active) {
           setCurriculumData(prev => prev.map(sys => {
             if (sys.id === activeSystem.id) {
@@ -277,7 +277,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
       setAreObjectivesLoading(true);
       try {
-        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode === 'step2' ? 'STEP 2' : curriculumMode === 'step1' ? 'STEP 1' : undefined);
+        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode);
 
         if (active) {
           lastFetchedObjectivesKey.current = currentKey; // Mark as fetched
@@ -344,6 +344,13 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
   // Actions
   const handleSystemSelect = (id: string) => {
+    // Clear cached topics/syndromes/objectives for the system we're leaving
+    if (activeSystemId && activeSystemId !== id) {
+      setCurriculumData(prev => prev.map(sys =>
+        sys.id === activeSystemId ? { ...sys, topics: undefined } : sys
+      ));
+    }
+    lastFetchedObjectivesKey.current = '';
     setSearchParams(params => {
       params.set('system', id);
       params.delete('topic');
@@ -355,6 +362,21 @@ export const useCurriculum = (): UseCurriculumReturn => {
   };
 
   const handleTopicSelect = (id: string | null) => {
+    // When navigating back (id === null), clear cached syndromes for the topic we're leaving
+    if (!id && activeTopicId && activeSystemId) {
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic =>
+              topic.id === activeTopicId ? { ...topic, syndromes: undefined } : topic
+            )
+          };
+        }
+        return sys;
+      }));
+    }
+    lastFetchedObjectivesKey.current = '';
     setSearchParams(params => {
       if (id) {
         params.set('topic', id);
@@ -368,6 +390,21 @@ export const useCurriculum = (): UseCurriculumReturn => {
   }
 
   const handleSubTopicSelect = (subTopic: Syndrome | null) => {
+    // When navigating back (subTopic === null), clear cached objectives for the topic
+    if (!subTopic && activeTopicId && activeSystemId) {
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic =>
+              topic.id === activeTopicId ? { ...topic, objectives: undefined } : topic
+            )
+          };
+        }
+        return sys;
+      }));
+    }
+    lastFetchedObjectivesKey.current = '';
     setSearchParams(params => {
       if (subTopic) {
         params.set('subtopic', subTopic.id);
@@ -799,7 +836,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     setContentSearch('');
   };
 
-  const handleModeChange = (newMode: 'step1' | 'step2'): void => {
+  const handleModeChange = (newMode: 'STEP 1' | 'STEP 2'): void => {
     setSearchParams(params => {
       params.set('mode', newMode);
       params.delete('subject');

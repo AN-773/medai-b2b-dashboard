@@ -93,7 +93,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
   const renderBreadcrumbs = () => (
     <div className="flex items-center text-sm text-slate-500 mb-8 overflow-x-auto whitespace-nowrap pb-2 scrollbar-hide">
       {/* Step 2: show Subject breadcrumb */}
-      {curriculumMode === 'step2' && (activeSubject || activeSubjectId === 'all') && (
+      {curriculumMode === 'STEP 2' && (activeSubject || activeSubjectId === 'all') && (
         <>
           <span className="font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
             <Activity size={16} className="text-[#1BD183]" />
@@ -154,7 +154,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
 
   const renderMainContent = () => {
     // Step 2 — no subject selected yet
-    if (curriculumMode === 'step2' && !activeSubjectId) {
+    if (curriculumMode === 'STEP 2' && !activeSubjectId) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <Activity size={40} className="mb-3 opacity-30" />
@@ -163,7 +163,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
       );
     }
 
-    if (curriculumMode === 'step2' && activeSubjectId && !activeSystemId) {
+    if (curriculumMode === 'STEP 2' && activeSubjectId && !activeSystemId) {
       return (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <Activity size={40} className="mb-3 opacity-30" />
@@ -238,6 +238,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         totalItems={objectivesTotal}
         itemsPerPage={objectivesLimit}
         onPageChange={setObjectivesPage}
+        curriculumMode={curriculumMode}
       />
     );
   };
@@ -253,7 +254,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         onDelete={deleteOrganSystem}
         mode={curriculumMode}
         onModeChange={handleModeChange}
-        filteredSystemIds={curriculumMode === 'step2' ? allowedSystemIds : undefined}
+        filteredSystemIds={curriculumMode === 'STEP 2' ? allowedSystemIds : undefined}
         subjects={subjects.filter(s => s.title)}
         activeSubjectId={activeSubjectId}
         onSubjectChange={handleSubjectSelect}

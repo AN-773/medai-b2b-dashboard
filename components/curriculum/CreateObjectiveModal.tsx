@@ -28,6 +28,7 @@ interface CreateObjectiveModalProps {
   } | null;
   initialMode?: 'manual' | 'generate';
   organSystemName?: string;
+  curriculumMode?: 'STEP 1' | 'STEP 2';
 }
 
 const BLOOM_LEVELS = ['Remember', 'Understand', 'Apply', 'Analyze'] as const;
@@ -41,6 +42,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   initialData,
   initialMode = 'manual',
   organSystemName = '',
+  curriculumMode = 'STEP 2',
 }) => {
   const { cognitiveSkills } = useGlobal();
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
@@ -54,9 +56,6 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   );
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>(
     initialData?.disciplines || [],
-  );
-  const [selectedExam, setSelectedExam] = useState<string>(
-    initialData?.exam || '',
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,7 +72,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   const [isSavedGen, setIsSavedGen] = useState(false);
 
   const availableSyndromes = topic.syndromes || [];
-  const EXAM_OPTIONS = ['STEP 1', 'STEP 2', 'STEP 3'];
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +98,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
         syndromeId: selectedSyndromeId,
         cognitiveSkillId: selectedCognitiveSkillId,
         disciplines: selectedDisciplines,
-        exam: selectedExam || undefined,
+        exam: curriculumMode,
       });
       // Reset form and close
       handleReset();
@@ -116,7 +115,6 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
     setSelectedSyndromeId(subTopic?.id || '');
     setSelectedCognitiveSkillId('');
     setSelectedDisciplines([]);
-    setSelectedExam('');
     setError(null);
 
     // Reset generate states
@@ -157,7 +155,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
         organSystemName,
         topic.title,
         subTopic?.title || '',
-        'step2',
+        curriculumMode,
         selectedBloom,
         disciplineName,
         additionalContext || undefined,
@@ -170,7 +168,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
       }
     } catch (e: any) {
       console.error('LO Generation error:', e);
-      setError('Failed to generate learning objective. ' + (e.message || ''));
+      setError('Failed to generate learning objective.');
     } finally {
       setIsGenerating(false);
     }
@@ -200,7 +198,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
         syndromeId,
         cognitiveSkillId,
         disciplines: [selectedDisciplineId],
-        exam: 'STEP 2',
+        exam: curriculumMode,
       });
       setIsSavedGen(true);
     } catch (e: any) {
@@ -224,7 +222,6 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
       setSelectedSyndromeId(initialData?.syndromeId || subTopic?.id || '');
       setSelectedCognitiveSkillId(initialData?.cognitiveSkillId || '');
       setSelectedDisciplines(initialData?.disciplines || []);
-      setSelectedExam(initialData?.exam || '');
       setError(null);
       
       const fetchDisciplines = async () => {
@@ -411,35 +408,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="exam-type"
-                    className="block text-sm font-bold text-slate-700"
-                  >
-                    Exam Type <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="exam-type"
-                      required
-                      value={selectedExam}
-                      onChange={(e) => setSelectedExam(e.target.value)}
-                      disabled={isSubmitting}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                    >
-                      <option value="">Select Exam Type</option>
-                      {EXAM_OPTIONS.map((exam) => (
-                        <option key={exam} value={exam}>
-                          {exam}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      size={16}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                    />
-                  </div>
-                </div>
+
 
                 <div className="space-y-2">
                   <MultiSearchableSelect
@@ -579,7 +548,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
               <button
                 type="submit"
                 form="manual-form"
-                disabled={isSubmitting || !title.trim() || !selectedSyndromeId || !selectedCognitiveSkillId || !selectedExam}
+                disabled={isSubmitting || !title.trim() || !selectedSyndromeId || !selectedCognitiveSkillId}
                 className="shrink-0 flex items-center justify-center min-w-[150px] gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-3 rounded-xl font-medium shadow-sm transition-colors"
               >
                 {isSubmitting ? (

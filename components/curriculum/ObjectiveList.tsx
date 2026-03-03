@@ -24,6 +24,7 @@ interface ObjectiveListProps {
   totalItems?: number;
   itemsPerPage?: number;
   onPageChange?: (page: number) => void;
+  curriculumMode?: 'STEP 1' | 'STEP 2';
 }
 
 const BLOOM_COLORS: Record<string, string> = {
@@ -35,7 +36,7 @@ const BLOOM_COLORS: Record<string, string> = {
 
 const ObjectiveList: React.FC<ObjectiveListProps> = ({
   organSystemName, topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onCreateObjective, onViewLinked, isLoading,
-  currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange
+  currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange, curriculumMode
 }: ObjectiveListProps) => {
   const { cognitiveSkills } = useGlobal();
   const [editingObj, setEditingObj] = useState<LearningObjective | null>(null);
@@ -262,6 +263,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             exam: editingObj.exam
           } : null}
           organSystemName={organSystemName}
+          curriculumMode={curriculumMode}
         />
       )}
 
