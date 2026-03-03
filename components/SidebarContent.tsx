@@ -160,7 +160,12 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
           >
             <LogOut size={18} /> Sign Out
           </button>
-          <button className="w-full flex items-center gap-3 px-5 py-2 text-sm font-bold text-[#848E8A] hover:text-white transition">
+          <button 
+            onClick={() => onNavigate('SETTINGS')}
+            className={`w-full flex items-center gap-3 px-5 py-2 text-sm font-bold transition ${
+              isActive('SETTINGS') ? 'text-white' : 'text-[#848E8A] hover:text-white'
+            }`}
+          >
             <Settings size={18} /> System Config
           </button>
         </div>

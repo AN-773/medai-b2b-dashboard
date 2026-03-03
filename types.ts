@@ -10,7 +10,8 @@ export type View =
   | 'ASSESSMENT'
   | 'AGENTS'
   | 'BLUEPRINT'
-  | 'FACULTY';
+  | 'FACULTY'
+  | 'SETTINGS';
 
 export enum OrganSystem {
   Cardiovascular = 'Cardiovascular',
@@ -173,6 +174,25 @@ export interface MediaAsset {
   type: 'image' | 'video' | 'audio' | 'document';
   uri: string;
   title: string;
+}
+
+export interface PromptPayload {
+  id?: string;
+  text: string;
+  type: string;
+  exam: string;
+  enforcedSchema?: string;
+}
+
+export interface Prompt {
+  id: string;
+  text: string;
+  type: string;
+  exam: string;
+  enforcedSchema?: string;
+  files?: Array<{ id: string; name: string; sizeBytes?: number }>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BackendItem {

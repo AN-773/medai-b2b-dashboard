@@ -362,7 +362,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           `Organ System ${selectedOrganSystem?.title} - Topic ${selectedTopic?.title} - Syndrome ${selectedSyndrome?.title} - Learning Objective ${selectedObjective?.title}`,
           difficulty,
           tags,
-          selectedExam == 'STEP 1' ? 'step1' : selectedExam == 'STEP 2' ? 'step2' : '',
+          selectedExam,
           additionalContext,
           currentHistory.length > 0 ? currentHistory : undefined
       );

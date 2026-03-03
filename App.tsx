@@ -28,6 +28,7 @@ import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
 import SidebarContent from './components/SidebarContent';
+import SettingsView from './views/SettingsView';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
@@ -53,6 +54,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/agents')) return 'AGENTS';
     if (path.startsWith('/blueprint')) return 'BLUEPRINT';
     if (path.startsWith('/faculty')) return 'FACULTY';
+    if (path.startsWith('/settings')) return 'SETTINGS';
     return 'DASHBOARD';
   };
 
@@ -70,7 +72,8 @@ const DashboardLayout: React.FC = () => {
       ASSESSMENT: '/assessment',
       AGENTS: '/agents',
       BLUEPRINT: '/blueprint',
-      FACULTY: '/faculty'
+      FACULTY: '/faculty',
+      SETTINGS: '/settings'
     };
     return routes[view];
   };
@@ -108,7 +111,8 @@ const DashboardLayout: React.FC = () => {
     { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
     { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
     // { id: 'AGENTS', label: 'AI Agent Fleet', icon: Cpu },
-    { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList }
+    { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
+    { id: 'SETTINGS', label: 'Settings', icon: Settings }
   ];
 
   return (
@@ -178,6 +182,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/assessment" element={<AssessmentPlaceholder />} />
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
+              <Route path="/settings" element={<SettingsView />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>

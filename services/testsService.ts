@@ -18,6 +18,7 @@ import {
   QuestionStats,
   ChatMessage,
 } from '../types/TestsServiceTypes';
+import { Prompt, PromptPayload } from '../types';
 import { apiClient } from './apiClient';
 
 export const testsService = {
@@ -426,5 +427,47 @@ export const testsService = {
     }
 
     throw new Error('Unexpected response format from LO generation');
+  },
+
+  getPrompts: async (
+    exam?: string,
+    type?: string,
+    page = 1,
+    limit = 200,
+  ): Promise<PaginatedApiResponse<Prompt>> => {
+    let url = `/prompts?page=${page}&limit=${limit}`;
+    if (exam) url += `&exam=${encodeURIComponent(exam)}`;
+    if (type) url += `&type=${encodeURIComponent(type)}`;
+    
+    return apiClient.get<PaginatedApiResponse<Prompt>>('TESTS', url);
+  },
+
+  getPrompt: async (id: string): Promise<Prompt> => {
+    // Strip prefix if any
+    const cleanId = id.replace('/prompts/', '');
+    return apiClient.get<Prompt>('TESTS', `/prompts/${cleanId}`);
+  },
+
+  upsertPrompt: async (prompt: PromptPayload): Promise<Prompt> => {
+    // Wrap to match expected backend structure 'PromptUpsertRequest'
+    return apiClient.post<Prompt>('TESTS', '/prompts', { prompt });
+  },
+
+  deletePrompt: async (id: string): Promise<void> => {
+    const cleanId = id.replace('/prompts/', '');
+    return apiClient.delete<void>('TESTS', `/prompts/${cleanId}`);
+  },
+
+  assignPromptContext: async (promptId: string, fileId: string): Promise<Prompt> => {
+    const cleanId = promptId.replace('/prompts/', '');
+    return apiClient.post<Prompt>('TESTS', `/prompts/${cleanId}/contexts`, { fileId });
+  },
+
+  removePromptContext: async (promptId: string, fileId: string): Promise<Prompt> => {
+    const cleanPromptId = promptId.replace('/prompts/', '');
+    const cleanFileId = fileId.replace('/files/', '');
+    // Using string because current apiClient.delete does not expect a return type,
+    // but assuming standard REST behavior we'll define it locally inside the caller block.
+    return apiClient.delete<any>('TESTS', `/prompts/${cleanPromptId}/contexts/${cleanFileId}`);
   },
 };
