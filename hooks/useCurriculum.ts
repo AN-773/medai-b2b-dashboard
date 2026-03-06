@@ -55,8 +55,6 @@ export interface UseCurriculumReturn {
   subjects: Subject[];
   activeSubjectId: string | null;
   handleSubjectSelect: (id: string) => void;
-  questionStats: QuestionStats | null;
-  allowedSystemIds: string[];
 }
 
 export const useCurriculum = (): UseCurriculumReturn => {
@@ -79,19 +77,6 @@ export const useCurriculum = (): UseCurriculumReturn => {
   const curriculumMode = (searchParams.get('mode') ?? 'STEP 1') as 'STEP 1' | 'STEP 2';
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const activeSubjectId = searchParams.get('subject');
-  const [questionStats, setQuestionStats] = useState<QuestionStats | null>(null);
-
-  // Derived: organ system IDs allowed in STEP 2 (total > 0), matched by trailing slug
-  const allowedSystemIds = useMemo<string[]>(() => {
-    if (!questionStats?.bySystem) return [];
-    return questionStats.bySystem
-      .filter(s => s.total > 0)
-      .map(s => {
-        // systemId is a full URL like https://.../organ-systems/slug
-        // OrganSystem.id is the full URL too — compare directly
-        return s.systemId;
-      });
-  }, [questionStats]);
 
   const [contentSearch, setContentSearch] = useState('');
   const [bloomFilter, setBloomFilter] = useState<string>('All');
@@ -106,18 +91,29 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
   // Fetch organ systems and subjects on mount
   useEffect(() => {
+    let active = true;
     const fetchOrganSystems = async () => {
       setIsLoading(true);
       try {
-        const response: PaginatedApiResponse<OrganSystem> = await testsService.getOrganSystems();
-        setCurriculumData(response.items);
+        const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
+          ? (activeSubjectId === 'all' ? undefined : [activeSubjectId])
+          : undefined;
+        const response: PaginatedApiResponse<OrganSystem> = await testsService.getOrganSystems(1, 200, selectedSubjectIds);
+        if (active) setCurriculumData(response.items);
       } catch (error) {
-        console.error('Failed to fetch organ systems:', error);
+        if (active) console.error('Failed to fetch organ systems:', error);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
+    fetchOrganSystems();
+
+    return () => { active = false; };
+  }, [curriculumMode, activeSubjectId, subjects]);
+
+  // Fetch subjects on mount
+  useEffect(() => {
     const fetchSubjects = async () => {
       try {
         const response = await testsService.getSubjects();
@@ -126,34 +122,8 @@ export const useCurriculum = (): UseCurriculumReturn => {
         console.error('Failed to fetch subjects:', error);
       }
     };
-
-    fetchOrganSystems();
     fetchSubjects();
-  }, [curriculumMode]);
-
-  // Fetch question stats when a subject is selected in Step 2
-  useEffect(() => {
-    if (!activeSubjectId) {
-      setQuestionStats(null);
-      return;
-    }
-    let active = true;
-    const fetchStats = async () => {
-      try {
-        const subjectIds = activeSubjectId === 'all'
-          ? subjects.map(s => s.id)
-          : [activeSubjectId];
-        if (subjectIds.length === 0) return;
-        const stats = await testsService.getQuestionStats('STEP 2', subjectIds);
-        if (active) setQuestionStats(stats);
-        
-      } catch (error) {
-        console.error('Failed to fetch question stats:', error);
-      }
-    };
-    fetchStats();
-    return () => { active = false; };
-  }, [activeSubjectId, subjects]);
+  }, []);
 
   // Derived Data — declared BEFORE effects that depend on them
   const activeSystem = useMemo(() => 
@@ -179,7 +149,10 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
       setAreTopicsLoading(true);
       try {
-        const response = await testsService.getTopics(activeSystem.id);
+        const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
+          ? (activeSubjectId === 'all' ? subjects.map(s => s.id) : [activeSubjectId])
+          : undefined;
+        const response = await testsService.getTopics(activeSystem.id, undefined, undefined, undefined, selectedSubjectIds);
         console.log('response', response);
         if (active) {
           setCurriculumData(prev => prev.map(sys => {
@@ -209,7 +182,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     return () => {
       active = false;
     };
-  }, [activeSystem]);
+  }, [activeSystem, activeSubjectId, curriculumMode, subjects]);
 
 
   // Fetch Syndromes when a topic is selected AND topic is loaded in state
@@ -224,7 +197,10 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
       setAreSyndromesLoading(true);
       try {
-        const response = await testsService.getSyndromes(activeTopic.id);
+        const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
+          ? (activeSubjectId === 'all' ? subjects.map(s => s.id) : [activeSubjectId])
+          : undefined;
+        const response = await testsService.getSyndromes(activeTopic.id, undefined, undefined, undefined, selectedSubjectIds);
         if (active) {
           setCurriculumData(prev => prev.map(sys => {
             if (sys.id === activeSystemId) {
@@ -260,7 +236,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     return () => {
       active = false;
     };
-  }, [activeTopic, activeSystemId]);
+  }, [activeTopic, activeSystemId, activeSubjectId, curriculumMode, subjects]);
 
   // Fetch Learning Objectives when a subtopic (syndrome) is selected AND syndrome is loaded in state
   useEffect(() => {
@@ -277,7 +253,10 @@ export const useCurriculum = (): UseCurriculumReturn => {
 
       setAreObjectivesLoading(true);
       try {
-        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode);
+        const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
+          ? (activeSubjectId === 'all' ? subjects.map(s => s.id) : [activeSubjectId])
+          : undefined;
+        const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode, selectedSubjectIds);
 
         if (active) {
           lastFetchedObjectivesKey.current = currentKey; // Mark as fetched
@@ -333,7 +312,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
       active = false;
     };
     // Include objects to ensure we re-run when they become available/complete
-  }, [activeSubTopic, activeTopic, activeSystemId, objectivesPage, cognitiveSkills]);
+  }, [activeSubTopic, activeTopic, activeSystemId, objectivesPage, cognitiveSkills, activeSubjectId, curriculumMode, subjects]);
 
   // Reset pagination when subtopic changes
   useEffect(() => {
@@ -826,6 +805,13 @@ export const useCurriculum = (): UseCurriculumReturn => {
   };
 
   const handleSubjectSelect = (id: string): void => {
+    // Clear nested fetched data that depends on the subject filter
+    setCurriculumData(prev => prev.map(sys => ({
+      ...sys,
+      topics: undefined
+    })));
+    lastFetchedObjectivesKey.current = '';
+
     setSearchParams(params => {
       params.set('subject', id);
       params.delete('system');
@@ -912,7 +898,5 @@ export const useCurriculum = (): UseCurriculumReturn => {
     subjects,
     activeSubjectId,
     handleSubjectSelect,
-    questionStats,
-    allowedSystemIds,
   };
 };

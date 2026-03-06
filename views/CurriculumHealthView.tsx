@@ -56,8 +56,6 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
     subjects,
     activeSubjectId,
     handleSubjectSelect,
-    questionStats,
-    allowedSystemIds,
     handleReset,
   } = useCurriculum();
 
@@ -254,7 +252,6 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         onDelete={deleteOrganSystem}
         mode={curriculumMode}
         onModeChange={handleModeChange}
-        filteredSystemIds={curriculumMode === 'STEP 2' ? allowedSystemIds : undefined}
         subjects={subjects.filter(s => s.title)}
         activeSubjectId={activeSubjectId}
         onSubjectChange={handleSubjectSelect}

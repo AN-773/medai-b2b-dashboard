@@ -41,7 +41,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDelete,
   mode,
   onModeChange,
-  filteredSystemIds,
   subjects,
   activeSubjectId,
   onSubjectChange,
@@ -76,20 +75,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [activeDropdownId]);
 
-  // In STEP 2, filter to allowed system IDs only (when a subject has been selected)
+
   const displaySystems: OrganSystem[] = useMemo(() => {
     let result = systems.filter((s) => s.title && s.title != '');
-    if (
-      mode === 'STEP 2' &&
-      filteredSystemIds &&
-      filteredSystemIds.length > 0
-    ) {
-      result = systems.filter((s) => filteredSystemIds.includes(s.id));
-    }
     return result.filter((system) =>
       system.title.toLowerCase().includes(searchTerm.toLowerCase()),
     );
-  }, [systems, searchTerm, mode, filteredSystemIds]);
+  }, [systems, searchTerm, mode]);
 
   const handleStartEdit = (id: string, currentName: string) => {
     setEditingId(id);
@@ -220,10 +212,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Step 2 hint when no subject selected yet */}
       {mode === 'STEP 2' &&
-        filteredSystemIds &&
-        filteredSystemIds.length === 0 && (
+        systems &&
+        systems.length === 0 && (
           <div className="px-6 py-2">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center border border-dashed border-slate-200 rounded-xl py-3">
               Select a subject first
@@ -342,8 +333,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         {displaySystems.length === 0 &&
           !(
             mode === 'STEP 2' &&
-            filteredSystemIds &&
-            filteredSystemIds.length === 0
+            systems &&
+            systems.length === 0
           ) && (
             <div className="px-6 py-4 text-center">
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">

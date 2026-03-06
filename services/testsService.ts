@@ -25,11 +25,11 @@ export const testsService = {
   getOrganSystems: async (
     page = 1,
     limit = 200,
+    subjectIds?: string[],
   ): Promise<PaginatedApiResponse<OrganSystem>> => {
-    return apiClient.get<PaginatedApiResponse<OrganSystem>>(
-      'TESTS',
-      `/organ-systems?page=${page}&limit=${limit}`,
-    );
+    let url = `/organ-systems?page=${page}&limit=${limit}`;
+    if (subjectIds?.length) url += `&subjectIds=${subjectIds.join(',')}`;
+    return apiClient.get<PaginatedApiResponse<OrganSystem>>('TESTS', url);
   },
 
   getTopics: async (
@@ -37,10 +37,12 @@ export const testsService = {
     page = 1,
     limit = 200,
     id?: string,
+    subjectIds?: string[],
   ): Promise<PaginatedApiResponse<Topic>> => {
     let url = `/topics?page=${page}&limit=${limit}`;
     if (organSystemId) url += `&_filters[organSystemId][eq]=${organSystemId}`;
     if (id) url += `&_filters[id][eq]=${id}`;
+    if (subjectIds?.length) url += `&subjectIds=${subjectIds.join(',')}`;
     return apiClient.get<PaginatedApiResponse<Topic>>('TESTS', url);
   },
 
@@ -49,10 +51,12 @@ export const testsService = {
     page = 1,
     limit = 200,
     id?: string,
+    subjectIds?: string[],
   ): Promise<PaginatedApiResponse<Syndrome>> => {
     let url = `/syndromes?page=${page}&limit=${limit}`;
     if (topicId) url += `&_filters[topicId][eq]=${topicId}`;
     if (id) url += `&_filters[id][eq]=${id}`;
+    if (subjectIds?.length) url += `&subjectIds=${subjectIds.join(',')}`;
     return apiClient.get<PaginatedApiResponse<Syndrome>>('TESTS', url);
   },
 
@@ -63,6 +67,7 @@ export const testsService = {
     q?: string,
     cognitiveSkillId?: string,
     examType?: string,
+    subjectIds?: string[],
   ): Promise<PaginatedApiResponse<LearningObjective>> => {
     let url = `/learning-objectives?limit=${limit}&page=${page}`;
     if (syndromeId) {
@@ -76,6 +81,9 @@ export const testsService = {
     }
     if (examType) {
       url += `&_filters[exam][eq]=${examType}`;
+    }
+    if (subjectIds?.length) {
+      url += `&subjectIds=${subjectIds.join(',')}`;
     }
     const res = await apiClient.get<PaginatedApiResponse<LearningObjective>>(
       'TESTS',

@@ -47,7 +47,6 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const hasMorePages = currentPage < totalPages;
-  const loadedCount = itemsPerPage * currentPage;
 
   const filteredObjectives = useMemo(() => {
     let filtered = topic?.objectives || [];
@@ -120,7 +119,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                     </span>
                 )}
                 <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                <span className="text-sm font-bold text-slate-400">{loadedCount} of {totalItems} Objectives</span>
+                <span className="text-sm font-bold text-slate-400">{totalItems} Objectives</span>
             </div>
             </div>
         </div>
