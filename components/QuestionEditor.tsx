@@ -17,7 +17,8 @@ import {
   Brain,
   Loader2,
   Plus,
-  Trash2
+  Trash2,
+  Link as LinkIcon
 } from 'lucide-react';
 import { QuestionOption, QuestionType } from '../types';
 import { Question, Choice, GeneratedQuestion, ChatMessage } from '../types/TestsServiceTypes';
@@ -27,6 +28,8 @@ import SearchableSelect, { SelectOption } from './SearchableSelect';
 import MultiSearchableSelect from './MultiSearchableSelect';
 import CreateTopicModal from './curriculum/CreateTopicModal';
 import CreateSubTopicModal from './curriculum/CreateSubTopicModal';
+import ImageSelectionModal, { MultimediaType, MultimediaSelection } from './ImageSelectionModal';
+import ConfirmationModal from './ConfirmationModal';
 
 
 interface QuestionEditorProps {
@@ -73,6 +76,9 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
 
   const [additionalContext, setAdditionalContext] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [stemMultimediaFileId, setStemMultimediaFileId] = useState<string | undefined>(undefined);
+  const [stemMultimediaType, setStemMultimediaType] = useState<MultimediaType>('image');
+  const [imageModalTarget, setImageModalTarget] = useState<string>('stem'); // 'stem' | 'choice-N' | 'explanation-N'
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +97,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const [selectedCompetencies, setSelectedCompetencies] = useState<string[]>([]);
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedDifficultyId, setSelectedDifficultyId] = useState<string>('');
   
   const [tags, setTags] = useState<string[]>([]); // Keep for backward compatibility if needed, but we use selectedTags now
@@ -99,6 +105,41 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
   const [isCreateTopicModalOpen, setIsCreateTopicModalOpen] = useState(false);
   const [isCreateSubTopicModalOpen, setIsCreateSubTopicModalOpen] = useState(false);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [deleteChoiceIdx, setDeleteChoiceIdx] = useState<number | null>(null);
+
+  const openImageModal = (target: string) => {
+    setImageModalTarget(target);
+    setIsImageModalOpen(true);
+  };
+
+  const handleMultimediaSelected = (data: MultimediaSelection) => {
+    if (imageModalTarget === 'stem') {
+      setAttachedImage(data.url);
+      setStemMultimediaFileId(data.fileId);
+      setStemMultimediaType(data.type);
+    } else if (imageModalTarget.startsWith('choice-')) {
+      const idx = parseInt(imageModalTarget.split('-')[1]);
+      const newOpts = [...options];
+      newOpts[idx] = {
+        ...newOpts[idx],
+        multimediaUrl: data.url,
+        multimediaFileId: data.fileId,
+        multimediaType: data.type,
+      };
+      setOptions(newOpts);
+    } else if (imageModalTarget.startsWith('explanation-')) {
+      const idx = parseInt(imageModalTarget.split('-')[1]);
+      const newOpts = [...options];
+      newOpts[idx] = {
+        ...newOpts[idx],
+        explanationMultimediaUrl: data.url,
+        explanationMultimediaFileId: data.fileId,
+        explanationMultimediaType: data.type,
+      };
+      setOptions(newOpts);
+    }
+  };
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
@@ -256,8 +297,21 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           id: c.id,
           text: c.content,
           isCorrect: c.isCorrect,
-          explanation: c.explanation || ''
+          explanation: c.explanation || '',
+          multimediaUrl: c.multimedia?.url,
+          multimediaFileId: c.multimedia?.fileId,
+          multimediaType: (c.multimedia?.type as MultimediaType) || undefined,
+          explanationMultimediaUrl: c.explanationMultimedia?.url,
+          explanationMultimediaFileId: c.explanationMultimedia?.fileId,
+          explanationMultimediaType: (c.explanationMultimedia?.type as MultimediaType) || undefined,
         })));
+      }
+
+      // Load stem multimedia
+      if (initialQuestion.multimedia) {
+        setAttachedImage(initialQuestion.multimedia.url || null);
+        setStemMultimediaFileId(initialQuestion.multimedia.fileId);
+        setStemMultimediaType((initialQuestion.multimedia.type as MultimediaType) || 'image');
       }
       
       if (initialQuestion.learningObjectiveId) {
@@ -309,7 +363,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       if (initialQuestion.tags) setSelectedTags(initialQuestion.tags.map(t => t.id));
       if (initialQuestion.disciplines) setSelectedDisciplines(initialQuestion.disciplines.map(d => d.id));
       if (initialQuestion.competencies) setSelectedCompetencies(initialQuestion.competencies.map(c => c.id));
-      if (initialQuestion.dbSubjects) setSelectedSubjects(initialQuestion.dbSubjects.map(s => s.title));
+      if (initialQuestion.dbSubjects && initialQuestion.dbSubjects.length > 0) setSelectedSubject(initialQuestion.dbSubjects[0].title);
 
       // Load references from metadata
       if (initialQuestion.metadata?.references && Array.isArray(initialQuestion.metadata.references)) {
@@ -373,12 +427,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           if (generatedQuestion.subject) {
               const newSub = generatedQuestion.subject.trim();
               if (newSub) {
-                  setSelectedSubjects(prev => {
-                      if (!prev.includes(newSub)) {
-                          return [...prev, newSub];
-                      }
-                      return prev;
-                  });
+                  setSelectedSubject(newSub);
               }
           }
           setOptions(generatedQuestion.options.map((opt) => ({
@@ -442,19 +491,47 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       cognitiveSkillId: selectedSkillId,
       difficultyId: selectedDifficultyId || availableDifficulties.find(d => d.title.toLowerCase() === 'medium')?.id || '',
       tags: selectedTags.map(id => ({ id, title: '', identifier: '', createdAt: '', updatedAt: '' })),
-      disciplines: selectedDisciplines.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
+      disciplines: [...new Set<string>(selectedDisciplines)].map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
       competencies: selectedCompetencies.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
-      dbSubjects: selectedSubjects.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
-      subjects: selectedSubjects,
+      dbSubjects: selectedSubject ? [{ id: selectedSubject, title: '', createdAt: '', updatedAt: '' }] : [],
+      subjects: selectedSubject ? [selectedSubject] : [],
       
       choices: options.map(o => ({
         ...((o.id.length > 5 && !o.id.startsWith('temp_')) ? { id: o.id } : {}),
         content: o.text,
         isCorrect: o.isCorrect,
-        explanation: o.explanation || '', // Attach explanation to choice
+        explanation: o.explanation || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...(o.multimediaUrl ? {
+          multimedia: {
+            id: '',
+            url: o.multimediaUrl,
+            type: o.multimediaType || 'image',
+            fileId: o.multimediaFileId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        } : {}),
+        ...(o.explanationMultimediaUrl ? {
+          explanationMultimedia: {
+            id: '',
+            url: o.explanationMultimediaUrl,
+            type: o.explanationMultimediaType || 'image',
+            fileId: o.explanationMultimediaFileId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        } : {}),
+      })),
+      multimedia: attachedImage ? {
+        id: '',
+        url: attachedImage,
+        type: stemMultimediaType || 'image',
+        fileId: stemMultimediaFileId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      })),
+      } : undefined,
       createdAt: initialQuestion ? initialQuestion.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -755,14 +832,15 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                 placeholder="Select Competencies..."
               />
 
-              {/* Subjects */}
-              <MultiSearchableSelect
-                label="Subjects"
+              {/* Subject */}
+              <SearchableSelect
+                label="Subject"
                 options={subjectOptions}
-                values={selectedSubjects}
-                onChange={setSelectedSubjects}
+                value={selectedSubject || 'ALL'}
+                onChange={(val) => setSelectedSubject(val === 'ALL' ? '' : val)}
                 disabled={isLoadingSubjects}
-                placeholder="Select Subjects..."
+                placeholder="Select Subject..."
+                allOption={{ id: 'ALL', name: 'Select Subject...' }}
               />
 
               {/* Tags */}
@@ -865,29 +943,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
             </div>
           </div>
           
-          {/* Clinical Visuals Section */}
-          {/* <div className="p-5 border-b border-slate-100">
-            <h3 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-              <ImageIcon className="text-[#1BD183]" size={18} /> Clinical Visuals
-            </h3>
-            <div className="space-y-4">
-              {attachedImage ? (
-                <div className="relative rounded-xl overflow-hidden group">
-                  <img src={attachedImage} alt="Clinical Visual" className="w-full h-40 object-cover" />
-                  <button onClick={() => setAttachedImage(null)} className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
-                </div>
-              ) : (
-                <button 
-                  onClick={handleGenerateImage}
-                  disabled={isGeneratingImage}
-                  className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 p-6 rounded-2xl text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] transition-all group"
-                >
-                  {isGeneratingImage ? <Loader2 size={24} className="animate-spin text-[#1BD183]" /> : <Wand2 size={24} />}
-                  <span className="text-xs font-bold uppercase tracking-widest">{isGeneratingImage ? "Synthesizing..." : "Generate AI Visual"}</span>
-                </button>
-              )}
-            </div>
-          </div> */}
+
         </div>
 
         {/* Main Editor Area */}
@@ -905,14 +961,42 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           {viewMode === 'edit' ? (
             <div className="max-w-3xl mx-auto space-y-8">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <label className="block text-sm font-semibold text-slate-900 mb-2">Question Stem</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-slate-900">Question Stem</label>
+                  <button
+                    onClick={() => openImageModal('stem')}
+                    className={`p-1 rounded transition-colors ${attachedImage ? 'text-[#1BD183] bg-[#F3F6F3]' : 'text-slate-300 hover:text-[#1BD183] hover:bg-[#F3F6F3]'}`}
+                    title="Add media to question stem"
+                  >
+                    {stemMultimediaType === 'hyperlink' ? <LinkIcon size={16} /> : <ImageIcon size={16} />}
+                  </button>
+                </div>
                 <textarea 
                   value={questionText} 
                   onChange={(e) => setQuestionText(e.target.value)} 
                   className="w-full p-4 text-lg border border-slate-200 rounded-lg min-h-[150px] focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all" 
                   placeholder="Clinical scenario..."
                 />
-                {attachedImage && <img src={attachedImage} className="mt-4 rounded-xl w-full h-64 object-cover border border-slate-100 shadow-sm" />}
+                {attachedImage && (
+                  <div className="mt-3">
+                    <div className="relative inline-block rounded-lg overflow-hidden border border-slate-200 group/media">
+                      {stemMultimediaType === 'hyperlink' ? (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-sm">
+                          <LinkIcon size={14} className="text-[#1BD183] flex-shrink-0" />
+                          <a href={attachedImage} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[300px]">{attachedImage}</a>
+                        </div>
+                      ) : (
+                        <img src={attachedImage} className="w-full max-h-64 object-cover" alt="Stem media" />
+                      )}
+                      <button
+                        onClick={() => { setAttachedImage(null); setStemMultimediaFileId(undefined); }}
+                        className="absolute top-1 right-1 p-0.5 bg-black/50 text-white rounded-full opacity-0 group-hover/media:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -937,18 +1021,60 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                           className="flex-1 bg-transparent text-slate-800 focus:outline-none font-medium" 
                           placeholder={`Option ${String.fromCharCode(65 + idx)}`}
                         />
+                        <button
+                          onClick={() => openImageModal(`choice-${idx}`)}
+                          className={`mt-1 p-1 rounded transition-colors ${option.multimediaUrl ? 'text-[#1BD183] bg-[#F3F6F3]' : 'text-slate-300 hover:text-[#1BD183] hover:bg-[#F3F6F3]'}`}
+                          title="Add media to choice"
+                        >
+                          {option.multimediaType === 'hyperlink' ? <LinkIcon size={16} /> : <ImageIcon size={16} />}
+                        </button>
                         <button 
-                          onClick={() => setOptions(options.filter(o => o.id !== option.id))}
-                          className="mt-1 p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          onClick={() => setDeleteChoiceIdx(idx)}
+                          className="mt-1 p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors"
                           title="Remove Option"
                         >
                           <Trash2 size={16} />
                         </button>
                       </div>
+
+                      {/* Choice Multimedia Preview */}
+                      {option.multimediaUrl && (
+                        <div className="pl-9 mt-1">
+                          <div className="relative inline-block rounded-lg overflow-hidden border border-slate-200 group/media">
+                            {option.multimediaType === 'hyperlink' ? (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-sm">
+                                <LinkIcon size={14} className="text-[#1BD183] flex-shrink-0" />
+                                <a href={option.multimediaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[300px]">{option.multimediaUrl}</a>
+                              </div>
+                            ) : (
+                              <img src={option.multimediaUrl} alt="Choice media" className="h-20 w-auto object-cover" />
+                            )}
+                            <button
+                              onClick={() => {
+                                const newOpts = [...options];
+                                newOpts[idx] = { ...newOpts[idx], multimediaUrl: undefined, multimediaFileId: undefined, multimediaType: undefined };
+                                setOptions(newOpts);
+                              }}
+                              className="absolute top-1 right-1 p-0.5 bg-black/50 text-white rounded-full opacity-0 group-hover/media:opacity-100 transition-opacity"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Per-Option Explanation */}
                       <div className="pl-9 mt-1">
-                        <label className="text-xs font-semibold text-slate-400 uppercase mb-1 block">Explanation</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-slate-400 uppercase">Explanation</label>
+                          <button
+                            onClick={() => openImageModal(`explanation-${idx}`)}
+                            className={`p-1 rounded transition-colors ${option.explanationMultimediaUrl ? 'text-[#1BD183] bg-[#F3F6F3]' : 'text-slate-300 hover:text-[#1BD183] hover:bg-[#F3F6F3]'}`}
+                            title="Add media to explanation"
+                          >
+                            {option.explanationMultimediaType === 'hyperlink' ? <LinkIcon size={14} /> : <ImageIcon size={14} />}
+                          </button>
+                        </div>
                         <textarea
                           value={option.explanation || ''}
                           onChange={(e) => {
@@ -956,9 +1082,34 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                             newOpts[idx].explanation = e.target.value;
                             setOptions(newOpts);
                           }}
-                          className="w-full min-h-[110px] p-2 text-sm border border-slate-200 rounded bg-white/50 focus:bg-white focus:ring-1 focus:ring-[#1BD183]/50 focus:border-[#1BD183] transition-all min-h-[120px] resize-y"
+                          className="w-full min-h-[110px] p-2 text-sm border border-slate-200 rounded bg-white/50 focus:bg-white focus:ring-1 focus:ring-[#1BD183]/50 focus:border-[#1BD183] transition-all resize-y"
                           placeholder={`Why is option ${String.fromCharCode(65 + idx)} ${option.isCorrect ? 'correct' : 'incorrect'}?`}
                         />
+                        {/* Explanation Multimedia Preview */}
+                        {option.explanationMultimediaUrl && (
+                          <div className="mt-2">
+                            <div className="relative inline-block rounded-lg overflow-hidden border border-slate-200 group/media">
+                              {option.explanationMultimediaType === 'hyperlink' ? (
+                                <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-sm">
+                                  <LinkIcon size={14} className="text-[#1BD183] flex-shrink-0" />
+                                  <a href={option.explanationMultimediaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[300px]">{option.explanationMultimediaUrl}</a>
+                                </div>
+                              ) : (
+                                <img src={option.explanationMultimediaUrl} alt="Explanation media" className="h-20 w-auto object-cover" />
+                              )}
+                              <button
+                                onClick={() => {
+                                  const newOpts = [...options];
+                                  newOpts[idx] = { ...newOpts[idx], explanationMultimediaUrl: undefined, explanationMultimediaFileId: undefined, explanationMultimediaType: undefined };
+                                  setOptions(newOpts);
+                                }}
+                                className="absolute top-1 right-1 p-0.5 bg-black/50 text-white rounded-full opacity-0 group-hover/media:opacity-100 transition-opacity"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1056,6 +1207,28 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
         organSystems={organSystems}
         defaultOrganSystemId={selectedOrganSystemId}
         defaultTopicId={selectedTopicId}
+      />
+
+      <ImageSelectionModal
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        onImageSelected={handleMultimediaSelected}
+      />
+
+      <ConfirmationModal
+        isOpen={deleteChoiceIdx !== null}
+        title="Delete Answer Option"
+        message={`Are you sure you want to delete Option ${deleteChoiceIdx !== null ? String.fromCharCode(65 + deleteChoiceIdx) : ''}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteChoiceIdx !== null) {
+            setOptions(options.filter((_, i) => i !== deleteChoiceIdx));
+            setDeleteChoiceIdx(null);
+          }
+        }}
+        onCancel={() => setDeleteChoiceIdx(null)}
       />
     </div>
   );

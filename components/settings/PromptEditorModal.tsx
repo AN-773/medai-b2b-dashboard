@@ -81,11 +81,11 @@ const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingP
     setIsUploading(true);
     try {
       // 1. Upload file
-      const fileId = await testsService.uploadFile(file);
+      const uploadedFile = await testsService.uploadFile(file);
       // 2. Assign Context
-      await testsService.assignPromptContext(prompt.id.split("/").pop() || "", fileId);
+      await testsService.assignPromptContext(prompt.id.split("/").pop() || "", uploadedFile.id);
       // Optimistically update
-      setAttachedFiles(prev => [...prev, { id: fileId, name: file.name }]);
+      setAttachedFiles(prev => [...prev, { id: uploadedFile.id, name: file.name }]);
       setHasChanges(true);
     } catch (err: any) {
       console.error(err);

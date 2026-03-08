@@ -96,6 +96,8 @@ export interface Choice {
   isCorrect: boolean;
   multimediaId?: string;
   multimedia?: Multimedia;
+  explanationMultimediaId?: string;
+  explanationMultimedia?: Multimedia;
   createdAt: string;
   updatedAt: string;
   questionId?: string;
@@ -261,8 +263,6 @@ export interface Multimedia {
   type: string; // MIME type of the file
   fileId?: string;
   file?: File;
-  questionId?: string;
-  choiceId?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -378,4 +378,19 @@ export interface GeneratedLearningObjectives {
   topic: string;
   disciplines: string[];
   objectives: GeneratedObjective[];
+}
+
+export interface OpenIImage {
+  uid: string;
+  imageqsurl: string; // The URL to the thumbnail/full image. Usually relative to OpenI base URL
+  pmcid: string;
+  title: string;
+  imgLarge: string;
+  abstract: string;
+}
+
+export interface OpenISearchResponse {
+  total: number;
+  count: number;
+  list: OpenIImage[];
 }

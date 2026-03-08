@@ -17,6 +17,8 @@ import {
   GeneratedObjective,
   QuestionStats,
   ChatMessage,
+  OpenISearchResponse,
+  File,
 } from '../types/TestsServiceTypes';
 import { Prompt, PromptPayload } from '../types';
 import { apiClient } from './apiClient';
@@ -285,7 +287,7 @@ export const testsService = {
     );
   },
 
-  uploadFile: async (file: File): Promise<string> => {
+  uploadFile: async (file: globalThis.File): Promise<File> => {
     const token = localStorage.getItem('msai_educator_token');
     const formData = new FormData();
     formData.append('file', file);
@@ -305,7 +307,7 @@ export const testsService = {
 
     const data = await response.json();
     // Assuming backend returns an array with file objects e.g., [{ id: 'some-id', ... }]
-    return data[0]?.id || data.id;
+    return data[0] || data;
   },
 
   importLearningObjectives: async (fileId: string, exam: string): Promise<any> => {
@@ -329,6 +331,30 @@ export const testsService = {
             ...(question.id ? { questionId: question.id } : {}),
             ...(c.id ? { id: c.id } : {}),
           },
+          ...(c.multimedia && (c.multimedia.url || c.multimedia.fileId)
+            ? {
+                multimedia: {
+                  fileId: c.multimedia.fileId || null,
+                  multimedia: {
+                    ...(c.multimedia.id ? { id: c.multimedia.id } : {}),
+                    url: c.multimedia.url || '',
+                    type: c.multimedia.type || 'image',
+                  },
+                },
+              }
+            : {}),
+          ...(c.explanationMultimedia && (c.explanationMultimedia.url || c.explanationMultimedia.fileId)
+            ? {
+                explanationMultimedia: {
+                  fileId: c.explanationMultimedia.fileId || null,
+                  multimedia: {
+                    ...(c.explanationMultimedia.id ? { id: c.explanationMultimedia.id } : {}),
+                    url: c.explanationMultimedia.url || '',
+                    type: c.explanationMultimedia.type || 'image',
+                  },
+                },
+              }
+            : {}),
         })) || [],
       organSystemId: question.organSystemId,
       disciplines: question.disciplines?.map((d) => d.id) || [],
@@ -342,12 +368,16 @@ export const testsService = {
       exam: question.exam,
       subjects: question.subjects || [],
       metadata: question.metadata || {},
-      multimedia: {
-        fileId: question.multimedia?.fileId || null,
-        multimedia: {
-          url: question.multimedia?.url || '',
-        },
-      },
+      multimedia: question.multimedia && (question.multimedia.url || question.multimedia.fileId)
+        ? {
+            fileId: question.multimedia.fileId || null,
+            multimedia: {
+              ...(question.multimedia.id ? { id: question.multimedia.id } : {}),
+              url: question.multimedia.url || '',
+              type: question.multimedia.type || 'image',
+            },
+          }
+        : undefined,
     };
     return apiClient.post<Question>('TESTS', '/questions', payload);
   },
@@ -477,5 +507,13 @@ export const testsService = {
     // Using string because current apiClient.delete does not expect a return type,
     // but assuming standard REST behavior we'll define it locally inside the caller block.
     return apiClient.delete<any>('TESTS', `/prompts/${cleanPromptId}/contexts/${cleanFileId}`);
+  },
+
+  searchOpenIImages: async (query: string, m: number = 1, n: number = 20): Promise<OpenISearchResponse> => {
+    return apiClient.get<OpenISearchResponse>('TESTS', `/openi/search?query=${encodeURIComponent(query)}&m=${m}&n=${n}`);
+  },
+
+  downloadOpenIImage: async (url: string): Promise<File> => {
+    return apiClient.post<File>('TESTS', '/openi/download', { url });
   },
 };

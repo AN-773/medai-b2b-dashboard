@@ -81,9 +81,9 @@ const ImportLearningObjectivesModal: React.FC<ImportLearningObjectivesModalProps
 
     try {
       // 1. Upload File
-      const fileId = await testsService.uploadFile(file);
+      const uploadedFile = await testsService.uploadFile(file);
       // 2. Import Learning Objectives
-      await testsService.importLearningObjectives(fileId, exam);
+      await testsService.importLearningObjectives(uploadedFile.id, exam);
       
       onSuccess();
       handleClose();

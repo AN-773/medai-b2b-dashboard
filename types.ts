@@ -87,6 +87,14 @@ export interface QuestionOption {
   plausibilityNote?: string;
   highPerformerSelectionRate?: number; // Added for RB distractor analysis
   explanation?: string;
+  // Choice multimedia
+  multimediaUrl?: string;
+  multimediaFileId?: string;
+  multimediaType?: 'image' | 'hyperlink' | 'video';
+  // Explanation multimedia
+  explanationMultimediaUrl?: string;
+  explanationMultimediaFileId?: string;
+  explanationMultimediaType?: 'image' | 'hyperlink' | 'video';
 }
 
 export interface Taxonomy {
