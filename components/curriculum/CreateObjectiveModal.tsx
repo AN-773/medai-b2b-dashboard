@@ -25,6 +25,8 @@ interface CreateObjectiveModalProps {
     cognitiveSkillId?: string;
     disciplines?: string[];
     exam?: string;
+    organSystemId?: string;
+    topicId?: string;
   } | null;
   initialMode?: 'manual' | 'generate';
   organSystemName?: string;
@@ -60,6 +62,16 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cascade hierarchy state (for edit mode)
+  const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
+  const [selectedOrganSystemId, setSelectedOrganSystemId] = useState(initialData?.organSystemId || '');
+  const [cascadeTopics, setCascadeTopics] = useState<Topic[]>([]);
+  const [selectedTopicId, setSelectedTopicId] = useState(initialData?.topicId || '');
+  const [cascadeSyndromes, setCascadeSyndromes] = useState<Syndrome[]>([]);
+  const [isLoadingOrganSystems, setIsLoadingOrganSystems] = useState(false);
+  const [isLoadingCascadeTopics, setIsLoadingCascadeTopics] = useState(false);
+  const [isLoadingCascadeSyndromes, setIsLoadingCascadeSyndromes] = useState(false);
 
   // Generation State
   const [activeTab, setActiveTab] = useState<'manual' | 'generate'>(initialMode);
@@ -110,12 +122,53 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
     }
   };
 
+  const handleOrganSystemChange = async (osId: string) => {
+    setSelectedOrganSystemId(osId);
+    setSelectedTopicId('');
+    setSelectedSyndromeId('');
+    setCascadeTopics([]);
+    setCascadeSyndromes([]);
+    if (osId) {
+      setIsLoadingCascadeTopics(true);
+      try {
+        const res = await testsService.getTopics(osId, 1, 200);
+        setCascadeTopics(res.items || []);
+      } catch (err) {
+        console.error('Failed to fetch topics:', err);
+      } finally {
+        setIsLoadingCascadeTopics(false);
+      }
+    }
+  };
+
+  const handleTopicChange = async (topicId: string) => {
+    setSelectedTopicId(topicId);
+    setSelectedSyndromeId('');
+    setCascadeSyndromes([]);
+    if (topicId) {
+      setIsLoadingCascadeSyndromes(true);
+      try {
+        const res = await testsService.getSyndromes(topicId, 1, 200);
+        setCascadeSyndromes(res.items || []);
+      } catch (err) {
+        console.error('Failed to fetch syndromes:', err);
+      } finally {
+        setIsLoadingCascadeSyndromes(false);
+      }
+    }
+  };
+
   const handleReset = () => {
     setTitle('');
     setSelectedSyndromeId(subTopic?.id || '');
     setSelectedCognitiveSkillId('');
     setSelectedDisciplines([]);
     setError(null);
+    // Reset cascade state
+    setSelectedOrganSystemId('');
+    setSelectedTopicId('');
+    setCascadeTopics([]);
+    setCascadeSyndromes([]);
 
     // Reset generate states
     setSelectedBloom('');
@@ -223,7 +276,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
       setSelectedCognitiveSkillId(initialData?.cognitiveSkillId || '');
       setSelectedDisciplines(initialData?.disciplines || []);
       setError(null);
-      
+
       const fetchDisciplines = async () => {
         setIsLoadingDisciplines(true);
         try {
@@ -235,9 +288,61 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
           setIsLoadingDisciplines(false);
         }
       };
-      
+
       if (disciplines.length === 0) {
         fetchDisciplines();
+      }
+
+      // Load cascade hierarchy when editing
+      if (initialData) {
+        const fetchHierarchy = async () => {
+          // Fetch organ systems
+          setIsLoadingOrganSystems(true);
+          try {
+            const res = await testsService.getOrganSystems(1, 200);
+            setOrganSystems(res.items || []);
+          } catch (err) {
+            console.error('Failed to fetch organ systems:', err);
+          } finally {
+            setIsLoadingOrganSystems(false);
+          }
+
+          // Pre-load topics for the initial organ system
+          if (initialData.organSystemId) {
+            setSelectedOrganSystemId(initialData.organSystemId);
+            setIsLoadingCascadeTopics(true);
+            try {
+              const res = await testsService.getTopics(initialData.organSystemId, 1, 200);
+              setCascadeTopics(res.items || []);
+            } catch (err) {
+              console.error('Failed to fetch topics:', err);
+            } finally {
+              setIsLoadingCascadeTopics(false);
+            }
+          }
+
+          // Pre-load syndromes for the initial topic
+          if (initialData.topicId) {
+            setSelectedTopicId(initialData.topicId);
+            setIsLoadingCascadeSyndromes(true);
+            try {
+              const res = await testsService.getSyndromes(initialData.topicId, 1, 200);
+              setCascadeSyndromes(res.items || []);
+            } catch (err) {
+              console.error('Failed to fetch syndromes:', err);
+            } finally {
+              setIsLoadingCascadeSyndromes(false);
+            }
+          }
+        };
+
+        fetchHierarchy();
+      } else {
+        // Reset cascade when switching to create mode
+        setSelectedOrganSystemId('');
+        setSelectedTopicId('');
+        setCascadeTopics([]);
+        setCascadeSyndromes([]);
       }
     }
   }, [isOpen, initialData, subTopic, initialMode]);
@@ -346,36 +451,129 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="subtopic"
-                    className="block text-sm font-bold text-slate-700"
-                  >
-                    Subtopic <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="subtopic"
-                      value={selectedSyndromeId}
-                      onChange={(e) => setSelectedSyndromeId(e.target.value)}
-                      disabled={isSubmitting || !!subTopic}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                {/* Subtopic selection: cascading hierarchy when editing, simple select when creating */}
+                {initialData ? (
+                  <>
+                    {/* Organ System */}
+                    <div className="space-y-2">
+                      <label htmlFor="organ-system" className="block text-sm font-bold text-slate-700">
+                        Organ System <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          id="organ-system"
+                          value={selectedOrganSystemId}
+                          onChange={(e) => handleOrganSystemChange(e.target.value)}
+                          disabled={isSubmitting || isLoadingOrganSystems}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                        >
+                          <option value="" disabled>
+                            {isLoadingOrganSystems ? 'Loading...' : 'Select an Organ System'}
+                          </option>
+                          {organSystems.map((os) => (
+                            <option key={os.id} value={os.id}>{os.title}</option>
+                          ))}
+                        </select>
+                        {isLoadingOrganSystems ? (
+                          <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+                        ) : (
+                          <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Topic */}
+                    {selectedOrganSystemId && (
+                      <div className="space-y-2">
+                        <label htmlFor="cascade-topic" className="block text-sm font-bold text-slate-700">
+                          Topic <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="cascade-topic"
+                            value={selectedTopicId}
+                            onChange={(e) => handleTopicChange(e.target.value)}
+                            disabled={isSubmitting || isLoadingCascadeTopics}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                          >
+                            <option value="" disabled>
+                              {isLoadingCascadeTopics ? 'Loading...' : 'Select a Topic'}
+                            </option>
+                            {cascadeTopics.map((t) => (
+                              <option key={t.id} value={t.id}>{t.title}</option>
+                            ))}
+                          </select>
+                          {isLoadingCascadeTopics ? (
+                            <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+                          ) : (
+                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtopic / Syndrome */}
+                    {selectedTopicId && (
+                      <div className="space-y-2">
+                        <label htmlFor="cascade-subtopic" className="block text-sm font-bold text-slate-700">
+                          Subtopic <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="cascade-subtopic"
+                            value={selectedSyndromeId}
+                            onChange={(e) => setSelectedSyndromeId(e.target.value)}
+                            disabled={isSubmitting || isLoadingCascadeSyndromes}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                          >
+                            <option value="" disabled>
+                              {isLoadingCascadeSyndromes ? 'Loading...' : 'Select a Subtopic'}
+                            </option>
+                            {cascadeSyndromes.map((syn) => (
+                              <option key={syn.id} value={syn.id}>{syn.title}</option>
+                            ))}
+                          </select>
+                          {isLoadingCascadeSyndromes ? (
+                            <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+                          ) : (
+                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="subtopic"
+                      className="block text-sm font-bold text-slate-700"
                     >
-                      <option value="" disabled>
-                        Select a Subtopic
-                      </option>
-                      {availableSyndromes.map((syn) => (
-                        <option key={syn.id} value={syn.id}>
-                          {syn.title}
+                      Subtopic <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="subtopic"
+                        value={selectedSyndromeId}
+                        onChange={(e) => setSelectedSyndromeId(e.target.value)}
+                        disabled={isSubmitting || !!subTopic}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                      >
+                        <option value="" disabled>
+                          Select a Subtopic
                         </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      size={16}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                    />
+                        {availableSyndromes.map((syn) => (
+                          <option key={syn.id} value={syn.id}>
+                            {syn.title}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={16}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
                   <label

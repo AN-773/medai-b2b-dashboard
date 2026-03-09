@@ -259,7 +259,9 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             syndromeId: editingObj.syndromeId,
             cognitiveSkillId: editingObj.cognitiveSkillId,
             disciplines: editingObj.disciplines?.map(d => d.id) || [],
-            exam: editingObj.exam
+            exam: editingObj.exam,
+            organSystemId: editingObj.syndrome?.topic?.organSystemId,
+            topicId: editingObj.syndrome?.topicId,
           } : null}
           organSystemName={organSystemName}
           curriculumMode={curriculumMode}
