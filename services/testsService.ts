@@ -19,6 +19,7 @@ import {
   ChatMessage,
   OpenISearchResponse,
   File,
+  DashboardStatsResponse,
 } from '../types/TestsServiceTypes';
 import { Prompt, PromptPayload } from '../types';
 import { apiClient } from './apiClient';
@@ -114,15 +115,62 @@ export const testsService = {
     sortBy?: string,
     order?: 'asc' | 'desc',
     examType?: string,
+    identifier?: string,
+    organSystems?: string,
+    topics?: string,
+    cognitiveSkills?: string,
+    disciplines?: string,
+    subjects?: string,
+    tags?: string,
+    competencies?: string,
   ): Promise<PaginatedApiResponse<Psychometric>> => {
     let url = `/psychometrics/stats?page=${page}&limit=${limit}`;
     if (sortBy) url += `&sort_by=${sortBy}`;
     if (order) url += `&order=${order}`;
     if (examType) url += `&examType=${examType}`;
+    if (identifier) url += `&identifier=${identifier}`;
+    if (organSystems) url += `&organSystems=${organSystems}`;
+    if (topics) url += `&topics=${topics}`;
+    if (cognitiveSkills) url += `&cognitiveSkills=${cognitiveSkills}`;
+    if (disciplines) url += `&disciplines=${disciplines}`;
+    if (subjects) url += `&subjects=${subjects}`;
+    if (tags) url += `&tags=${tags}`;
+    if (competencies) url += `&competencies=${competencies}`;
     
     return apiClient.get<PaginatedApiResponse<Psychometric>>(
       'TESTS',
       url,
+    );
+  },
+
+  getDashboardStats: async (
+    examType?: string,
+    identifier?: string,
+    organSystems?: string,
+    topics?: string,
+    cognitiveSkills?: string,
+    disciplines?: string,
+    subjects?: string,
+    tags?: string,
+    competencies?: string,
+  ): Promise<DashboardStatsResponse> => {
+    let url = `/psychometrics/dashboard-stats?limit=1`; // limit=1 is just a placeholder, no pagination 
+    // actually, let's build args properly.
+    url = `/psychometrics/dashboard-stats?`;
+    const params = new URLSearchParams();
+    if (examType) params.append('examType', examType);
+    if (identifier) params.append('identifier', identifier);
+    if (organSystems) params.append('organSystems', organSystems);
+    if (topics) params.append('topics', topics);
+    if (cognitiveSkills) params.append('cognitiveSkills', cognitiveSkills);
+    if (disciplines) params.append('disciplines', disciplines);
+    if (subjects) params.append('subjects', subjects);
+    if (tags) params.append('tags', tags);
+    if (competencies) params.append('competencies', competencies);
+    
+    return apiClient.get<DashboardStatsResponse>(
+      'TESTS',
+      url + params.toString(),
     );
   },
 

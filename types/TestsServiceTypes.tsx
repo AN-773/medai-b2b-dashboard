@@ -394,3 +394,31 @@ export interface OpenISearchResponse {
   count: number;
   list: OpenIImage[];
 }
+
+export interface DashboardMetrics {
+  bank_strength_score: number;
+  bank_strength_trend: number;
+  total_active_samples: number;
+  functional_efficiency_rate: number;
+  items_requiring_revision: number;
+}
+
+export interface DifficultyDistribution {
+  too_hard: number;
+  acceptable_low: number;
+  ideal: number;
+  acceptable_high: number;
+  too_easy: number;
+}
+
+export interface ScatterPlotCoordinate {
+  question_id: string;
+  p_value: number;
+  r_b: number;
+}
+
+export interface DashboardStatsResponse {
+  metrics: DashboardMetrics;
+  difficulty_distribution: DifficultyDistribution;
+  scatter_plot_data: ScatterPlotCoordinate[];
+}
