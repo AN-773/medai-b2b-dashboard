@@ -27,6 +27,7 @@ export interface UseCurriculumReturn {
   handleTopicSelect: (id: string | null) => void;
   handleSubTopicSelect: (subTopic: Syndrome | null) => void;
   updateObjective: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
+  refreshObjectives: () => void;
   handleContentSearchChange: (value: string) => void;
   handleBloomFilterChange: (value: string) => void;
   handleLoadMoreObjectives: () => void;
@@ -432,6 +433,23 @@ export const useCurriculum = (): UseCurriculumReturn => {
     } catch (error) {
       console.error('Failed to update learning objective:', error);
       throw error;
+    }
+  };
+
+  const refreshObjectives = () => {
+    lastFetchedObjectivesKey.current = '';
+    if (activeSystemId && activeTopicId) {
+      setCurriculumData(prev => prev.map(sys => {
+        if (sys.id === activeSystemId) {
+          return {
+            ...sys,
+            topics: sys.topics?.map(topic =>
+              topic.id === activeTopicId ? { ...topic, objectives: undefined } : topic
+            )
+          };
+        }
+        return sys;
+      }));
     }
   };
 
@@ -870,6 +888,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     handleTopicSelect,
     handleSubTopicSelect,
     updateObjective,
+    refreshObjectives,
     handleContentSearchChange,
     handleBloomFilterChange,
     handleLoadMoreObjectives,

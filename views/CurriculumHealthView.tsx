@@ -50,6 +50,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
     updateSubTopic,
     deleteSubTopic,
     createObjective,
+    refreshObjectives,
     // Step 2
     curriculumMode,
     handleModeChange,
@@ -236,6 +237,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
         totalItems={objectivesTotal}
         itemsPerPage={objectivesLimit}
         onPageChange={setObjectivesPage}
+        onRefresh={refreshObjectives}
         curriculumMode={curriculumMode}
       />
     );

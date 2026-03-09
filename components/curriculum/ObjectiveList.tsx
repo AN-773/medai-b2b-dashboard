@@ -24,6 +24,7 @@ interface ObjectiveListProps {
   totalItems?: number;
   itemsPerPage?: number;
   onPageChange?: (page: number) => void;
+  onRefresh?: () => void;
   curriculumMode?: 'STEP 1' | 'STEP 2';
 }
 
@@ -36,7 +37,7 @@ const BLOOM_COLORS: Record<string, string> = {
 
 const ObjectiveList: React.FC<ObjectiveListProps> = ({
   organSystemName, topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onCreateObjective, onViewLinked, isLoading,
-  currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange, curriculumMode
+  currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange, onRefresh, curriculumMode
 }: ObjectiveListProps) => {
   const { cognitiveSkills } = useGlobal();
   const [editingObj, setEditingObj] = useState<LearningObjective | null>(null);
@@ -128,8 +129,8 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             <div className="relative group">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                 <select
-                    value={bloomFilter}
-                    onChange={(e) => setBloomFilter(e.target.value)}
+                  value={bloomFilter}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setBloomFilter(e.target.value)}
                     className="pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#1BD183] appearance-none cursor-pointer hover:border-[#1BD183] transition-colors shadow-sm min-w-[140px]"
                 >
                     <option value="All">All Types</option>
@@ -162,7 +163,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
         </div>
       ) : (
       <div className="space-y-6">
-        {filteredObjectives.map((obj) => (
+        {filteredObjectives.map((obj: LearningObjective) => (
           <div key={obj.id} className="relative group">
               <div 
                 onClick={() => onViewLinked(obj)}
@@ -175,7 +176,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj?.cognitiveSkill?.title] || 'bg-slate-100'}`}>
+                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj.cognitiveSkill?.title ?? ''] || 'bg-slate-100'}`}>
                       {obj?.cognitiveSkill?.title}
                     </span>
                     {(obj.questions?.length || 0) > 0 && (
@@ -189,7 +190,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                 
                 <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
                   <button 
-                    onClick={(e) => handleStartEdit(e, obj)}
+                    onClick={(e: React.MouseEvent) => handleStartEdit(e, obj)}
                     disabled={isFetchingObj}
                     className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-indigo-50 rounded-xl transition-colors disabled:opacity-50"
                     title="Edit Objective"
@@ -200,7 +201,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                     className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50" 
                     title="Delete Objective"
                     disabled={isFetchingObj}
-                    onClick={(e) => handleDeleteClick(e, obj.id)}
+                    onClick={(e: React.MouseEvent) => handleDeleteClick(e, obj.id)}
                   >
                     <Trash2 size={18} />
                   </button>
@@ -230,43 +231,45 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
               <ChevronDown size={20} className="group-hover:translate-y-0.5 transition-transform" />
             )}
             <span className="font-black text-xs uppercase tracking-widest">
-              {isLoading ? 'Loading...' : `Load More (${totalItems - loadedCount} remaining)`}
+              {isLoading ? 'Loading...' : `Load More (${totalItems - filteredObjectives.length} remaining)`}
             </span>
           </button>
         )}
       </div>
       )}
 
-      {(onCreateObjective || onEdit) && (
-        <CreateObjectiveModal
-          isOpen={isCreateModalOpen}
-          onClose={() => {
-            setIsCreateModalOpen(false);
-            setEditingObj(null);
-          }}
-          topic={topic}
-          subTopic={subTopic}
-          onSubmit={async (data) => {
-            if (editingObj) {
-              await onEdit(editingObj.id, data);
-            } else if (onCreateObjective) {
-              await onCreateObjective(data);
+      <CreateObjectiveModal
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingObj(null);
+        }}
+        topic={topic}
+        subTopic={subTopic}
+        onSubmit={async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+          if (editingObj) {
+            const originalSyndromeId = editingObj.syndromeId;
+            await onEdit(editingObj.id, data);
+            if (originalSyndromeId && data.syndromeId !== originalSyndromeId) {
+              onRefresh?.();
             }
-          }}
-          initialMode={modalMode}
-          initialData={editingObj ? {
-            title: editingObj.title,
-            syndromeId: editingObj.syndromeId,
-            cognitiveSkillId: editingObj.cognitiveSkillId,
-            disciplines: editingObj.disciplines?.map(d => d.id) || [],
-            exam: editingObj.exam,
-            organSystemId: editingObj.syndrome?.topic?.organSystemId,
-            topicId: editingObj.syndrome?.topicId,
-          } : null}
-          organSystemName={organSystemName}
-          curriculumMode={curriculumMode}
-        />
-      )}
+          } else if (onCreateObjective) {
+            await onCreateObjective(data);
+          }
+        }}
+        initialMode={modalMode}
+        initialData={editingObj ? {
+          title: editingObj.title,
+          syndromeId: editingObj.syndromeId,
+          cognitiveSkillId: editingObj.cognitiveSkillId,
+          disciplines: editingObj.disciplines?.map((d) => d.id) || [],
+          exam: editingObj.exam,
+          organSystemId: editingObj.syndrome?.topic?.organSystemId,
+          topicId: editingObj.syndrome?.topicId,
+        } : null}
+        organSystemName={organSystemName}
+        curriculumMode={curriculumMode}
+      />
 
       <ConfirmationModal
         isOpen={!!deleteId}
