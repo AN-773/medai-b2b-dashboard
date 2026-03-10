@@ -151,7 +151,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
       setAreTopicsLoading(true);
       try {
         const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
-          ? (activeSubjectId === 'all' ? subjects.filter(s => s.title).map(s => s.id) : [activeSubjectId])
+          ? (activeSubjectId === 'all' ? undefined : [activeSubjectId])
           : undefined;
         const response = await testsService.getTopics(activeSystem.id, undefined, undefined, undefined, selectedSubjectIds);
         console.log('response', response);
@@ -199,7 +199,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
       setAreSyndromesLoading(true);
       try {
         const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
-          ? (activeSubjectId === 'all' ? subjects.filter(s => s.title).map(s => s.id) : [activeSubjectId])
+          ? (activeSubjectId === 'all' ? undefined : [activeSubjectId])
           : undefined;
         const response = await testsService.getSyndromes(activeTopic.id, undefined, undefined, undefined, selectedSubjectIds);
         if (active) {
@@ -255,7 +255,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
       setAreObjectivesLoading(true);
       try {
         const selectedSubjectIds = curriculumMode === 'STEP 2' && activeSubjectId
-          ? (activeSubjectId === 'all' ? subjects.filter(s => s.title).map(s => s.id) : [activeSubjectId])
+          ? (activeSubjectId === 'all' ? undefined : [activeSubjectId])
           : undefined;
         const response = await testsService.getLearningObjectives(objectivesPage, objectivesLimit, activeSubTopic.id, undefined, undefined, curriculumMode, selectedSubjectIds);
 
