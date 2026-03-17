@@ -26,7 +26,7 @@ export interface UseCurriculumReturn {
   handleSystemSelect: (id: string) => void;
   handleTopicSelect: (id: string | null) => void;
   handleSubTopicSelect: (subTopic: Syndrome | null) => void;
-  updateObjective: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
+  updateObjective: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => Promise<void>;
   refreshObjectives: () => void;
   handleContentSearchChange: (value: string) => void;
   handleBloomFilterChange: (value: string) => void;
@@ -38,7 +38,7 @@ export interface UseCurriculumReturn {
   setBloomFilter: (value: string) => void;
   setObjectivesPage: (value: number) => void;
   deleteObjective: (id: string) => Promise<void>;
-  createObjective: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
+  createObjective: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => Promise<void>;
   createOrganSystem: (name: string) => Promise<void>;
   updateOrganSystem: (id: string, name: string) => Promise<void>;
   deleteOrganSystem: (id: string) => Promise<void>;
@@ -100,7 +100,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
           ? (activeSubjectId === 'all' ? undefined : [activeSubjectId])
           : undefined;
         const response: PaginatedApiResponse<OrganSystem> = await testsService.getOrganSystems(1, 200, selectedSubjectIds);
-        if (active) setCurriculumData(response.items);
+        if (active) setCurriculumData(response.items.filter(i => !!i.title));
       } catch (error) {
         if (active) console.error('Failed to fetch organ systems:', error);
       } finally {
@@ -118,7 +118,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     const fetchSubjects = async () => {
       try {
         const response = await testsService.getSubjects();
-        setSubjects(response.items);
+        setSubjects(response.items.filter((s): s is Subject => !!s.title));
       } catch (error) {
         console.error('Failed to fetch subjects:', error);
       }
@@ -396,7 +396,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     setContentSearch('');
   };
 
-  const updateObjective = async (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+  const updateObjective = async (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => {
     try {
       const updatedObjective = await testsService.upsertLearningObjective(
         data.title,
@@ -404,7 +404,8 @@ export const useCurriculum = (): UseCurriculumReturn => {
         data.cognitiveSkillId,
         data.disciplines,
         id,
-        data.exam
+        data.exam,
+        data.subjectId
       );
 
       if (activeSystemId && activeTopicId) {
@@ -469,7 +470,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
     }
   };
 
-  const createObjective = async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+  const createObjective = async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => {
     try {
       const newObjective = await testsService.upsertLearningObjective(
         data.title,
@@ -477,7 +478,8 @@ export const useCurriculum = (): UseCurriculumReturn => {
         data.cognitiveSkillId,
         data.disciplines,
         undefined,
-        data.exam
+        data.exam,
+        data.subjectId
       );
 
       // Force a re-fetch of objectives by mimicking a dependency change or updating the specific subtopic.
@@ -687,7 +689,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
                 }
                 if (topic.id === topicId) {
                   // Add to new topic
-                  return { ...topic, syndromes: [...(topic.syndromes || []), { id, title: name, topicId }] };
+                  return { ...topic, syndromes: [...(topic.syndromes || []), { id, title: name, topicId } as Syndrome] };
                 }
                 return topic;
               })
@@ -705,7 +707,7 @@ export const useCurriculum = (): UseCurriculumReturn => {
                 if (topic.id === activeTopicId) {
                   return {
                     ...topic,
-                    syndromes: topic.syndromes?.map(s => s.id === id ? { ...s, title: name } : s)
+                    syndromes: topic.syndromes?.map(s => s.id === id ? { ...s, title: name } as Syndrome : s)
                   };
                 }
                 return topic;

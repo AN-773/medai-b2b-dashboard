@@ -37,7 +37,7 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
         </button>
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-            <MonitorPlay size={28} className="text-indigo-600" />
+            <MonitorPlay size={28} className="text-[#1BD183]" />
             Lecture Analytics
           </h2>
           <p className="text-slate-500 font-medium text-sm">Reviewing engagement and assessment data for {lectureId}</p>
@@ -46,7 +46,7 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
 
       {/* Primary Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <MetricCard label="Avg Watch Time" value={`${(metrics.avgWatchTimePercent * 100).toFixed(0)}%`} icon={Clock} color="text-indigo-600" bg="bg-indigo-50" />
+        <MetricCard label="Avg Watch Time" value={`${(metrics.avgWatchTimePercent * 100).toFixed(0)}%`} icon={Clock} color="text-[#1BD183]" bg="bg-emerald-50" />
         <MetricCard label="Rewatch Rate" value={`${(metrics.rewatchRatePercent * 100).toFixed(0)}%`} icon={Activity} color="text-emerald-600" bg="bg-emerald-50" />
         <MetricCard label="Learning Gain" value={`${((metrics.postAssessmentAvg - metrics.preAssessmentAvg) * 100).toFixed(0)}%`} icon={TrendingUp} color="text-amber-600" bg="bg-amber-50" />
         <MetricCard label="MCQ Performance" value={`${(metrics.downstreamMCQPerformance * 100).toFixed(0)}%`} icon={BrainCircuit} color="text-purple-600" bg="bg-purple-50" />
@@ -63,10 +63,10 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
             {linkedItems.map(item => (
               <div key={item.id} className="p-6 hover:bg-slate-50 transition group flex justify-between items-center">
                 <div className="space-y-1">
-                   <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{item.id}</p>
+                   <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">{item.id}</p>
                    <p className="font-bold text-slate-800 line-clamp-1">{item.stem}</p>
                 </div>
-                <ChevronRight size={18} className="text-slate-200 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+                <ChevronRight size={18} className="text-slate-200 group-hover:text-[#1BD183] group-hover:translate-x-1 transition-all" />
               </div>
             ))}
             {linkedItems.length === 0 && (
@@ -81,7 +81,7 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
         {/* AI Recommendations */}
         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl space-y-6 flex flex-col">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-600 rounded-xl">
+            <div className="p-2 bg-primary-gradient rounded-xl">
               <Sparkles size={20} />
             </div>
             <h3 className="font-black uppercase tracking-tight">AI Insights</h3>
@@ -93,7 +93,7 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
                 <p className="font-bold text-sm leading-relaxed">"{ins.message}"</p>
                 <div className="flex flex-wrap gap-2">
                   {ins.suggestedActions.map((action, i) => (
-                    <span key={i} className="text-[9px] font-black bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-lg uppercase tracking-tight">
+                    <span key={i} className="text-[9px] font-black bg-[#1BD183]/20 text-emerald-300 px-2 py-1 rounded-lg uppercase tracking-tight">
                       {action}
                     </span>
                   ))}
@@ -105,7 +105,7 @@ const LectureDetailPage: React.FC<LectureDetailPageProps> = ({ lectureId, onBack
             )}
           </div>
 
-          <button className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition shadow-lg shadow-indigo-900/40">
+          <button className="w-full py-4 bg-primary-gradient hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition shadow-lg shadow-slate-900/40">
             Trigger Item Generator
           </button>
         </div>

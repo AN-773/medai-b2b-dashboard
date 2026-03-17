@@ -258,7 +258,7 @@ const ExamBlueprintView: React.FC = () => {
                    'NFD Item suppression active'
                  ].map((logic, i) => (
                    <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
                       {logic}
                    </div>
                  ))}

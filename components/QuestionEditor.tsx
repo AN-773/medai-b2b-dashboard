@@ -21,7 +21,7 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import { QuestionOption, QuestionType } from '../types';
-import { Question, Choice, GeneratedQuestion, ChatMessage } from '../types/TestsServiceTypes';
+import { BackendApiItem, ItemUpsertRequest, Choice, GeneratedQuestion, ChatMessage, LearningObjective } from '../types/TestsServiceTypes';
 import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
 import { useGlobal } from '../contexts/GlobalContext';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
@@ -34,21 +34,21 @@ import ConfirmationModal from './ConfirmationModal';
 
 interface QuestionEditorProps {
   onBack: () => void;
-  onSave: (question: Question) => void;
+  onSave: (request: ItemUpsertRequest) => void;
   onChangeStatus?: (identifier: string, status: string) => void;
-  initialQuestion?: Question | null;
+  initialQuestion?: BackendApiItem | null;
 }
 
 const RenderMarkdown = ({ content }: { content: string }) => {
   if (!content) return null;
   const sections = content.split(/\n\n+/);
   return (
-    <div className="space-y-4 text-sm text-indigo-900/80 leading-relaxed">
+    <div className="space-y-4 text-sm text-slate-700 leading-relaxed">
       {sections.map((section, idx) => {
         if (section.trim().startsWith('###')) {
           const headerText = section.replace(/^###\s*/, '').replace(/\*\*/g, '');
           return (
-            <h4 key={idx} className="text-md font-bold text-indigo-900 mt-6 mb-2 border-b border-indigo-100 pb-1">
+            <h4 key={idx} className="text-md font-bold text-slate-900 mt-6 mb-2 border-b border-emerald-100 pb-1">
               {headerText}
             </h4>
           );
@@ -58,7 +58,7 @@ const RenderMarkdown = ({ content }: { content: string }) => {
           <p key={idx}>
             {parts.map((part, i) => {
               if (part.startsWith('**') && part.endsWith('**')) {
-                return <strong key={i} className="font-semibold text-indigo-900">{part.slice(2, -2)}</strong>;
+                return <strong key={i} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
               }
               return part;
             })}
@@ -284,17 +284,13 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   useEffect(() => {
     if (initialQuestion) {
       console.log("QuestionEditor Initialized with:", initialQuestion);
-      setQuestionText(initialQuestion.title || '');
-      // setExplanation(initialQuestion.explanation); // Backend Question doesn't have explanation on root yet, it's on choices
-      // Find the correct choice to get the explanation
-      // const correctChoice = initialQuestion.choices?.find(c => c.isCorrect);
-      // if (correctChoice) {
-      //   setExplanation(correctChoice.explanation || '');
-      // }
 
-      if (initialQuestion.choices) {
-        setOptions(initialQuestion.choices.map(c => ({
-          id: c.id,
+      // Read from BackendApiItem shape
+      setQuestionText(initialQuestion.mcq?.stem || '');
+
+      if (initialQuestion.mcq?.choices) {
+        setOptions(initialQuestion.mcq.choices.map((c: Choice) => ({
+          id: c.id || '',
           text: c.content,
           isCorrect: c.isCorrect,
           explanation: c.explanation || '',
@@ -307,72 +303,36 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
         })));
       }
 
-      // Load stem multimedia
-      if (initialQuestion.multimedia) {
-        setAttachedImage(initialQuestion.multimedia.url || null);
-        setStemMultimediaFileId(initialQuestion.multimedia.fileId);
-        setStemMultimediaType((initialQuestion.multimedia.type as MultimediaType) || 'image');
-      }
-      
+      // Tags
+      if (initialQuestion.tags) setSelectedTags(initialQuestion.tags.map(t => t.id));
+
+      // Populate hierarchy filters from the LearningObjective
       if (initialQuestion.learningObjectiveId) {
         setLearningObjectives([initialQuestion.learningObjectiveId]);
-      }
-      
-      setTags(initialQuestion.tags?.map(t => t.title) || []);
-      
-      // Set hierarchy filters
-      if (initialQuestion.organSystemId) {
-        let osId = initialQuestion.organSystemId;
-        
-        // Data Integrity Fix: 
-        // If topicId exists and is a URL, ensure organSystemId matches its parent path.
-        // This fixes cases where the question has a mismatched organSystemId (e.g. Cardio vs Nervous).
-        if (initialQuestion.topicId && initialQuestion.topicId.includes('/organ-systems/')) {
-           const expectedPrefix = initialQuestion.topicId.substring(0, initialQuestion.topicId.lastIndexOf('/'));
-           // Verify if the current osId is different (and strictly if topicId actually starts with the expected prefix structure)
-           if (osId !== expectedPrefix) {
-               osId = expectedPrefix;
-           }
-        }
-        
-        console.log("Setting filters with:", {
-          osId,
-          topicId: initialQuestion.topicId,
-          syndromeId: initialQuestion.syndromeId,
-          objectiveId: initialQuestion.learningObjectiveId
+        // Use fillFiltersFromObjective to auto-populate organSystem/topic/syndrome/skill/exam
+        const loStub: LearningObjective = {
+          id: initialQuestion.learningObjectiveId,
+          title: '',
+          identifier: '',
+          createdAt: '',
+          updatedAt: '',
+        };
+        fillFiltersFromObjective(loStub).then((fullObj) => {
+          // Populate read-only metadata from the LO
+          if (fullObj.disciplines) setSelectedDisciplines(fullObj.disciplines.map(d => d.id));
+          if (fullObj.subject) setSelectedSubject(fullObj.subject.title);
         });
-
-        setAllFilters(
-          osId,
-          initialQuestion.topicId || '',
-          initialQuestion.syndromeId || '',
-          initialQuestion.learningObjectiveId || '',
-          initialQuestion.cognitiveSkillId
-        );
-      } else {
-        console.log("initialQuestion.organSystemId is missing", initialQuestion.organSystemId);
       }
 
-
-      if (initialQuestion.exam && (initialQuestion.exam === 'STEP 1' || initialQuestion.exam === 'STEP 2')) {
-          setSelectedExam(initialQuestion.exam as 'STEP 1' | 'STEP 2');
-      }
-
-      // Set Metadata
-      if (initialQuestion.difficultyId) setSelectedDifficultyId(initialQuestion.difficultyId);
-      if (initialQuestion.tags) setSelectedTags(initialQuestion.tags.map(t => t.id));
-      if (initialQuestion.disciplines) setSelectedDisciplines(initialQuestion.disciplines.map(d => d.id));
-      if (initialQuestion.competencies) setSelectedCompetencies(initialQuestion.competencies.map(c => c.id));
-      if (initialQuestion.dbSubjects && initialQuestion.dbSubjects.length > 0) setSelectedSubject(initialQuestion.dbSubjects[0].title);
-
-      // Load references from metadata
-      if (initialQuestion.metadata?.references && Array.isArray(initialQuestion.metadata.references)) {
-        setReferences(initialQuestion.metadata.references as string[]);
+      // Load references from metadata (will be on item.metadata once backend supports it)
+      const metadata = (initialQuestion as any).metadata;
+      if (metadata?.references && Array.isArray(metadata.references)) {
+        setReferences(metadata.references as string[]);
       }
     } else {
         console.log("No initialQuestion provided");
     }
-  }, [initialQuestion, setAllFilters]);
+  }, [initialQuestion, fillFiltersFromObjective]);
 
 
 
@@ -469,73 +429,40 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     }
   };
 
-  const handleSave = (targetStatus: 'Draft' | 'Published') => {
+  const handleSave = (targetStatus: 'draft' | 'live') => {
     if (!questionText || options.length < 2 || !options.some(o => o.isCorrect)) {
       setError("Please ensure question text exists and there is at least one correct option.");
       return;
     }
-    const newQuestion: Question = {
-      id: initialQuestion ? initialQuestion.id : '', // Backend handles ID generation if empty
-      identifier: initialQuestion ? initialQuestion.identifier : '',
-      title: questionText,
-      status: targetStatus,
-      exam: selectedExam, 
-      metadata: {
-        ...(initialQuestion?.metadata || {}),
-        references: references,
+    const request: ItemUpsertRequest = {
+      item: {
+        ...(initialQuestion?.id ? { id: initialQuestion.id } : {}),
+        type: 'mcq',
+        status: targetStatus,
       },
-      organSystemId: selectedOrganSystemId,
-      topicId: selectedTopicId,
-      syndromeId: selectedSyndromeId,
-      learningObjectiveId: selectedObjectiveId,
-      cognitiveSkillId: selectedSkillId,
-      difficultyId: selectedDifficultyId || availableDifficulties.find(d => d.title.toLowerCase() === 'medium')?.id || '',
-      tags: selectedTags.map(id => ({ id, title: '', identifier: '', createdAt: '', updatedAt: '' })),
-      disciplines: [...new Set<string>(selectedDisciplines)].map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
-      competencies: selectedCompetencies.map(id => ({ id, title: '', createdAt: '', updatedAt: '' })),
-      dbSubjects: selectedSubject ? [{ id: selectedSubject, title: '', createdAt: '', updatedAt: '' }] : [],
-      subjects: selectedSubject ? [selectedSubject] : [],
-      
-      choices: options.map(o => ({
-        ...((o.id.length > 5 && !o.id.startsWith('temp_')) ? { id: o.id } : {}),
-        content: o.text,
-        isCorrect: o.isCorrect,
-        explanation: o.explanation || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        ...(o.multimediaUrl ? {
-          multimedia: {
-            id: '',
-            url: o.multimediaUrl,
-            type: o.multimediaType || 'image',
-            fileId: o.multimediaFileId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-        } : {}),
-        ...(o.explanationMultimediaUrl ? {
-          explanationMultimedia: {
-            id: '',
-            url: o.explanationMultimediaUrl,
-            type: o.explanationMultimediaType || 'image',
-            fileId: o.explanationMultimediaFileId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-        } : {}),
-      })),
+      learningObjectiveId: selectedObjectiveId || undefined,
+      tags: selectedTags,
+      metadata: references.length > 0 ? { references } : undefined,
       multimedia: attachedImage ? {
-        id: '',
-        url: attachedImage,
-        type: stemMultimediaType || 'image',
+        multimedia: { url: attachedImage, type: stemMultimediaType || 'image' },
         fileId: stemMultimediaFileId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } : undefined,
-      createdAt: initialQuestion ? initialQuestion.createdAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      } : null,
+      choices: options.map(o => ({
+        choice: {
+          ...((o.id.length > 5 && !o.id.startsWith('temp_')) ? { id: o.id } : {}),
+          content: o.text,
+          isCorrect: o.isCorrect,
+          explanation: o.explanation || '',
+        },
+        multimedia: o.multimediaUrl ? {
+          multimedia: { url: o.multimediaUrl, type: o.multimediaType || 'image' },
+        } : null,
+        explanationMultimedia: o.explanationMultimediaUrl ? {
+          multimedia: { url: o.explanationMultimediaUrl, type: o.explanationMultimediaType || 'image' },
+        } : null,
+      })),
     };
-    onSave(newQuestion);
+    onSave(request);
   };
 
   const handleCreateTopic = async (data: { name: string; identifier?: string; organSystemId: string }) => {
@@ -601,7 +528,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
             </select>
           )}
 
-          <button onClick={() => handleSave('Draft')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
+          <button onClick={() => handleSave('draft')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <FileText size={18} /> <span className="hidden sm:inline">Save</span><span className="inline sm:hidden">Draft</span>
           </button>
           {/* <button onClick={() => handleSave('Published')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
@@ -812,34 +739,34 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               <FileText className="text-[#1BD183]" size={18} /> Metadata
             </h3>
             <div className="space-y-4">
-              {/* Disciplines */}
+              {/* Disciplines (read-only, derived from LO) */}
               <MultiSearchableSelect
                 label="Disciplines"
                 options={disciplineOptions}
                 values={selectedDisciplines}
                 onChange={setSelectedDisciplines}
-                disabled={isLoadingDisciplines}
-                placeholder="Select Disciplines..."
+                disabled={true}
+                placeholder="Derived from Learning Objective"
               />
 
-              {/* Competencies */}
+              {/* Competencies (read-only, derived from LO) */}
               <MultiSearchableSelect
                 label="Competencies"
                 options={competencyOptions}
                 values={selectedCompetencies}
                 onChange={setSelectedCompetencies}
-                disabled={isLoadingCompetencies}
-                placeholder="Select Competencies..."
+                disabled={true}
+                placeholder="Derived from Learning Objective"
               />
 
-              {/* Subject */}
+              {/* Subject (read-only, derived from LO) */}
               <SearchableSelect
                 label="Subject"
                 options={subjectOptions}
                 value={selectedSubject || 'ALL'}
                 onChange={(val) => setSelectedSubject(val === 'ALL' ? '' : val)}
-                disabled={isLoadingSubjects}
-                placeholder="Select Subject..."
+                disabled={true}
+                placeholder="Derived from Learning Objective"
                 allOption={{ id: 'ALL', name: 'Select Subject...' }}
               />
 
@@ -901,7 +828,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
                       {chatHistory.filter(msg => msg.role === 'user').map((msg, idx) => (
                          <div key={idx} className="bg-white p-2 rounded border border-slate-100 text-sm text-slate-700 shadow-sm">
-                           <span className="font-semibold text-xs text-indigo-500 block mb-1">You</span>
+                           <span className="font-semibold text-xs text-[#1BD183] block mb-1">You</span>
                            {msg.content}
                          </div>
                       ))}

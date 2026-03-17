@@ -19,14 +19,13 @@ import {
   MinusSquare,
   X
 } from 'lucide-react';
-import { questionService } from '../services/questionService';
 import { testsService } from '../services/testsService';
-import SearchableSelect from '../components/SearchableSelect';
+import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
 import MultiSearchableSelect from '../components/MultiSearchableSelect';
 import ConfirmationModal from '../components/ConfirmationModal';
 import BulkProgressModal from '../components/BulkProgressModal';
 import { useGlobal } from '@/contexts/GlobalContext';
-import { OrganSystem, Topic, Syndrome, Question, Discipline, Tag, Subject } from '@/types/TestsServiceTypes';
+import { BackendApiItem, Discipline, Tag, Subject } from '@/types/TestsServiceTypes';
 
 interface BankExplorerViewProps {
   onEditItem?: (itemId: string) => void;
@@ -35,7 +34,7 @@ interface BankExplorerViewProps {
 type FilterType = 'ALL' | 'GOLD' | 'REMEDIATION' | 'EMERGING';
 
 const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
-  const [items, setItems] = useState<Question[]>([]);
+  const [items, setItems] = useState<BackendApiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -44,9 +43,9 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   const { cognitiveSkills } = useGlobal();
 
   // Filter data from testsService
-  const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [subTopics, setSubTopics] = useState<Syndrome[]>([]);
+  const [organSystems, setOrganSystems] = useState<SelectOption[]>([]);
+  const [topics, setTopics] = useState<SelectOption[]>([]);
+  const [subTopics, setSubTopics] = useState<SelectOption[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -57,6 +56,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   const [selectedSubTopic, setSelectedSubTopic] = useState<string>('ALL');
   
   const [selectedQID, setSelectedQID] = useState<string>('');
+  const [selectedType, setSelectedType] = useState<string>('ALL');
   const [selectedCognitiveSkillId, setSelectedCognitiveSkillId] = useState<string>('ALL');
   const [selectedExamType, setSelectedExamType] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -99,48 +99,42 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   }, [localSearchQuery]);
 
   useEffect(() => {
-    fetchQuestions();
+    fetchItems();
     setSelectedItems([]);
-  }, [page, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic, filterType, selectedQID, selectedCognitiveSkillId, selectedExamType, selectedStatus, selectedSubjectId, selectedDisciplines, selectedTags]);
+  }, [page, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic, filterType, selectedQID, selectedType, selectedCognitiveSkillId, selectedExamType, selectedStatus, selectedSubjectId, selectedDisciplines, selectedTags]);
 
-  const fetchQuestions = async () => {
+  const fetchItems = async () => {
     try {
       setLoading(true);
-      
-      const response = await questionService.getQuestions(
-        page, 
-        limit, 
-        searchQuery || undefined, 
-        selectedSystemId === 'ALL' ? undefined : selectedSystemId, 
-        selectedTopicId === 'ALL' ? undefined : selectedTopicId, 
-        selectedSubTopic === 'ALL' ? undefined : selectedSubTopic,
-        selectedQID || undefined,
-        selectedCognitiveSkillId === 'ALL' ? undefined : selectedCognitiveSkillId,
-        undefined, // disciplineId
-        undefined, // tagId
-        selectedExamType === 'ALL' ? undefined : selectedExamType,
-        selectedSubjectId === 'ALL' ? undefined : selectedSubjectId,
-        selectedStatus === 'ALL' ? undefined : selectedStatus,
-        selectedDisciplines.length > 0 ? selectedDisciplines.join(',') : undefined,
-        undefined, // competencies
-        selectedTags.length > 0 ? selectedTags.join(',') : undefined
-      );
-      
-      let fetchedItems = response.items;
-      
-      // Client-side filtering for metrics cards
-      if (filterType === 'GOLD') {
-         fetchedItems = fetchedItems.filter(i => i.status === 'published');
-      } else if (filterType === 'REMEDIATION') {
-         fetchedItems = fetchedItems.filter(i => i.status === 'draft');
-      } else if (filterType === 'EMERGING') {
-         fetchedItems = fetchedItems.filter(i => i.status !== 'published' && i.status !== 'draft');
-      }
 
-      setItems(fetchedItems);
-      setTotal(response.total); // Note: Total might be inaccurate if we filter locally
+      // Map filter card types to API status values
+      const statusFilter = filterType === 'GOLD' ? 'live'
+        : filterType === 'REMEDIATION' ? 'draft'
+        : filterType === 'EMERGING' ? 'pending'
+        : selectedStatus === 'ALL' ? undefined : selectedStatus;
+
+      const response = await testsService.getItems(
+        page,
+        limit,
+        selectedType === 'ALL' ? undefined : selectedType,
+        statusFilter,
+        selectedExamType === 'ALL' ? undefined : selectedExamType,
+        undefined, // learningObjectiveId
+        selectedSystemId === 'ALL' ? undefined : selectedSystemId,
+        selectedTopicId === 'ALL' ? undefined : selectedTopicId,
+        selectedDisciplines.length > 0 ? selectedDisciplines.join(',') : undefined,
+        selectedSubjectId === 'ALL' ? undefined : selectedSubjectId,
+        selectedTags.length > 0 ? selectedTags.join(',') : undefined,
+        searchQuery || undefined,
+        selectedSubTopic === 'ALL' ? undefined : selectedSubTopic,
+        selectedCognitiveSkillId === 'ALL' ? undefined : selectedCognitiveSkillId,
+        selectedQID || undefined,
+      );
+
+      setItems(response.items);
+      setTotal(response.total);
     } catch (error) {
-      console.error('Failed to fetch questions:', error);
+      console.error('Failed to fetch items:', error);
     } finally {
       setLoading(false);
     }
@@ -172,9 +166,9 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           testsService.getSubjects(1, 200)
         ]);
         
-        setOrganSystems((sysRes.items || []).map((sys: any) => ({ 
-          id: sys.id, 
-          name: sys.title || sys.name 
+        setOrganSystems((sysRes.items || []).map(sys => ({
+          id: sys.id,
+          name: sys.title
         })));
         setDisciplines(discRes.items || []);
         setTags(tagsRes.items || []);
@@ -198,15 +192,10 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
       }
       try {
         const response = await testsService.getTopics(selectedSystemId);
-        const topicItems = (response.items || []).map((t: any) => ({
+        setTopics((response.items || []).map(t => ({
           id: t.id,
-          name: t.title || t.name,
-          syndromes: (t.syndromes || []).map((s: any) => ({
-            id: s.id,
-            name: s.title || s.name
-          }))
-        }));
-        setTopics(topicItems);
+          name: t.title,
+        })));
       } catch (error) {
         console.error('Failed to fetch topics:', error);
       }
@@ -223,11 +212,10 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
       }
       try {
         const response = await testsService.getSyndromes(selectedTopicId);
-        const subTopicItems = (response.items || []).map((s: any) => ({
+        setSubTopics((response.items || []).map(s => ({
           id: s.id,
-          name: s.title || s.name
-        }));
-        setSubTopics(subTopicItems);
+          name: s.title,
+        })));
       } catch (error) {
         console.error('Failed to fetch syndromes:', error);
       }
@@ -236,13 +224,11 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   }, [selectedTopicId]);
 
   // --- HELPER LOGIC ---
-  const checkGold = (item: Question) => {
-    // Gold: Published with good sample size (simulated logic)
-    return item.status === 'published';
+  const checkGold = (item: BackendApiItem) => {
+    return item.status === 'live';
   };
 
-  const checkRemediation = (item: Question) => {
-    // Remediation: Draft items needing review
+  const checkRemediation = (item: BackendApiItem) => {
     return item.status === 'draft';
   };
 
@@ -302,8 +288,8 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
       onConfirm: async () => {
         closeConfirmModal();
         try {
-          await questionService.deleteQuestion(id);
-          fetchQuestions();
+          await testsService.deleteItem(id);
+          fetchItems();
         } catch (error) {
           console.error('Failed to delete item:', error);
         }
@@ -351,7 +337,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         let failed = 0;
         for (const id of itemsToProcess) {
           try {
-            await questionService.deleteQuestion(id);
+            await testsService.deleteItem(id);
             completed++;
           } catch {
             failed++;
@@ -369,7 +355,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           isProcessing: false,
         }));
         setSelectedItems([]);
-        fetchQuestions();
+        fetchItems();
       },
     });
   };
@@ -399,7 +385,8 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         let failed = 0;
         for (const id of itemsToProcess) {
           try {
-            await testsService.updateQuestionStatus(id.split('/').pop() || '', newStatus);
+            const targetItem = items.find(i => i.id === id);
+            await testsService.upsertItem({ item: { id: targetItem?.id || id, type: targetItem?.type || 'mcq', status: newStatus } });
             completed++;
           } catch {
             failed++;
@@ -417,7 +404,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           isProcessing: false,
         }));
         setSelectedItems([]);
-        fetchQuestions();
+        fetchItems();
       },
     });
   };
@@ -439,6 +426,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     setSelectedTopicId('ALL');
     setSelectedSubTopic('ALL');
     setSelectedQID('');
+    setSelectedType('ALL');
     setSelectedCognitiveSkillId('ALL');
     setSelectedExamType('ALL');
     setSelectedStatus('ALL');
@@ -449,7 +437,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     setPage(1);
   };
 
-  const hasActiveFilters = localSearchQuery !== '' || selectedSystemId !== 'ALL' || selectedTopicId !== 'ALL' || selectedSubTopic !== 'ALL' || filterType !== 'ALL' || selectedQID !== '' || selectedCognitiveSkillId !== 'ALL' || selectedExamType !== 'ALL' || selectedStatus !== 'ALL' || selectedSubjectId !== 'ALL' || selectedDisciplines.length > 0 || selectedTags.length > 0;
+  const hasActiveFilters = localSearchQuery !== '' || selectedSystemId !== 'ALL' || selectedTopicId !== 'ALL' || selectedSubTopic !== 'ALL' || filterType !== 'ALL' || selectedQID !== '' || selectedType !== 'ALL' || selectedCognitiveSkillId !== 'ALL' || selectedExamType !== 'ALL' || selectedStatus !== 'ALL' || selectedSubjectId !== 'ALL' || selectedDisciplines.length > 0 || selectedTags.length > 0;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
@@ -507,22 +495,22 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           onClick={() => handleCardClick('EMERGING')}
           className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
             ${filterType === 'EMERGING' 
-              ? 'bg-indigo-50 border-indigo-500 ring-4 ring-indigo-500/20 shadow-xl scale-[1.02]' 
-              : 'bg-white border-slate-200 border shadow-sm hover:border-indigo-300 hover:shadow-md'
+              ? 'bg-emerald-50 border-[#1BD183] ring-4 ring-[#1BD183]/20 shadow-xl scale-[1.02]' 
+              : 'bg-white border-slate-200 border shadow-sm hover:border-emerald-300 hover:shadow-md'
             }
           `}
         >
            <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <Sparkles size={120} className="text-indigo-600" />
+              <Sparkles size={120} className="text-[#1BD183]" />
            </div>
            <div className="relative z-10">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${filterType === 'EMERGING' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-50 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50'}`}>
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${filterType === 'EMERGING' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-50 text-slate-400 group-hover:text-[#1BD183] group-hover:bg-emerald-50'}`}>
                  <Sparkles size={24} />
               </div>
-              <h3 className={`text-sm font-black uppercase tracking-widest ${filterType === 'EMERGING' ? 'text-indigo-900' : 'text-slate-900'}`}>Emerging Vault</h3>
-              <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'EMERGING' ? 'text-indigo-700' : 'text-slate-400'}`}>Experimental • New</p>
+              <h3 className={`text-sm font-black uppercase tracking-widest ${filterType === 'EMERGING' ? 'text-slate-900' : 'text-slate-900'}`}>Emerging Vault</h3>
+              <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'EMERGING' ? 'text-emerald-700' : 'text-slate-400'}`}>Experimental • New</p>
            </div>
-           <p className={`text-4xl font-black relative z-10 ${filterType === 'EMERGING' ? 'text-indigo-600' : 'text-slate-300 group-hover:text-indigo-600/50'}`}>{metrics.emerging}</p>
+           <p className={`text-4xl font-black relative z-10 ${filterType === 'EMERGING' ? 'text-[#1BD183]' : 'text-slate-300 group-hover:text-[#1BD183]/50'}`}>{metrics.emerging}</p>
         </div>
       </div>
 
@@ -596,6 +584,15 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         {/* Filters Grid */}
         {showFilters && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 pt-6 border-t border-slate-50 mt-6 animate-in fade-in slide-in-from-top-4 duration-300">
+           {/* Item Type Selection */}
+           <SearchableSelect
+             label="Item Type"
+             options={[{ id: 'mcq', name: 'MCQ' }, { id: 'saq', name: 'SAQ' }, { id: 'lecture', name: 'Lecture' }]}
+             value={selectedType}
+             onChange={(value) => setSelectedType(value)}
+             allOption={{ id: 'ALL', name: 'All Types' }}
+           />
+
            {/* Organ System Selection */}
            <SearchableSelect
              label="Organ System"
@@ -773,7 +770,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
                           }
                         </button>
                         <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[#1BD183]/10 text-[#1BD183]">
-                            MCQ
+                            {item.type}
                         </span>
                         <span className="text-[10px] font-bold text-slate-400">{item.identifier || item.id}</span>
                         {checkGold(item) && (
@@ -798,20 +795,20 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
                     </div>
                 </div>
                 <h3 className="text-sm font-bold text-slate-800 line-clamp-2 leading-relaxed mb-4">
-                    {item.title || 'Untitled Item'}
+                    {item.mcq?.stem || item.saq?.question || item.lecture?.title || 'Untitled Item'}
                 </h3>
                 <div className="flex items-center gap-4 border-t border-slate-50 pt-4">
                     <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#1BD183]"></span>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.organSystem?.title || 'Unknown System'}</span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.learningObjective?.syndrome?.topic?.organSystem?.title || '—'}</span>
                     </div>
-                    {item.cognitiveSkillId && (
+                    {item.learningObjective?.cognitiveSkillId && (
                         <span className="text-[10px] font-bold text-slate-400 uppercase px-2 py-0.5 bg-slate-100 rounded">
-                            {cognitiveSkills?.find(cs => cs.id === item.cognitiveSkillId)?.title || item.cognitiveSkillId.split('/').pop()}
+                            {cognitiveSkills?.find(cs => cs.id === item.learningObjective?.cognitiveSkillId)?.title || item.learningObjective.cognitiveSkillId.split('/').pop()}
                         </span>
                     )}
                      <div className="flex-1 text-right">
-                        <span className={`text-[10px] font-black uppercase ${item.status === 'published' ? 'text-[#1BD183]' : 'text-amber-500'}`}>
+                        <span className={`text-[10px] font-black uppercase ${item.status === 'live' ? 'text-[#1BD183]' : 'text-amber-500'}`}>
                             {item.status}
                         </span>
                     </div>

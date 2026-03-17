@@ -167,7 +167,7 @@ const PromptManager: React.FC = () => {
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap">
                       <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                        {p.type === 'Question' ? <FileText size={14} className="text-indigo-500"/> : <BookOpen size={14} className="text-amber-500"/>}
+                        {p.type === 'Question' ? <FileText size={14} className="text-[#1BD183]"/> : <BookOpen size={14} className="text-amber-500"/>}
                         {p.type}
                       </span>
                     </td>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, FileText, Loader2, ChevronDown, Sparkles, CheckCircle2, Save, AlertCircle } from 'lucide-react';
-import { OrganSystem, CognitiveSkill, Discipline, Topic, Syndrome, GeneratedObjective } from '@/types/TestsServiceTypes';
+import { OrganSystem, CognitiveSkill, Discipline, Topic, Syndrome, GeneratedObjective, Subject } from '@/types/TestsServiceTypes';
 import { useGlobal } from '@/contexts/GlobalContext';
 import { testsService } from '@/services/testsService';
 import MultiSearchableSelect from '../MultiSearchableSelect';
@@ -16,6 +16,7 @@ interface CreateObjectiveModalProps {
     cognitiveSkillId: string;
     disciplines: string[];
     exam?: string;
+    subjectId?: string;
   }) => Promise<void>;
   topic: Topic;
   subTopic?: Syndrome | null;
@@ -27,6 +28,7 @@ interface CreateObjectiveModalProps {
     exam?: string;
     organSystemId?: string;
     topicId?: string;
+    subjectId?: string;
   } | null;
   initialMode?: 'manual' | 'generate';
   organSystemName?: string;
@@ -58,6 +60,12 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   );
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>(
     initialData?.disciplines || [],
+  );
+
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState(
+    initialData?.subjectId || '',
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,6 +119,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
         cognitiveSkillId: selectedCognitiveSkillId,
         disciplines: selectedDisciplines,
         exam: curriculumMode,
+        subjectId: selectedSubjectId || undefined,
       });
       // Reset form and close
       handleReset();
@@ -163,6 +172,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
     setSelectedSyndromeId(subTopic?.id || '');
     setSelectedCognitiveSkillId('');
     setSelectedDisciplines([]);
+    setSelectedSubjectId('');
     setError(null);
     // Reset cascade state
     setSelectedOrganSystemId('');
@@ -275,6 +285,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
       setSelectedSyndromeId(initialData?.syndromeId || subTopic?.id || '');
       setSelectedCognitiveSkillId(initialData?.cognitiveSkillId || '');
       setSelectedDisciplines(initialData?.disciplines || []);
+      setSelectedSubjectId(initialData?.subjectId || '');
       setError(null);
 
       const fetchDisciplines = async () => {
@@ -291,6 +302,22 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
 
       if (disciplines.length === 0) {
         fetchDisciplines();
+      }
+
+      const fetchSubjects = async () => {
+        setIsLoadingSubjects(true);
+        try {
+          const res = await testsService.getSubjects(1, 200);
+          setSubjects(res.items.filter((s) => s.title) || []);
+        } catch (error) {
+          console.error('Failed to fetch subjects:', error);
+        } finally {
+          setIsLoadingSubjects(false);
+        }
+      };
+
+      if (subjects.length === 0) {
+        fetchSubjects();
       }
 
       // Load cascade hierarchy when editing
@@ -574,6 +601,36 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="subject"
+                    className="block text-sm font-bold text-slate-700"
+                  >
+                    Subject
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="subject"
+                      value={selectedSubjectId}
+                      onChange={(e) => setSelectedSubjectId(e.target.value)}
+                      disabled={isSubmitting || isLoadingSubjects}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
+                    >
+                      <option value="">Select a Subject (Optional)</option>
+                      {subjects.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.title}
+                        </option>
+                      ))}
+                    </select>
+                    {isLoadingSubjects ? (
+                      <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+                    ) : (
+                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    )}
+                  </div>
+                </div>
 
                 <div className="space-y-2">
                   <label

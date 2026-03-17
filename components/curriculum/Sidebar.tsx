@@ -199,7 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="relative group">
           <Search
-            className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
+            className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-[#1BD183] transition-colors"
             size={16}
           />
           <input
@@ -207,7 +207,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             placeholder="Search Systems..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 text-xs font-bold text-slate-700 pl-11 pr-4 py-3.5 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white"
+            className="w-full bg-slate-50 text-xs font-bold text-slate-700 pl-11 pr-4 py-3.5 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white"
           />
         </div>
       </div>

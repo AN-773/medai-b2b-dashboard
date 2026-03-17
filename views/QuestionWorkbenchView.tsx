@@ -7,17 +7,17 @@ import {
   Issue,
   ItemType,
   BackendItem,
-  LectureAsset,
 } from '../types';
 import { testsService } from '../services/testsService';
 import {
-  Question as ApiQuestion,
-  Discipline,
+  BackendApiItem,
+  ItemUpsertRequest,
 } from '../types/TestsServiceTypes';
 import ItemModuleDashboard from '../components/ItemModuleDashboard';
 import QuestionEditor from '../components/QuestionEditor';
 import LectureCreationWizard from '../components/LectureCreationWizard';
 import LectureEditor from '../components/LectureEditor';
+import SAQEditor from '../components/SAQEditor';
 import LecturePlayerView from '../components/LecturePlayerView';
 import ItemIntegrityView from '../components/ItemIntegrityView';
 import AILabView from '../components/AILabView';
@@ -41,8 +41,42 @@ type WorkbenchViewMode =
   | 'LECTURE_WIZARD'
   | 'LECTURE_EDITOR'
   | 'LECTURE_DETAIL'
-  | 'LECTURE_PLAYER';
+  | 'LECTURE_PLAYER'
+  | 'SAQ_EDITOR';
 type WorkbenchTab = 'DASHBOARD' | 'INTEGRITY' | 'LAB';
+
+// Adapter: convert BackendApiItem to legacy BackendItem for downstream components
+// (ItemIntegrityView, AILabView) that haven't been migrated yet
+const toBackendItem = (item: BackendApiItem): BackendItem => ({
+  id: item.id,
+  identifier: item.identifier,
+  type: item.type.toUpperCase() as 'MCQ' | 'SAQ',
+  stem: item.mcq?.stem || item.saq?.question || '',
+  options: (item.mcq?.choices || []).map((c) => ({
+    id: c.id || '',
+    text: c.content,
+    isCorrect: c.isCorrect,
+    explanation: c.explanation,
+  })),
+  explanation: item.mcq?.choices?.find((c) => c.isCorrect)?.explanation || item.saq?.answer || '',
+  status: item.status === 'live' ? 'Published' : item.status === 'draft' ? 'Draft' : 'Archived',
+  itemType: item.type === 'mcq' ? 'single-best-answer' : 'short-answer',
+  version: 1,
+  authorId: 'AUTH-CURRENT',
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+  timeToAuthorMinutes: 10,
+  taxonomy: {
+    organSystemId: '',
+    disciplineId: '',
+    bloomLevel: BloomsLevel.Understand,
+    syndromeTopicId: '',
+    usmleContentId: '',
+  },
+  linkedMediaIds: [],
+  linkedLectureIds: [],
+  learningObjective: item.learningObjectiveId || '',
+});
 
 const QuestionWorkbenchView: React.FC = () => {
   const navigate = useNavigate();
@@ -52,18 +86,13 @@ const QuestionWorkbenchView: React.FC = () => {
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>(
     searchParams.get('questionId') ? 'QUESTION_EDITOR' : 'DASHBOARD',
   );
-  const [selectedItem, setSelectedItem] = useState<
-    BackendItem | LectureAsset | null
-  >(null);
-  const [editingQuestion, setEditingQuestion] = useState<ApiQuestion | null>(
-    null,
-  );
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<BackendApiItem | null>(null);
 
-  const [questionsList, setQuestionsList] = useState<BackendItem[]>([]);
+  const [itemsList, setItemsList] = useState<BackendApiItem[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [totalLiveQuestions, setTotalLiveQuestions] = useState(0);
   const [totalDraftQuestions, setTotalDraftQuestions] = useState(0);
-  const [lectures, setLectures] = useState<LectureAsset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -81,86 +110,33 @@ const QuestionWorkbenchView: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Fetch questions on mount
+  // Fetch items on mount based on activeItemType
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const fetchItems = async () => {
       setIsLoading(true);
       try {
-        const draft = await testsService.getQuestions(
-          1,
-          1,
-          null,
-          null,
-          null,
-          null,
-          null,
-          'draft',
-        );
-        const live = await testsService.getQuestions(
-          1,
-          1,
-          null,
-          null,
-          null,
-          null,
-          null,
-          'live',
-        );
-        const pending = await testsService.getQuestions(
-          1,
-          1,
-          null,
-          null,
-          null,
-          null,
-          null,
-          'pending',
-        );
-        const response = await testsService.getQuestions(1, 200);
+        const typeFilter = activeItemType.toLowerCase();
+        const [draft, live, pending, response] = await Promise.all([
+          testsService.getItems(1, 1, typeFilter, 'draft'),
+          testsService.getItems(1, 1, typeFilter, 'live'),
+          testsService.getItems(1, 1, typeFilter, 'pending'),
+          testsService.getItems(1, 200, typeFilter),
+        ]);
+
         setTotalQuestions(response.total);
         setTotalDraftQuestions(draft.total + pending.total);
         setTotalLiveQuestions(live.total);
-        const mappedQuestions: BackendItem[] = response.items.map((q) => ({
-          id: q.id,
-          identifier: q.identifier,
-          type: 'MCQ', // Default to MCQ for now as API doesn't specify ItemType enum explicitly in the same way
-          stem: q.title,
-          options: (q.choices || []).map((c) => ({
-            id: c.id,
-            text: c.content,
-            isCorrect: c.isCorrect,
-            explanation: c.explanation,
-          })),
-          explanation: q.choices?.find((c) => c.isCorrect)?.explanation || '',
-          status: q.status as 'Draft' | 'Published' | 'Archived',
-          itemType: 'single-best-answer',
-          version: 1,
-          authorId: 'AUTH-CURRENT',
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt,
-          timeToAuthorMinutes: 10,
-          taxonomy: {
-            organSystemId: q.organSystemId || '',
-            disciplineId: '',
-            bloomLevel: BloomsLevel.Understand, // Default
-            syndromeTopicId: q.topicId || '',
-            usmleContentId: '',
-          },
-          linkedMediaIds: [],
-          linkedLectureIds: [],
-          learningObjective: q.learningObjectiveId || '',
-        }));
-        setQuestionsList(mappedQuestions);
+        setItemsList(response.items);
       } catch (error) {
-        console.error('Failed to fetch questions:', error);
-        showToast('Failed to fetch questions', 'error');
+        console.error('Failed to fetch items:', error);
+        showToast('Failed to fetch items', 'error');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchQuestions();
-  }, []);
+    fetchItems();
+  }, [activeItemType]);
 
   // Deep-link: auto-open query param
   useEffect(() => {
@@ -168,101 +144,64 @@ const QuestionWorkbenchView: React.FC = () => {
       const questionId = searchParams.get('questionId');
 
       if (!questionId) {
-        if (viewMode === 'QUESTION_EDITOR') {
+        if (viewMode !== 'DASHBOARD') {
           setViewMode('DASHBOARD');
-          setEditingQuestion(null);
+          setEditingItem(null);
+          setSelectedItem(null);
         }
         return;
       }
 
       if (questionId === 'new') {
-        // Parse context from URL
-        let disciplines: Discipline[] = [];
-        if (searchParams.get('learningObjectiveId')) {
-          try {
-            const fullObj = await testsService.getLearningObjective(
-              searchParams.get('learningObjectiveId')?.split('/').pop() || '',
-            );
-            if (fullObj) {
-              if (fullObj.disciplines && fullObj.disciplines.length > 0) {
-                disciplines = fullObj.disciplines;
-              }
-            }
-          } catch (e) {
-            console.error('Failed to fetch full objective details:', e);
-          }
-        }
-        const contextQ: Partial<ApiQuestion> = {
+        // Create a minimal BackendApiItem skeleton for new MCQ
+        const contextItem: BackendApiItem = {
           id: '',
           identifier: '',
-          title: '',
-          status: 'Draft',
-          organSystemId: searchParams.get('organSystemId') || '',
-          topicId: searchParams.get('topicId') || '',
-          syndromeId: searchParams.get('syndromeId') || '',
-          learningObjectiveId: searchParams.get('learningObjectiveId') || '',
-          cognitiveSkillId: searchParams.get('cognitiveSkillId') || '',
-          disciplines: disciplines,
-          exam: searchParams.get('exam') || '',
-          choices: [
-            {
-              id: '1',
-              content: '',
-              isCorrect: false,
-              explanation: '',
-              createdAt: '',
-              updatedAt: '',
-            },
-            {
-              id: '2',
-              content: '',
-              isCorrect: false,
-              explanation: '',
-              createdAt: '',
-              updatedAt: '',
-            },
-            {
-              id: '3',
-              content: '',
-              isCorrect: false,
-              explanation: '',
-              createdAt: '',
-              updatedAt: '',
-            },
-            {
-              id: '4',
-              content: '',
-              isCorrect: false,
-              explanation: '',
-              createdAt: '',
-              updatedAt: '',
-            },
-          ],
+          type: 'mcq',
+          status: 'draft',
+          learningObjectiveId: searchParams.get('learningObjectiveId') || null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          mcq: { stem: '', choices: [] },
+          saq: null,
+          lecture: null,
+          tags: [],
         };
 
-        setEditingQuestion(contextQ as ApiQuestion);
+        setEditingItem(contextItem);
         setViewMode('QUESTION_EDITOR');
         return;
       }
 
       if (questionId === 'new_lecture') {
+        setSelectedItem(null);
         setViewMode('LECTURE_WIZARD');
+        return;
+      }
+      if (questionId === 'new_saq') {
+        setSelectedItem(null);
+        setViewMode('SAQ_EDITOR');
         return;
       }
 
       const fetchAndOpen = async () => {
         try {
-          const res = await testsService.getQuestion(questionId);
-          const apiQ: ApiQuestion | undefined = res;
-          if (apiQ) {
-            // Pass the API question directly - QuestionEditor now handles this type
-            setEditingQuestion(apiQ);
-            setViewMode('QUESTION_EDITOR');
+          const res = await testsService.getItem(questionId);
+          if (res) {
+            if (res.type === 'lecture') {
+              setSelectedItem(res);
+              setViewMode('LECTURE_WIZARD');
+            } else if (res.type === 'saq') {
+              setSelectedItem(res);
+              setViewMode('SAQ_EDITOR');
+            } else {
+              // Pass BackendApiItem directly to QuestionEditor
+              setEditingItem(res);
+              setViewMode('QUESTION_EDITOR');
+            }
           }
         } catch (err) {
-          console.error('Failed to fetch question for deep link:', err);
+          console.error('Failed to fetch item for deep link:', err);
         }
       };
 
@@ -271,146 +210,99 @@ const QuestionWorkbenchView: React.FC = () => {
     extractContext();
   }, [searchParams, viewMode]);
 
+  // Map BackendApiItem[] to Question[] for ItemModuleDashboard
   const questions: Question[] = useMemo(() => {
-    if (activeItemType === ItemType.LECTURE) {
-      return lectures.map((l) => ({
-        id: l.id,
-        identifier: l.identifier,
-        text: l.title,
-        type: QuestionType.SingleBestAnswer,
-        bloomsLevel: BloomsLevel.Understand,
-        options: [],
-        explanation: l.description,
-        learningObjectives: l.linkedObjectiveIds,
-        tags: ['Lecture'],
-        createdAt: l.createdAt,
-        status: l.status as any,
-      }));
-    }
+    const statusMap = (s: string) => s === 'live' ? 'Published' : s === 'draft' ? 'Draft' : 'Archived';
 
-    return questionsList
-      .filter(
-        (item) =>
-          item.type === activeItemType ||
-          (activeItemType === ItemType.MCQ && item.type === 'MCQ') ||
-          (activeItemType === ItemType.SAQ && item.type === 'SAQ'),
-      )
-      .map((item) => ({
-        id: item.id,
-        identifier: item.identifier,
-        text: item.stem,
-        type: QuestionType.SingleBestAnswer,
-        bloomsLevel: item.taxonomy.bloomLevel as BloomsLevel,
-        options: item.options || [],
-        explanation: item.explanation || '',
-        learningObjectives: [item.learningObjective || ''],
-        tags: [item.taxonomy.organSystemId],
-        createdAt: item.createdAt,
-        status: item.status,
-      }));
-  }, [activeItemType, questionsList, lectures]);
+    return itemsList.map((item) => ({
+      id: item.id,
+      identifier: item.identifier,
+      text: item.mcq?.stem || item.saq?.question || item.lecture?.title || '',
+      type: QuestionType.SingleBestAnswer,
+      bloomsLevel: BloomsLevel.Understand,
+      options: (item.mcq?.choices || []).map((c) => ({
+        id: c.id || '',
+        text: c.content,
+        isCorrect: c.isCorrect,
+        explanation: c.explanation,
+      })),
+      explanation: item.mcq?.choices?.find((c) => c.isCorrect)?.explanation || item.saq?.answer || '',
+      learningObjectives: item.learningObjectiveId ? [item.learningObjectiveId] : [],
+      tags: item.tags?.map(t => t.title) || [],
+      createdAt: item.createdAt,
+      status: statusMap(item.status),
+    }));
+  }, [itemsList]);
 
   const filteredIssues = useMemo(() => {
     return []; // Issues mock removed
   }, []);
 
   const handleEditItem = (type: ItemType, identifier: string) => {
-    if (type === ItemType.LECTURE) {
-      // setSelectedItem(item);
-      setViewMode('LECTURE_EDITOR');
-    } else {
-      // Set URL param to trigger the useEffect which fetches the full question and opens editor
-      setSearchParams({ questionId: identifier });
-    }
+    setSearchParams({ questionId: identifier });
   };
 
   const handleCreateNew = () => {
     if (activeItemType === ItemType.LECTURE) {
-      setViewMode('LECTURE_WIZARD');
+      setSearchParams({ questionId: 'new_lecture' });
+    } else if (activeItemType === ItemType.SAQ) {
+      setSearchParams({ questionId: 'new_saq' });
     } else {
       setSearchParams({ questionId: 'new' });
     }
   };
 
   const handleBackToDashboard = () => {
+    debugger
     setSearchParams({});
-    setEditingQuestion(null);
+    setEditingItem(null);
   };
 
-  const handleSaveQuestion = async (q: ApiQuestion) => {
+  // Accepts ItemUpsertRequest directly from editors
+  const handleSaveItem = async (request: ItemUpsertRequest) => {
     try {
       showToast('Saving...', 'success');
-      const savedQ = await testsService.upsertQuestion(q);
+      const savedItem = await testsService.upsertItem(request);
 
-      const isNew = !questionsList.find((item) => item.id === savedQ.id);
-
-      const newItem: BackendItem = {
-        id: savedQ.id,
-        identifier: savedQ.identifier,
-        type: activeItemType as 'MCQ' | 'SAQ',
-        stem: savedQ.title,
-        options: (savedQ.choices || []).map((c) => ({
-          id: c.id,
-          text: c.content,
-          isCorrect: c.isCorrect,
-        })),
-        explanation:
-          savedQ.choices?.find((c) => c.isCorrect)?.explanation || '',
-        status: savedQ.status as 'Draft' | 'Published' | 'Archived',
-        itemType:
-          activeItemType === ItemType.MCQ
-            ? 'single-best-answer'
-            : 'short-answer',
-        version: 1,
-        authorId: 'AUTH-CURRENT',
-        createdAt: savedQ.createdAt,
-        updatedAt: savedQ.updatedAt,
-        timeToAuthorMinutes: 10,
-        taxonomy: {
-          organSystemId: savedQ.organSystemId || '',
-          disciplineId: 'DISC-PHARM',
-          bloomLevel: BloomsLevel.Understand,
-          syndromeTopicId: savedQ.topicId || '',
-          usmleContentId: 'USMLE-GEN',
-        },
-        linkedMediaIds: [],
-        linkedLectureIds: [],
-        learningObjective: savedQ.learningObjectiveId || '',
-      };
+      const isNew = !itemsList.find((item) => item.id === savedItem.id);
 
       if (isNew) {
-        setQuestionsList((prev) => [newItem, ...prev]);
+        setItemsList((prev) => [savedItem, ...prev]);
         showToast(`${activeItemType} Created Successfully`);
       } else {
-        setQuestionsList((prev) =>
-          prev.map((item) => (item.id === savedQ.id ? newItem : item)),
+        setItemsList((prev) =>
+          prev.map((item) => (item.id === savedItem.id ? savedItem : item)),
         );
         showToast(`${activeItemType} Updated Successfully`);
       }
       handleBackToDashboard();
     } catch (error) {
-      console.error('Failed to save question:', error);
-      showToast('Failed to save question', 'error');
+      console.error('Failed to save item:', error);
+      showToast('Failed to save item', 'error');
     }
   };
+
   const handleChangeStatus = async (identifier: string, newStatus: string) => {
     try {
       showToast('Updating status...', 'success');
-      const updatedQ = await testsService.updateQuestionStatus(
-        identifier,
-        newStatus as any,
-      );
+      // Use upsertItem to change status via Items API
+      const targetItem = itemsList.find(i => i.identifier === identifier);
+      if (!targetItem) return;
+
+      const savedItem = await testsService.upsertItem({
+        item: { id: targetItem.id, type: targetItem.type, status: newStatus as any },
+      });
 
       // Update local state
-      setEditingQuestion((prev) =>
-        prev ? { ...prev, status: updatedQ.status } : null,
+      setEditingItem((prev) =>
+        prev ? { ...prev, status: savedItem.status } : null,
       );
 
       // Update list
-      setQuestionsList((prev) =>
+      setItemsList((prev) =>
         prev.map((item) =>
           item.identifier === identifier
-            ? { ...item, status: updatedQ.status as any }
+            ? { ...item, status: savedItem.status }
             : item,
         ),
       );
@@ -426,20 +318,25 @@ const QuestionWorkbenchView: React.FC = () => {
     return (
       <QuestionEditor
         onBack={handleBackToDashboard}
-        onSave={handleSaveQuestion}
+        onSave={handleSaveItem}
         onChangeStatus={handleChangeStatus}
-        initialQuestion={editingQuestion}
+        initialQuestion={editingItem}
       />
     );
   if (viewMode === 'LECTURE_WIZARD')
     return (
       <LectureCreationWizard
-        onBack={() => setViewMode('DASHBOARD')}
-        onComplete={(l) => {
-          setLectures((prev) => [l, ...prev]);
-          showToast('Lecture Created');
-          setViewMode('DASHBOARD');
-        }}
+        onBack={handleBackToDashboard}
+        onComplete={handleSaveItem}
+        initialItem={selectedItem}
+      />
+    );
+  if (viewMode === 'SAQ_EDITOR')
+    return (
+      <SAQEditor
+        initialQuestion={selectedItem}
+        onBack={handleBackToDashboard}
+        onSave={handleSaveItem}
       />
     );
   if (viewMode === 'LECTURE_EDITOR')
@@ -556,19 +453,15 @@ const QuestionWorkbenchView: React.FC = () => {
             <ItemModuleDashboard
               onCreateClick={handleCreateNew}
               onViewAllClick={() => navigate('/bank-explorer')}
-              onEditClick={(q) => handleEditItem(activeItemType, q.identifier)}
+              onEditClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
               onDelete={(id) => {
-                if (activeItemType === ItemType.LECTURE) {
-                  setLectures((prev) => prev.filter((i) => i.id !== id));
-                } else {
-                  setQuestionsList((prev) => prev.filter((i) => i.id !== id));
-                }
+                setItemsList((prev) => prev.filter((i) => i.id !== id));
                 showToast('Asset Deleted', 'success');
               }}
-              onIssueClick={(issue) => {
+              onIssueClick={() => {
                 setActiveTab('INTEGRITY');
               }}
-              onItemClick={(q) => handleEditItem(activeItemType, q.identifier)}
+              onItemClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
               totalQuestions={totalQuestions}
               totalDraftQuestions={totalDraftQuestions}
               totalLiveQuestions={totalLiveQuestions}
@@ -579,10 +472,13 @@ const QuestionWorkbenchView: React.FC = () => {
           ))}
         {activeTab === 'INTEGRITY' && (
           <ItemIntegrityView
-            items={questionsList.filter((i) => i.type === activeItemType)}
+            items={itemsList
+              .filter((i) => i.type === activeItemType.toLowerCase())
+              .map(toBackendItem)}
             onUpdate={(updated) => {
-              setQuestionsList((prev) =>
-                prev.map((i) => (i.id === updated.id ? updated : i)),
+              // Convert back: find and update in itemsList by id
+              setItemsList((prev) =>
+                prev.map((i) => (i.id === updated.id ? { ...i, status: updated.status as any } : i)),
               );
               showToast('Item Remediated Successfully');
             }}
@@ -591,7 +487,21 @@ const QuestionWorkbenchView: React.FC = () => {
         {activeTab === 'LAB' && (
           <AILabView
             onSaveNew={(newItem) => {
-              setQuestionsList((prev) => [newItem, ...prev]);
+              // AILabView still emits BackendItem — convert minimally
+              const apiItem: BackendApiItem = {
+                id: newItem.id,
+                identifier: newItem.identifier || '',
+                type: newItem.type?.toLowerCase() as any || 'mcq',
+                status: newItem.status === 'Published' ? 'live' : 'draft',
+                learningObjectiveId: newItem.learningObjective || null,
+                createdAt: newItem.createdAt,
+                updatedAt: newItem.updatedAt,
+                mcq: { stem: newItem.stem, choices: [] },
+                saq: null,
+                lecture: null,
+                tags: [],
+              };
+              setItemsList((prev) => [apiItem, ...prev]);
               showToast('Lab Asset Committed to Bank');
               setActiveTab('DASHBOARD');
             }}

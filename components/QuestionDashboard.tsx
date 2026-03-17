@@ -117,7 +117,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
         </div>
         <button 
           onClick={onCreateClick}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
+          className="flex items-center gap-2 bg-primary-gradient hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-emerald-100 active:scale-95"
         >
           <Plus size={16} />
           Create {config.singular}
@@ -127,7 +127,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group hover:border-indigo-200 transition-colors">
+          <div key={index} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group hover:border-emerald-200 transition-colors">
             <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
               <stat.icon size={24} />
             </div>
@@ -147,7 +147,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
             <div className="flex gap-2 w-full sm:w-auto">
               <button 
                 onClick={onViewAllClick}
-                className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 transition px-2"
+                className="text-[10px] font-black uppercase tracking-widest text-[#1BD183] hover:text-slate-800 transition px-2"
               >
                 View all {config.plural.toLowerCase()}
               </button>
@@ -172,7 +172,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight 
                         ${q.bloomsLevel === BloomsLevel.Remember ? 'bg-green-100 text-green-700' : 
-                          q.bloomsLevel === BloomsLevel.Understand ? 'bg-indigo-100 text-indigo-700' :
+                          q.bloomsLevel === BloomsLevel.Understand ? 'bg-emerald-100 text-emerald-700' :
                           q.bloomsLevel === BloomsLevel.Apply ? 'bg-orange-100 text-orange-700' :
                           'bg-purple-100 text-purple-700'}`}>
                         {q.bloomsLevel}
@@ -190,7 +190,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => onEditClick(q)}
-                          className="p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors"
+                          className="p-2 text-slate-400 hover:bg-emerald-50 hover:text-[#1BD183] rounded-xl transition-colors"
                           title={`Edit ${config.singular}`}
                         >
                           <FileEdit size={16} />
@@ -233,7 +233,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
                 <div 
                   key={issue.id}
                   onClick={() => onIssueClick(issue)}
-                  className="flex gap-3 items-start p-4 rounded-2xl hover:bg-slate-50 cursor-pointer transition-colors group border border-slate-100 hover:border-indigo-100 shadow-sm"
+                  className="flex gap-3 items-start p-4 rounded-2xl hover:bg-slate-50 cursor-pointer transition-colors group border border-slate-100 hover:border-emerald-100 shadow-sm"
                 >
                   <div className={`mt-1 flex-shrink-0 ${issue.severity === 'High' ? 'text-rose-500' : 'text-amber-500'}`}>
                     <AlertTriangle size={18} fill={issue.severity === 'High' ? "currentColor" : "none"} />
@@ -243,7 +243,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
                       <p className={`text-xs font-black uppercase tracking-tight ${issue.severity === 'High' ? 'text-rose-900' : 'text-slate-800'}`}>
                         {issue.title}
                       </p>
-                      <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity transform group-hover:translate-x-1" />
+                      <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 text-emerald-400 transition-opacity transform group-hover:translate-x-1" />
                     </div>
                     <p className="text-[10px] text-slate-500 line-clamp-2 mt-1 italic font-medium">"{issue.description}"</p>
                     <div className="flex items-center gap-2 mt-2">

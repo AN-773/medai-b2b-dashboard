@@ -21,7 +21,7 @@ const WorkbenchHeader: React.FC<WorkbenchHeaderProps> = ({
     <header className="h-20 border-b border-slate-100 flex items-center justify-between px-10 flex-shrink-0 bg-white/80 backdrop-blur-xl z-10">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 rounded-xl text-[#1BD183]">
+            <div className="p-2 bg-emerald-50 rounded-xl text-[#1BD183]">
             <BookOpen size={20} />
             </div>
             <h1 className="font-black text-sm uppercase tracking-wide text-slate-900">Curriculum Workbench</h1>
@@ -55,7 +55,7 @@ const WorkbenchHeader: React.FC<WorkbenchHeaderProps> = ({
             <Download size={14} /> Export Map
         </button>
 
-        {/* <button className="bg-primary-gradient text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 flex items-center gap-2 active:scale-95">
+        {/* <button className="bg-primary-gradient text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-200 flex items-center gap-2 active:scale-95">
           <Plus size={14} /> New Objective
         </button> */}
       </div>

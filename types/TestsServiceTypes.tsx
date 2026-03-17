@@ -192,6 +192,8 @@ export interface LearningObjective {
   blocks?: Block[];
   questions?: Question[];
   exam?: "STEP 1" | "STEP 2" | "STEP 3";
+  subjectId?: string;
+  subject?: Subject;
 }
 
 export interface LearningObjectiveImport {
@@ -421,4 +423,63 @@ export interface DashboardStatsResponse {
   metrics: DashboardMetrics;
   difficulty_distribution: DifficultyDistribution;
   scatter_plot_data: ScatterPlotCoordinate[];
+}
+
+
+export type ApiItemType = "mcq" | "saq" | "lecture";
+export type ApiItemStatus = "draft" | "pending" | "live";
+
+export interface BackendApiItem {
+  id: string;
+  identifier: string;
+  type: ApiItemType;
+  status: ApiItemStatus;
+  learningObjectiveId: string | null;
+  learningObjective?: LearningObjective | null;
+  createdAt: string;
+  updatedAt: string;
+  mcq: MCQItem | null;
+  saq: SAQItem | null;
+  lecture: LectureItem | null;
+  tags: Tag[];
+}
+
+export interface MCQItem {
+  stem: string;
+  choices: Choice[]; 
+}
+
+export interface SAQItem {
+  question: string;
+  answer: string;
+}
+
+export interface LectureItem {
+  content: string;
+  title: string;
+  summary: string;
+}
+
+export interface ItemListResponse {
+  items: BackendApiItem[];
+  total: number;
+  page: number;
+}
+
+export interface ItemUpsertRequest {
+  item: Partial<BackendApiItem>;
+  learningObjectiveId?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  multimedia?: {
+    multimedia: { url: string; type: string };
+    fileId?: string;
+  } | null;
+  choices?: ChoiceUpsertRequest[];
+}
+
+export interface ChoiceUpsertRequest {
+  choice: Partial<Choice>;
+  multimedia?: { multimedia: { url: string; type: string } } | null;
+  explanationMultimedia?: { multimedia: { url: string; type: string } } | null;
 }

@@ -116,7 +116,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
               key={item.id}
               onClick={() => handleAudit(item)}
               className={`w-full p-8 text-left hover:bg-slate-50 transition-all group border-l-4 ${
-                selectedItem?.id === item.id ? 'bg-indigo-50 border-indigo-600' : 'border-transparent'
+                selectedItem?.id === item.id ? 'bg-emerald-50 border-[#1BD183]' : 'border-transparent'
               }`}
             >
               <div className="flex justify-between items-start mb-2">
@@ -138,7 +138,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                        <span>P: {(item.pValue || 0.64).toFixed(2)}</span>
                     </div>
                  </div>
-                 {auditingId === item.id ? <RefreshCw className="animate-spin text-indigo-600" size={16} /> : <ChevronRight size={16} className="text-slate-200 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />}
+                 {auditingId === item.id ? <RefreshCw className="animate-spin text-[#1BD183]" size={16} /> : <ChevronRight size={16} className="text-slate-200 group-hover:text-[#1BD183] group-hover:translate-x-1 transition-all" />}
               </div>
             </button>
           )) : (
@@ -171,7 +171,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                    </div>
                    <div>
                      <h3 className="text-2xl font-black uppercase tracking-tight">Integrity Audit: {selectedItem?.id}</h3>
-                     <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Sina Intelligence Report</p>
+                     <p className="text-emerald-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Sina Intelligence Report</p>
                    </div>
                  </div>
                  <button onClick={() => setAuditResult(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition">
@@ -195,7 +195,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                  </div>
 
                  <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">
                       <Activity size={14} /> Psychometric Analysis
                     </div>
                     <div className="bg-white/5 rounded-[2rem] p-6 border border-white/5">
@@ -214,7 +214,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                             <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Baseline P</p>
                             <p className="text-lg font-black">0.72</p>
                          </div>
-                         <ArrowRightLeft className="text-indigo-500 opacity-50" size={16} />
+                         <ArrowRightLeft className="text-[#1BD183] opacity-50" size={16} />
                          <div className="flex-1 p-3 bg-white/5 rounded-xl border border-rose-500/20">
                             <p className="text-[8px] font-black text-rose-400 uppercase mb-1">Current P</p>
                             <p className="text-lg font-black text-rose-500">0.58</p>
@@ -264,12 +264,12 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                     ))}
                   </div>
 
-                  <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-[2.5rem] flex gap-6 items-start">
-                    <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shrink-0">
+                  <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2.5rem] flex gap-6 items-start">
+                    <div className="p-3 bg-primary-gradient rounded-2xl text-white shadow-lg shrink-0">
                       <Wand2 size={24} />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Psychometric Remediation Logic</p>
+                      <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest mb-1">Psychometric Remediation Logic</p>
                       <p className="text-sm font-medium text-slate-600 leading-relaxed italic">"{auditResult.suggestedRemedy}"</p>
                     </div>
                   </div>
@@ -283,7 +283,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                   <button 
                     onClick={applyRemedy}
                     disabled={isApplying}
-                    className="w-full md:w-auto px-12 py-5 bg-primary-gradient disabled:opacity-50 text-white rounded-[2rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-4 active:scale-95"
+                    className="w-full md:w-auto px-12 py-5 bg-primary-gradient disabled:opacity-50 text-white rounded-[2rem] font-black uppercase tracking-widest transition shadow-2xl shadow-[#1BD183]/30 flex items-center justify-center gap-4 active:scale-95"
                   >
                     {isApplying ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
                     {isApplying ? 'COMMITTING TO BANK...' : 'Deploy Reconstruction'}
@@ -307,7 +307,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
                    <div className="w-2 h-2 rounded-full bg-rose-500" /> P-Drift Detection
                 </div>
                 <div className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 shadow-sm">
-                   <div className="w-2 h-2 rounded-full bg-indigo-500" /> NFD Identification
+                   <div className="w-2 h-2 rounded-full bg-[#1BD183]" /> NFD Identification
                 </div>
              </div>
           </div>

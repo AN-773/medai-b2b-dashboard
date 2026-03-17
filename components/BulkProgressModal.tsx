@@ -41,7 +41,7 @@ const BulkProgressModal: React.FC<BulkProgressModalProps> = ({
                 ? 'bg-gradient-to-br from-[#1BD183] to-[#15a968] shadow-[#1BD183]/20' 
                 : isDone && failedItems > 0
                   ? 'bg-gradient-to-br from-amber-500 to-amber-600 shadow-amber-500/20'
-                  : 'bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-indigo-500/20'
+                  : 'bg-gradient-to-br from-[#1BD183] to-emerald-600 shadow-[#1BD183]/20'
             }`}>
               {isProcessing ? (
                 <Loader2 size={24} className="animate-spin text-white" />

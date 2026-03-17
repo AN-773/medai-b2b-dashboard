@@ -88,16 +88,16 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
                     <p className="text-xs text-slate-400 italic">No linked questions found.</p>
                   ) : (
                     questions.map(question => (
-                      <div key={question.id} onClick={() => navigate(`/workbench?questionId=${question.identifier}`)} className="p-4 border border-slate-100 rounded-2xl hover:border-indigo-200 hover:shadow-md transition-all group cursor-pointer bg-white">
+                      <div key={question.id} onClick={() => navigate(`/workbench?questionId=${question.identifier}`)} className="p-4 border border-slate-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all group cursor-pointer bg-white">
                          <div className="flex justify-between items-start mb-2">
-                            <span className="px-2 py-0.5 bg-indigo-50 text-[#1BD183] rounded-lg text-[9px] font-black uppercase tracking-widest">
+                            <span className="px-2 py-0.5 bg-emerald-50 text-[#1BD183] rounded-lg text-[9px] font-black uppercase tracking-widest">
                               {question.status || 'MCQ'}
                             </span>
                             <span className="text-[9px] font-bold text-slate-400">{question.identifier || question.id.slice(0, 8)}</span>
                          </div>
                          <p className="text-xs font-bold text-slate-800 line-clamp-2 mb-3">{question.title}</p>
                          <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="text-[9px] font-black text-indigo-500 flex items-center gap-1">
+                            <span className="text-[9px] font-black text-[#1BD183] flex items-center gap-1">
                               Open Item <ExternalLink size={10} />
                             </span>
                          </div>

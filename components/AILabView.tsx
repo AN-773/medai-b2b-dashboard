@@ -134,7 +134,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
           </div>
 
           <div className="relative z-10 flex items-center gap-5">
-            <div className="p-4 bg-[#1BD183] rounded-[1.5rem] shadow-2xl shadow-indigo-900/50">
+            <div className="p-4 bg-[#1BD183] rounded-[1.5rem] shadow-2xl shadow-slate-900/50">
               <Brain size={32} />
             </div>
             <div>
@@ -225,7 +225,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                    <button 
                      key={i}
                      onClick={() => setPrompt(p.prompt)}
-                     className="p-3 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-left text-slate-400 hover:text-white hover:bg-white/10 hover:border-indigo-500/30 transition-all flex items-center gap-2"
+                     className="p-3 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-left text-slate-400 hover:text-white hover:bg-white/10 hover:border-[#1BD183]/30 transition-all flex items-center gap-2"
                    >
                      <Zap size={10} className="text-[#1BD183]" /> {p.label}
                    </button>
@@ -235,7 +235,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
              <button 
                 onClick={handleRemaster}
                 disabled={isProcessing}
-                className="w-full py-6 bg-primary-gradient disabled:opacity-50 text-white rounded-[1.5rem] font-black uppercase tracking-widest transition shadow-2xl shadow-indigo-900/40 flex items-center justify-center gap-4 active:scale-95"
+                className="w-full py-6 bg-primary-gradient disabled:opacity-50 text-white rounded-[1.5rem] font-black uppercase tracking-widest transition shadow-2xl shadow-slate-900/40 flex items-center justify-center gap-4 active:scale-95"
               >
                 {isProcessing ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
                 {isProcessing ? 'SYNTHESIZING ASSET...' : 'Execute Remaster'}
@@ -291,7 +291,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                        <div key={i} className={`p-6 rounded-[1.5rem] border transition-all flex justify-between items-center ${
                          opt.isCorrect 
                          ? 'border-emerald-500 bg-emerald-50 shadow-sm shadow-emerald-100/50' 
-                         : 'border-slate-100 bg-white hover:border-indigo-100 shadow-sm'
+                         : 'border-slate-100 bg-white hover:border-emerald-100 shadow-sm'
                        }`}>
                           <div className="flex items-center gap-6">
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${
@@ -308,12 +308,12 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                 </div>
 
                 <div className="p-6 xl:p-10 bg-[#ebf4ff] rounded-[2.5rem] flex flex-col sm:flex-row gap-6 items-start">
-                   <div className="p-4 bg-white rounded-2xl text-[#1BD183] shadow-sm border border-indigo-100 shrink-0">
+                   <div className="p-4 bg-white rounded-2xl text-[#1BD183] shadow-sm border border-emerald-100 shrink-0">
                       <Activity size={28} />
                    </div>
                    <div className="space-y-2">
                       <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Pedagogical Rationale</p>
-                      <p className="text-sm font-medium text-indigo-900/80 leading-relaxed">{generatedResult.explanation}</p>
+                      <p className="text-sm font-medium text-slate-700 leading-relaxed">{generatedResult.explanation}</p>
                    </div>
                 </div>
              </div>
@@ -360,7 +360,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
           <div className="bg-white rounded-[3.5rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-300">
              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-                  <Target size={24} className="text-indigo-600" />
+                  <Target size={24} className="text-[#1BD183]" />
                   Select Synthesis Base
                 </h3>
                 <button onClick={() => setIsItemPickerOpen(false)} className="p-3 text-slate-400 hover:text-slate-900 transition"><X size={24} /></button>
@@ -373,7 +373,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                      placeholder="Search QIDs, topics, or syndromes..."
                      value={searchQuery}
                      onChange={(e) => setSearchQuery(e.target.value)}
-                     className="w-full pl-14 pr-6 py-5 bg-slate-100 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm font-bold shadow-inner"
+                     className="w-full pl-14 pr-6 py-5 bg-slate-100 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-[#1BD183] transition text-sm font-bold shadow-inner"
                    />
                 </div>
              </div>
@@ -382,10 +382,10 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                   <button 
                     key={item.id}
                     onClick={() => { setSelectedItem(item); setIsItemPickerOpen(false); }}
-                    className="w-full p-8 text-left hover:bg-indigo-50 transition-colors flex justify-between items-center group rounded-[2rem]"
+                    className="w-full p-8 text-left hover:bg-emerald-50 transition-colors flex justify-between items-center group rounded-[2rem]"
                   >
                     <div className="flex items-center gap-6">
-                       <div className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-indigo-600 font-black text-[11px] shadow-sm group-hover:scale-110 transition-transform">
+                       <div className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-[#1BD183] font-black text-[11px] shadow-sm group-hover:scale-110 transition-transform">
                           {item.id.split('-').pop()}
                        </div>
                        <div>
@@ -393,11 +393,11 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
                           <div className="flex items-center gap-3 mt-2">
                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.taxonomy.organSystemId}</span>
                              <div className="w-1 h-1 rounded-full bg-slate-200" />
-                             <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{item.taxonomy.bloomLevel}</span>
+                             <span className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">{item.taxonomy.bloomLevel}</span>
                           </div>
                        </div>
                     </div>
-                    <ChevronRight size={20} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-2 transition-all" />
+                    <ChevronRight size={20} className="text-slate-300 group-hover:text-[#1BD183] group-hover:translate-x-2 transition-all" />
                   </button>
                 ))}
              </div>

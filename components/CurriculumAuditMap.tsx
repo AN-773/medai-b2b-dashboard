@@ -163,7 +163,7 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                   navigate('/curriculum');
                   onClose();
                 }}
-                className="group p-5 lg:p-6 bg-white border border-slate-100 rounded-[1.5rem] lg:rounded-[2rem] hover:border-indigo-200 hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
+                className="group p-5 lg:p-6 bg-white border border-slate-100 rounded-[1.5rem] lg:rounded-[2rem] hover:border-emerald-200 hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
               >
                 <div className="flex justify-between items-start mb-4 lg:mb-6">
                   <div
@@ -217,7 +217,7 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                   Institutional Cognitive Weight
                 </h2>
               </div>
-              <p className="text-indigo-200 text-sm leading-relaxed font-medium">
+              <p className="text-emerald-200 text-sm leading-relaxed font-medium">
                 The current authoring velocity favors <strong>"Apply"</strong>{' '}
                 level clinical reasoning. We recommend increasing{' '}
                 <strong>"Analyze"</strong> level multi-step items in the Renal
@@ -231,21 +231,21 @@ const CurriculumAuditMap: React.FC<CurriculumAuditMapProps> = ({ onClose }) => {
                     Apply
                   </div>
                 </div>
-                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="hidden sm:block w-px h-8 bg-slate-800 self-center"></div>
                 <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">28%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Analyze
                   </div>
                 </div>
-                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="hidden sm:block w-px h-8 bg-slate-800 self-center"></div>
                 <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">20%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">
                     Understand
                   </div>
                 </div>
-                <div className="hidden sm:block w-px h-8 bg-indigo-800 self-center"></div>
+                <div className="hidden sm:block w-px h-8 bg-slate-800 self-center"></div>
                 <div className="text-center w-[45%] sm:w-auto">
                   <div className="text-xl font-black">10%</div>
                   <div className="text-[8px] font-black uppercase tracking-widest text-[#1BD183]">

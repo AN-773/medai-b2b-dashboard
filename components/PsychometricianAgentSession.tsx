@@ -147,7 +147,7 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
           {isConnecting ? (
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Establishing Secure Uplink...</p>
           ) : (
-            <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
                <p className="text-xs font-bold text-black italic">"I'm reviewing the bank health data now. What specific area of discrimination or difficulty would you like to discuss?"</p>
             </div>
           )}

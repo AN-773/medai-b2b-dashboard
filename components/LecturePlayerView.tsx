@@ -54,7 +54,7 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
           </button>
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 bg-indigo-600/30 text-indigo-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-indigo-500/30">
+              <span className="px-2 py-0.5 bg-primary-gradient/30 text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-[#1BD183]/30">
                 Instructional Preview
               </span>
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{lecture.id}</span>
@@ -64,7 +64,7 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
         </div>
         <button 
           onClick={() => onEdit(lecture)}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-primary-gradient text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
         >
           <Edit3 size={14} /> Edit Resource
         </button>
@@ -75,7 +75,7 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
         <div className="flex-1 flex flex-col relative bg-black min-h-[300px] xl:min-h-0">
           <div className="flex-1 flex items-center justify-center relative group">
             {/* Simulated Video Content */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 to-slate-900/20 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/20 to-slate-900/20 pointer-events-none" />
             <MonitorPlay size={120} strokeWidth={1} className="text-white/10" />
             
             {/* Overlay Center Button */}
@@ -89,7 +89,7 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
             {/* Engagement Hotspots (Simulated Visual Spikes) */}
             <div className="absolute bottom-24 left-0 right-0 px-10 hidden sm:block">
                <div className="h-1.5 w-full bg-white/10 rounded-full relative overflow-hidden group/seek">
-                  <div className="absolute top-0 left-0 bottom-0 bg-indigo-500 transition-all duration-300" style={{ width: '35%' }} />
+                  <div className="absolute top-0 left-0 bottom-0 bg-[#1BD183] transition-all duration-300" style={{ width: '35%' }} />
                   {lecture.engagementMarkers.map((m, idx) => (
                     <div 
                       key={idx} 
@@ -163,11 +163,11 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
                   <button 
                     key={i}
                     onClick={() => setCurrentTime(marker.timestampSec)}
-                    className="w-full text-left p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-indigo-500/30 transition-all group"
+                    className="w-full text-left p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-[#1BD183]/30 transition-all group"
                   >
                     <div className="flex justify-between items-start mb-2">
-                       <span className="text-[10px] font-mono text-indigo-400 font-black">{formatTime(marker.timestampSec)}</span>
-                       <ChevronRight size={14} className="text-slate-600 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
+                       <span className="text-[10px] font-mono text-emerald-400 font-black">{formatTime(marker.timestampSec)}</span>
+                       <ChevronRight size={14} className="text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
                     </div>
                     <p className="text-xs font-bold text-slate-200 leading-snug">{marker.description}</p>
                     <p className="text-[9px] text-slate-500 font-black uppercase mt-3 tracking-widest">{marker.type}</p>
@@ -181,16 +181,16 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-2xl flex items-start gap-3">
-                   <FileText className="text-indigo-400 mt-0.5" size={16} />
-                   <p className="text-[10px] text-indigo-200 font-medium leading-relaxed italic">
+                <div className="p-4 bg-slate-900/20 border border-[#1BD183]/20 rounded-2xl flex items-start gap-3">
+                   <FileText className="text-emerald-400 mt-0.5" size={16} />
+                   <p className="text-[10px] text-emerald-200 font-medium leading-relaxed italic">
                      AI-generated transcript derived from multimodal audio analysis.
                    </p>
                 </div>
                 <div className="space-y-4 font-serif text-sm text-slate-400 leading-relaxed px-2">
-                   <p><strong className="text-indigo-400">0:00</strong> Welcome back everyone. Today we are diving into the molecular mechanisms of insulin resistance, specifically looking at how systemic inflammation impacts GLUT4 translocation...</p>
-                   <p><strong className="text-indigo-400">2:45</strong> Notice the role of TNF-alpha here. This cytokine induces phosphorylation of IRS-1 at serine residues rather than tyrosine residues, which effectively inhibits its activity...</p>
-                   <p><strong className="text-indigo-400">5:12</strong> Let's transition to the clinical correlate on page 14 of your USMLE outline regarding the presentation of metabolic syndrome...</p>
+                   <p><strong className="text-emerald-400">0:00</strong> Welcome back everyone. Today we are diving into the molecular mechanisms of insulin resistance, specifically looking at how systemic inflammation impacts GLUT4 translocation...</p>
+                   <p><strong className="text-emerald-400">2:45</strong> Notice the role of TNF-alpha here. This cytokine induces phosphorylation of IRS-1 at serine residues rather than tyrosine residues, which effectively inhibits its activity...</p>
+                   <p><strong className="text-emerald-400">5:12</strong> Let's transition to the clinical correlate on page 14 of your USMLE outline regarding the presentation of metabolic syndrome...</p>
                 </div>
               </div>
             )}
@@ -198,13 +198,13 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
 
           <div className="p-6 bg-white/5 border-t border-white/5 shrink-0">
              <div className="flex items-center gap-3 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center text-indigo-400">
+                <div className="w-8 h-8 rounded-lg bg-primary-gradient/20 flex items-center justify-center text-emerald-400">
                    <MessageSquare size={16} />
                 </div>
                 <p className="text-[10px] font-black text-white uppercase tracking-widest">Sina: Tutor Insights</p>
              </div>
              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-               "Students frequently pause at <span className="text-indigo-400">4:12</span>. Consider adding a self-assessment MCQ here to reinforce the IRS-1 phosphorylation mechanism."
+               "Students frequently pause at <span className="text-emerald-400">4:12</span>. Consider adding a self-assessment MCQ here to reinforce the IRS-1 phosphorylation mechanism."
              </p>
           </div>
         </div>

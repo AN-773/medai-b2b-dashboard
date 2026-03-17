@@ -48,7 +48,7 @@ const LectureAnalyticsView: React.FC<{ lectureId: string; title: string }> = ({ 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
           <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Zap size={24} /></div>
+            <div className="p-3 bg-emerald-50 text-[#1BD183] rounded-2xl"><Zap size={24} /></div>
             <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded-lg uppercase">
               {metrics.nbmeCorrelationScore > 0.6 ? 'High Correlation' : 'Moderate'}
             </span>

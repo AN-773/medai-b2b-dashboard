@@ -254,6 +254,7 @@ export interface LectureAsset {
 
 export interface Question {
   id: string;
+  identifier?: string;
   title?: string; // Added for item tagline
   text: string;
   type: QuestionType;

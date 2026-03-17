@@ -94,7 +94,7 @@ const AIAgentCenter: React.FC = () => {
     switch(severity) {
       case 'critical': return 'bg-[#fdf3f4] text-[#DC3545] border-rose-100';
       case 'warning': return 'bg-[#fff8e6] text-[#CF9808] border-amber-100';
-      default: return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+      default: return 'bg-emerald-50 text-emerald-700 border-emerald-100';
     }
   };
 
@@ -261,7 +261,7 @@ const AIAgentCenter: React.FC = () => {
                     <div className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap animate-in fade-in duration-1000">
                       {briefingText}
                       {isStreaming && (
-                        <span className="inline-block w-2 h-4 bg-indigo-400 ml-1 animate-pulse"></span>
+                        <span className="inline-block w-2 h-4 bg-emerald-400 ml-1 animate-pulse"></span>
                       )}
                     </div>
                   ) : (
@@ -280,7 +280,7 @@ const AIAgentCenter: React.FC = () => {
                   <button
                     onClick={handlePlayAudio}
                     disabled={isStreaming || !briefingText}
-                    className="h-16 w-16 rounded-full bg-[#1BD183] text-white flex items-center justify-center shadow-lg shadow-indigo-100 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 bg-primary-gradient shrink-0"
+                    className="h-16 w-16 rounded-full bg-[#1BD183] text-white flex items-center justify-center shadow-lg shadow-emerald-100 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 bg-primary-gradient shrink-0"
                   >
                     {isAudioLoading ? (
                       <Activity className="animate-spin" size={24} />

@@ -194,7 +194,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-            className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#1BD183]"
           >
             <option value="WEEK">This Week</option>
             <option value="MONTH">This Month</option>
@@ -269,7 +269,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
           value={`${cohortData.analytics.avgReadiness}%`}
           change={cohortData.analytics.readinessChange}
           icon={<Target className="text-[#1BD183]" size={24} />}
-          color="indigo"
+          color="emerald"
           subtitle="USMLE Step 1 Projection"
         />
         <MetricCard
@@ -485,7 +485,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
           {cohortData.interventions.map((intervention) => (
             <div
               key={intervention.id}
-              className="p-6 border border-slate-200 rounded-[1.5rem] hover:border-indigo-200 hover:shadow-md transition-all group bg-white"
+              className="p-6 border border-slate-200 rounded-[1.5rem] hover:border-emerald-200 hover:shadow-md transition-all group bg-white"
             >
               <div className="flex flex-col md:flex-row items-start justify-between gap-6">
                 <div className="flex-1">
@@ -696,7 +696,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
 // Helper Components
 const MetricCard = ({ title, value, change, icon, color, subtitle }: any) => {
   const colorClasses: any = {
-    indigo: 'bg-[#1BD183]/10 text-[#1BD183]',
+    emerald: 'bg-[#1BD183]/10 text-[#1BD183]',
     rose: 'bg-rose-50 text-rose-700',
     amber: 'bg-amber-50 text-amber-700',
     emerald: 'bg-emerald-50 text-emerald-700',

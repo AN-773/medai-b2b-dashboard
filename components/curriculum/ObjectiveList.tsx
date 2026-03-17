@@ -15,9 +15,9 @@ interface ObjectiveListProps {
   bloomFilter: string;
   setBloomFilter: (val: string) => void;
   onBack: () => void;
-  onEdit: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
+  onEdit: (id: string, data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => Promise<void>;
   onDelete: (id: string) => void;
-  onCreateObjective?: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => Promise<void>;
+  onCreateObjective?: (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => Promise<void>;
   onViewLinked: (obj: LearningObjective) => void;
   isLoading?: boolean;
   currentPage?: number;
@@ -110,7 +110,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
             <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{subTopic?.title || topic.title}</h2>
             <div className="flex items-center gap-3 mt-2">
                 {subTopic && (
-                    <span className="px-3 py-1 bg-indigo-50 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                    <span className="px-3 py-1 bg-emerald-50 rounded-lg text-[10px] font-black uppercase tracking-widest">
                     {topic.title}
                     </span>
                 )}
@@ -167,7 +167,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           <div key={obj.id} className="relative group">
               <div 
                 onClick={() => onViewLinked(obj)}
-                className="flex items-start gap-6 p-8 bg-white border border-slate-100 rounded-[2.5rem] hover:shadow-xl hover:border-indigo-100 transition-all duration-300 cursor-pointer"
+                className="flex items-start gap-6 p-8 bg-white border border-slate-100 rounded-[2.5rem] hover:shadow-xl hover:border-emerald-100 transition-all duration-300 cursor-pointer"
               >
                 <div className="pt-1">
                   <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 font-black text-xs shadow-inner">
@@ -192,7 +192,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
                   <button 
                     onClick={(e: React.MouseEvent) => handleStartEdit(e, obj)}
                     disabled={isFetchingObj}
-                    className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-indigo-50 rounded-xl transition-colors disabled:opacity-50"
+                    className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-emerald-50 rounded-xl transition-colors disabled:opacity-50"
                     title="Edit Objective"
                   >
                     <Edit3 size={18} />
@@ -246,7 +246,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
         }}
         topic={topic}
         subTopic={subTopic}
-        onSubmit={async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string }) => {
+        onSubmit={async (data: { title: string; syndromeId: string; cognitiveSkillId: string; disciplines: string[]; exam?: string; subjectId?: string }) => {
           if (editingObj) {
             const originalSyndromeId = editingObj.syndromeId;
             await onEdit(editingObj.id, data);
@@ -266,6 +266,7 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           exam: editingObj.exam,
           organSystemId: editingObj.syndrome?.topic?.organSystemId,
           topicId: editingObj.syndrome?.topicId,
+          subjectId: editingObj.subjectId,
         } : null}
         organSystemName={organSystemName}
         curriculumMode={curriculumMode}

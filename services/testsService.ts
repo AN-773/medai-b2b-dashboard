@@ -1,4 +1,3 @@
-
 import {
   PaginatedApiResponse,
   OrganSystem,
@@ -20,6 +19,11 @@ import {
   OpenISearchResponse,
   File,
   DashboardStatsResponse,
+  BackendApiItem,
+  ItemListResponse,
+  ItemUpsertRequest,
+  ApiItemType,
+  ApiItemStatus,
 } from '../types/TestsServiceTypes';
 import { Prompt, PromptPayload } from '../types';
 import { apiClient } from './apiClient';
@@ -213,6 +217,54 @@ export const testsService = {
     );
     return res;
   },
+
+  getItems: async (
+    page = 1,
+    limit = 200,
+    type?: string,
+    status?: string,
+    examType?: string,
+    learningObjectiveId?: string,
+    organSystemId?: string,
+    topicId?: string,
+    disciplines?: string,
+    subjects?: string,
+    tags?: string,
+    q?: string,
+    syndromeId?: string,
+    cognitiveSkillId?: string,
+    identifier?: string,
+  ): Promise<ItemListResponse> => {
+    let url = `/items?page=${page}&limit=${limit}`;
+    if (type) url += `&type=${type}`;
+    if (status) url += `&status=${status}`;
+    if (examType && examType !== 'all') url += `&examType=${examType}`;
+    if (learningObjectiveId) url += `&learningObjectiveId=${learningObjectiveId}`;
+    if (organSystemId) url += `&organSystemId=${organSystemId}`;
+    if (topicId) url += `&topicId=${topicId}`;
+    if (disciplines) url += `&disciplines=${disciplines}`;
+    if (subjects) url += `&subjects=${subjects}`;
+    if (tags) url += `&tags=${tags}`;
+    if (q) url += `&q=${q}`;
+    if (syndromeId) url += `&syndromeId=${syndromeId}`;
+    if (cognitiveSkillId) url += `&cognitiveSkillId=${cognitiveSkillId}`;
+    if (identifier) url += `&identifier=${identifier}`;
+
+    return apiClient.get<ItemListResponse>('TESTS', url);
+  },
+
+  getItem: async (identifier: string): Promise<BackendApiItem> => {
+    return apiClient.get<BackendApiItem>('TESTS', `/items/${identifier}`);
+  },
+
+  upsertItem: async (request: ItemUpsertRequest): Promise<BackendApiItem> => {
+    return apiClient.post<BackendApiItem>('TESTS', `/items`, request);
+  },
+
+  deleteItem: async (identifier: string): Promise<void> => {
+    const cleanId = identifier.replace('/items/', '');
+    return apiClient.delete<void>('TESTS', `/items/${cleanId}`);
+  },
   
   getTags: async (
     page = 1,
@@ -317,6 +369,7 @@ export const testsService = {
     disciplines: string[],
     id?: string,
     examType?: string,
+    subjectId?: string,
   ): Promise<LearningObjective> => {
     let payload = {
       learningObjective: { title: name },
@@ -324,6 +377,7 @@ export const testsService = {
       cognitiveSkillId,
       disciplines,
       examType,
+      ...(subjectId ? { subjectId } : {}),
     };
     if (id) {
       payload.learningObjective['id'] = id;
