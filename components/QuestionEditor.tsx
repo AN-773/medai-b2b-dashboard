@@ -436,13 +436,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     }
     const request: ItemUpsertRequest = {
       item: {
-        ...(initialQuestion?.id ? { id: initialQuestion.id } : {}),
+        ...(initialQuestion?.identifier ? { identifier: initialQuestion.identifier } : {}),
         type: 'mcq',
         status: targetStatus,
+        metadata: references.length > 0 ? { references } : undefined,
+        mcq: { stem: questionText },
       },
       learningObjectiveId: selectedObjectiveId || undefined,
       tags: selectedTags,
-      metadata: references.length > 0 ? { references } : undefined,
       multimedia: attachedImage ? {
         multimedia: { url: attachedImage, type: stemMultimediaType || 'image' },
         fileId: stemMultimediaFileId,
@@ -456,9 +457,11 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
         },
         multimedia: o.multimediaUrl ? {
           multimedia: { url: o.multimediaUrl, type: o.multimediaType || 'image' },
+          fileId: o.multimediaFileId,
         } : null,
         explanationMultimedia: o.explanationMultimediaUrl ? {
           multimedia: { url: o.explanationMultimediaUrl, type: o.explanationMultimediaType || 'image' },
+          fileId: o.explanationMultimediaFileId,
         } : null,
       })),
     };

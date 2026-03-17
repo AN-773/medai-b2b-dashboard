@@ -466,20 +466,29 @@ export interface ItemListResponse {
   page: number;
 }
 
+export interface MultimediaUpsertRequest {
+  multimedia: { url: string; type: string };
+  fileId?: string;
+}
+
 export interface ItemUpsertRequest {
-  item: Partial<BackendApiItem>;
+  item: {
+    identifier?: string;
+    status: ApiItemStatus;
+    type: ApiItemType;
+    metadata?: Record<string, unknown>;
+    mcq?: { stem: string };
+    saq?: { question: string; answer: string };
+    lecture?: { title: string; content: string; summary: string };
+  };
   learningObjectiveId?: string;
   tags?: string[];
-  metadata?: Record<string, unknown>;
-  multimedia?: {
-    multimedia: { url: string; type: string };
-    fileId?: string;
-  } | null;
+  multimedia?: MultimediaUpsertRequest | null;
   choices?: ChoiceUpsertRequest[];
 }
 
 export interface ChoiceUpsertRequest {
   choice: Partial<Choice>;
-  multimedia?: { multimedia: { url: string; type: string } } | null;
-  explanationMultimedia?: { multimedia: { url: string; type: string } } | null;
+  multimedia?: MultimediaUpsertRequest | null;
+  explanationMultimedia?: MultimediaUpsertRequest | null;
 }

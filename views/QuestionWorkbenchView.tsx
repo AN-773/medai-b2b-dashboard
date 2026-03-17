@@ -290,7 +290,7 @@ const QuestionWorkbenchView: React.FC = () => {
       if (!targetItem) return;
 
       const savedItem = await testsService.upsertItem({
-        item: { id: targetItem.id, type: targetItem.type, status: newStatus as any },
+        item: { identifier: targetItem.identifier, type: targetItem.type, status: newStatus as any },
       });
 
       // Update local state

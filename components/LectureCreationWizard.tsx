@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowRight, ArrowLeft, Save, Upload, Target, X, CheckCircle2, BookOpen, FileText, MonitorPlay, ClipboardCheck, Loader2 } from 'lucide-react';
 import { useQuestionEditorData } from '../hooks/useQuestionEditorData';
 import { testsService } from '../services/testsService';
-import { BackendApiItem, ItemUpsertRequest, LearningObjective } from '../types/TestsServiceTypes';
+import { BackendApiItem, ItemUpsertRequest, LearningObjective, MultimediaUpsertRequest } from '../types/TestsServiceTypes';
 import SearchableSelect, { SelectOption } from './SearchableSelect';
 
 interface LectureCreationWizardProps {
@@ -63,6 +63,8 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [mappableItems, setMappableItems] = useState<BackendApiItem[]>([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Initialize from existing item
   useEffect(() => {
@@ -111,22 +113,43 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
     );
   };
 
-  const handleFinalize = () => {
-    const request: ItemUpsertRequest = {
-      item: {
-        ...(initialItem?.id ? { id: initialItem.id } : {}),
-        type: 'lecture',
-        status: 'draft',
-        lecture: {
-          title,
-          content: lectureText,
-          summary: description,
+  const handleFinalize = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      let multimedia: MultimediaUpsertRequest | null = null;
+
+      // Upload video file first, then link it as multimedia
+      if (videoFile) {
+        const uploaded = await testsService.uploadFile(videoFile);
+        multimedia = {
+          multimedia: { url: uploaded.url, type: uploaded.type },
+          fileId: uploaded.id,
+        };
+      }
+
+      const request: ItemUpsertRequest = {
+        item: {
+          ...(initialItem?.identifier ? { identifier: initialItem.identifier } : {}),
+          type: 'lecture',
+          status: 'draft',
+          lecture: {
+            title,
+            content: lectureText,
+            summary: description,
+          },
         },
-      },
-      learningObjectiveId: selectedObjectiveId || undefined,
-      tags: [],
-    };
-    onComplete(request);
+        learningObjectiveId: selectedObjectiveId || undefined,
+        tags: [],
+        multimedia,
+      };
+      onComplete(request);
+    } catch (e: any) {
+      console.error('Failed to finalize lecture:', e);
+      setSaveError(e.message || 'Failed to upload media or save lecture.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const selectedOrganSystem = organSystems.find(os => os.id === selectedOrganSystemId);
@@ -431,6 +454,16 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
             </div>
           </div>
 
+          {saveError && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm flex items-center gap-2">
+              <X size={16} />
+              {saveError}
+              <button onClick={() => setSaveError(null)} className="ml-auto text-red-500 hover:text-red-700">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col-reverse xl:flex-row justify-between items-center bg-slate-900 p-6 xl:p-8 rounded-[2.5rem] shadow-xl text-white gap-6">
             <button onClick={() => setStep(3)} className="flex items-center gap-2 text-slate-400 font-black uppercase tracking-widest text-[10px] hover:text-white transition">
               <ArrowLeft size={16} /> Back to Materials
@@ -438,9 +471,14 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
             <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
                <button
                  onClick={handleFinalize}
-                 className="flex items-center justify-center gap-3 bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-600 transition shadow-2xl shadow-emerald-500/20 active:scale-95 w-full sm:w-auto"
+                 disabled={isSaving}
+                 className="flex items-center justify-center gap-3 bg-emerald-500 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-600 transition shadow-2xl shadow-emerald-500/20 active:scale-95 w-full sm:w-auto disabled:opacity-50"
                >
-                 <Save size={18} /> Finalize Asset
+                 {isSaving ? (
+                   <><Loader2 size={18} className="animate-spin" /> Uploading...</>
+                 ) : (
+                   <><Save size={18} /> Finalize Asset</>
+                 )}
                </button>
             </div>
           </div>

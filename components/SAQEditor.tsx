@@ -100,7 +100,7 @@ const SAQEditor: React.FC<SAQEditorProps> = ({ onBack, onSave, initialQuestion }
   const handleSaveClick = () => {
     const request: ItemUpsertRequest = {
       item: {
-        ...(initialQuestion?.id ? { id: initialQuestion.id } : {}),
+        ...(initialQuestion?.identifier ? { identifier: initialQuestion.identifier } : {}),
         type: 'saq',
         status: initialQuestion?.status || 'draft',
         saq: {
