@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
   ScatterChart, Scatter, ZAxis, ReferenceArea, ReferenceLine
@@ -18,6 +19,7 @@ import { OrganSystem, Topic, Discipline, Tag, Subject, Competency } from '../typ
 import { Search, Filter, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 
 const QuestionBankHealth: React.FC = () => {
+  const navigate = useNavigate();
   const [isStandardsModalOpen, setIsStandardsModalOpen] = useState(false);
   const [psychometrics, setPsychometrics] = useState<Psychometric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -483,6 +485,7 @@ const QuestionBankHealth: React.FC = () => {
               ) : psychometrics.map(item => {
                 const questionIdMatch = item.question_id?.match(/\/questions\/([^/]+)$/);
                 const displayId = questionIdMatch ? questionIdMatch[1] : item.question_id || 'Unknown';
+                const editorQuestionId = questionIdMatch ? questionIdMatch[1] : (item.question_id || '').split('/').filter(Boolean).pop() || '';
                 
                 const nfdString = item.stats?.Flawed_Distractor_Choice || "";
                 const nfdCount = nfdString ? nfdString.split(',').filter(Boolean).length : 0;
@@ -518,7 +521,14 @@ const QuestionBankHealth: React.FC = () => {
                        )}
                     </td>
                     <td className="py-5 px-6 text-right">
-                       <button className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl hover:bg-slate-800 transition">
+                       <button
+                          onClick={() => {
+                            if (!editorQuestionId) return;
+                            navigate(`/workbench?questionId=${encodeURIComponent(editorQuestionId)}`);
+                          }}
+                          disabled={!editorQuestionId || editorQuestionId === 'Unknown'}
+                          className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           Review
                        </button>
                     </td>
