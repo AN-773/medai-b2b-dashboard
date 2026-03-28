@@ -436,7 +436,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     }
     const request: ItemUpsertRequest = {
       item: {
-        ...(initialQuestion?.identifier ? { identifier: initialQuestion.identifier } : {}),
+        ...(initialQuestion?.id ? { id: initialQuestion.id } : {}),
         type: 'mcq',
         status: targetStatus,
         metadata: references.length > 0 ? { references } : undefined,

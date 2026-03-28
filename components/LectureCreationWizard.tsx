@@ -130,7 +130,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
 
       const request: ItemUpsertRequest = {
         item: {
-          ...(initialItem?.identifier ? { identifier: initialItem.identifier } : {}),
+          ...(initialItem?.id ? { id: initialItem.id } : {}),
           type: 'lecture',
           status: 'draft',
           lecture: {
