@@ -33,6 +33,9 @@ import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
 import { View } from './types';
+import StudentRegistryView from './views/StudentRegistryView';
+import CohortsView from './views/CohortsView';
+import CoursesView from './views/CoursesView';
 
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -50,6 +53,10 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/qb-health')) return 'QB_HEALTH';
     if (path.startsWith('/mastery')) return 'MASTERY';
     if (path.startsWith('/curriculum')) return 'CURRICULUM';
+    if (path.startsWith('/students')) return 'STUDENTS';
+    if (path.startsWith('/cohorts')) return 'COHORTS';
+    if (path.startsWith('/courses')) return 'COURSES';
+    if (path.startsWith('/cohort-studio')) return 'COHORTS';
     if (path.startsWith('/assessment')) return 'ASSESSMENT';
     if (path.startsWith('/agents')) return 'AGENTS';
     if (path.startsWith('/blueprint')) return 'BLUEPRINT';
@@ -69,6 +76,10 @@ const DashboardLayout: React.FC = () => {
       QB_HEALTH: '/qb-health',
       MASTERY: '/mastery',
       CURRICULUM: '/curriculum',
+      STUDENTS: '/students',
+      COHORTS: '/cohorts',
+      COURSES: '/courses',
+      COHORT_STUDIO: '/cohorts',
       ASSESSMENT: '/assessment',
       AGENTS: '/agents',
       BLUEPRINT: '/blueprint',
@@ -104,6 +115,9 @@ const DashboardLayout: React.FC = () => {
   const navItems = [
     { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
     { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
+    { id: 'STUDENTS', label: 'Student Registry', icon: Users },
+    { id: 'COHORTS', label: 'Cohorts', icon: Users },
+    { id: 'COURSES', label: 'Courses', icon: BookOpen },
     { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
     { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
     { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
@@ -156,9 +170,7 @@ const DashboardLayout: React.FC = () => {
                 {navItems.find((n) => n.id === activeView)?.label ||
                   'Mission Control'}
               </h2>
-              <p className="text-slate-500 mt-2 text-base xl:text-lg font-medium italic">
-                Authoring environment powered by USMLE Content Intelligence.
-              </p>
+             
             </div>
           </div>
 
@@ -171,6 +183,10 @@ const DashboardLayout: React.FC = () => {
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />
               <Route path="/mastery" element={<StudentMasteryView />} />
+              <Route path="/students" element={<StudentRegistryView />} />
+              <Route path="/cohorts" element={<CohortsView />} />
+              <Route path="/courses" element={<CoursesView />} />
+              <Route path="/cohort-studio" element={<Navigate to="/cohorts" replace />} />
               <Route
                 path="/curriculum"
                 element={

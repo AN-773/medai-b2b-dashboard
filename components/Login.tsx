@@ -3,6 +3,20 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+const getIamLoginUrl = () => {
+  const iamApiUrl =
+    import.meta.env.VITE_IAM_API_URL || 'http://localhost:3000/iam';
+  const normalizedIamApiUrl = iamApiUrl.replace(/\/$/, '');
+  const loginUrl = new URL(`${normalizedIamApiUrl}/login`);
+
+  loginUrl.searchParams.set(
+    'redirect_uri',
+    'https://admin.medicalstudent.ai/callback',
+  );
+
+  return loginUrl.toString();
+};
+
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -22,7 +36,7 @@ const Login: React.FC = () => {
       params.append('password', password);
 
       const response = await axios.post(
-        'https://msa-api-iam.azurewebsites.net/login?redirect_uri=https://admin.medicalstudent.ai/callback',
+        getIamLoginUrl(),
         params,
         {
           headers: {

@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig, Method } from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS';
 
@@ -27,12 +27,14 @@ class ApiClient {
   ): Promise<T> {
     const baseUrl = getBaseUrl(service);
     const url = `${baseUrl}${endpoint}`;
+    const isFormData =
+      typeof FormData !== 'undefined' && options.data instanceof FormData;
 
     const config: AxiosRequestConfig = {
       url,
       method: options.method || 'GET',
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
       ...options,

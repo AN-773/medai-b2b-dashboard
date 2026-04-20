@@ -83,6 +83,30 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
               <div className="absolute left-10 top-2 bottom-2 w-px bg-white/10"></div>
               
               <button 
+                onClick={() => onNavigate('STUDENTS')}
+                className={getSubMenuButtonClass('STUDENTS')}
+              >
+                <div className={getSubMenuDotClass('STUDENTS')}></div>
+                Student Registry
+              </button>
+
+              <button 
+                onClick={() => onNavigate('COHORTS')}
+                className={getSubMenuButtonClass('COHORTS')}
+              >
+                <div className={getSubMenuDotClass('COHORTS')}></div>
+                Cohorts
+              </button>
+
+              <button 
+                onClick={() => onNavigate('COURSES')}
+                className={getSubMenuButtonClass('COURSES')}
+              >
+                <div className={getSubMenuDotClass('COURSES')}></div>
+                Courses
+              </button>
+
+              <button 
                 onClick={() => onNavigate('CURRICULUM')}
                 className={getSubMenuButtonClass('CURRICULUM')}
               >

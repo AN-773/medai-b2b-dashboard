@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Database, X, ClipboardCheck, ExternalLink, MonitorPlay, Plus, Sparkles, Loader2 } from 'lucide-react';
+import { Database, X, ClipboardCheck, ExternalLink, Plus, Sparkles, Loader2 } from 'lucide-react';
 import { LearningObjective } from '@/types';
 import { testsService } from '@/services/testsService';
-import { Question } from '@/types/TestsServiceTypes';
+import { BackendApiItem } from '@/types/TestsServiceTypes';
 
 
 interface LinkedItemsPanelProps {
@@ -15,26 +15,29 @@ interface LinkedItemsPanelProps {
 
 const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose, onCreateNew }) => {
   const navigate = useNavigate();
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [items, setItems] = useState<BackendApiItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const fetchItems = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await testsService.getQuestions(1, 200, objective.id);
-        setQuestions(res.items || []);
+        const res = await testsService.getItems(1, 200, undefined, undefined, undefined, objective.id);
+        setItems(res.items || []);
       } catch (err) {
-        console.error('Failed to fetch questions:', err);
-        setError('Failed to load questions.');
+        console.error('Failed to fetch items:', err);
+        setError('Failed to load items.');
       } finally {
         setIsLoading(false);
       }
     };
-    fetchQuestions();
+    fetchItems();
   }, [objective.id]);
+
+  const getItemTitle = (item: BackendApiItem) =>
+    item.mcq?.stem || item.saq?.question || item.lecture?.title || 'Untitled item';
 
   return (
     <>
@@ -80,22 +83,22 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
                   {isLoading ? (
                     <div className="flex flex-col items-center justify-center py-8">
                       <Loader2 size={20} className="animate-spin text-[#1BD183] mb-2" />
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Loading Questions...</p>
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Loading Items...</p>
                     </div>
                   ) : error ? (
                     <p className="text-xs text-red-400 italic">{error}</p>
-                  ) : questions.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">No linked questions found.</p>
+                  ) : items.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No linked items found.</p>
                   ) : (
-                    questions.map(question => (
-                      <div key={question.id} onClick={() => navigate(`/workbench?questionId=${question.identifier}`)} className="p-4 border border-slate-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all group cursor-pointer bg-white">
+                    items.map(item => (
+                      <div key={item.id} onClick={() => navigate(`/workbench?questionId=${item.identifier}`)} className="p-4 border border-slate-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all group cursor-pointer bg-white">
                          <div className="flex justify-between items-start mb-2">
                             <span className="px-2 py-0.5 bg-emerald-50 text-[#1BD183] rounded-lg text-[9px] font-black uppercase tracking-widest">
-                              {question.status || 'MCQ'}
+                              {item.status || item.type || 'MCQ'}
                             </span>
-                            <span className="text-[9px] font-bold text-slate-400">{question.identifier || question.id.slice(0, 8)}</span>
+                            <span className="text-[9px] font-bold text-slate-400">{item.identifier || item.id.slice(0, 8)}</span>
                          </div>
-                         <p className="text-xs font-bold text-slate-800 line-clamp-2 mb-3">{question.title}</p>
+                         <p className="text-xs font-bold text-slate-800 line-clamp-2 mb-3">{getItemTitle(item)}</p>
                          <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="text-[9px] font-black text-[#1BD183] flex items-center gap-1">
                               Open Item <ExternalLink size={10} />
@@ -119,4 +122,3 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
 };
 
 export default LinkedItemsPanel;
-

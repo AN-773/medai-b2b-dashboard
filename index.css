@@ -97,4 +97,12 @@
   .primary-button {
     @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 text-primary-foreground shadow px-4 py-2 h-12 bg-primary-gradient hover:opacity-90 transition-opacity;
   }
+
+  .teacher-readable [class*='uppercase'] {
+    text-transform: none !important;
+  }
+
+  .teacher-readable [class*='tracking-'] {
+    letter-spacing: 0.01em !important;
+  }
 }
