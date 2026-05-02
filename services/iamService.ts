@@ -21,6 +21,7 @@ export interface IamListUser {
   familyName?: string;
   status?: string;
   role?: string;
+  accountId?: string;
   accounts?: string[];
   created?: string;
 }
@@ -40,6 +41,7 @@ export interface IamInvite {
   updated?: string;
   expiresAt?: string;
   organizationId?: string;
+  accountId?: string | null;
   accountIds?: string[] | null;
   accounts?: string[] | null;
 }
@@ -66,7 +68,7 @@ export const iamService = {
   listUsers: async (role = 'user'): Promise<IamListUsersResponse> => {
     return apiClient.get<IamListUsersResponse>(
       'IAM',
-      `/users/list?_filters[role][eq]=${encodeURIComponent(role)}`,
+      `/users/list?_filters[subscription][eq]=inactive&limit=200`,
     );
   },
 

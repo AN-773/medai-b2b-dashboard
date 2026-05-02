@@ -60,6 +60,7 @@ interface ApiIamUser {
   email?: string;
   givenName?: string;
   familyName?: string;
+  accountId?: string;
   accounts?: string[];
   role?: string;
   created?: string;
@@ -172,6 +173,11 @@ const sortByName = <T extends { name: string }>(items: T[]) =>
 
 const getIdSuffix = (value: string) => value.split('/').pop() || value;
 
+const toCanonicalIamPath = (
+  resource: 'users' | 'accounts',
+  value: string,
+) => `/${resource}/${getIdSuffix(value.trim())}`;
+
 const buildLearnerCode = (name: string, id: string) => {
   const normalizedName = name
     .replace(/[^a-z0-9]/gi, '')
@@ -249,6 +255,9 @@ const buildDisplayName = (user: ApiIamUser) => {
   return user.email?.trim() || 'Unnamed learner';
 };
 
+const getPrimaryAccountId = (user: Pick<ApiIamUser, 'accountId' | 'accounts'>) =>
+  user.accountId?.trim() || user.accounts?.[0]?.trim() || undefined;
+
 const buildLearnerIdBySuffix = (
   users: ApiIamUser[],
 ) => new Map(users.map((user) => [getIdSuffix(user.id), user.id] as const));
@@ -282,14 +291,14 @@ const buildLearnerRequestPayload = (
   metadata: AcademyBackendMetadata,
 ) =>
   learnerIds.map((learnerId) => {
+    debugger
     const profile = findLearnerProfile(metadata, learnerId);
-
-    return {
-      userId: learnerId,
-      accountId:
-        profile?.accountId ||
-        `/accounts/${getIdSuffix(learnerId)}`,
+    const accountId = profile?.accountId || `/accounts/${getIdSuffix(learnerId)}`;
+    const res = {
+      userId: toCanonicalIamPath('users', learnerId),
+      accountId: toCanonicalIamPath('accounts', accountId),
     };
+    return  res;
   });
 
 const normalizeCohort = (
@@ -377,7 +386,7 @@ const syncLearnerProfilesFromIamUsers = (
     const nextProfile: LearnerProfile = {
       ...existingProfile,
       name: buildDisplayName(user),
-      accountId: user.accounts?.[0]?.trim() || existingProfile.accountId,
+      accountId: getPrimaryAccountId(user) || existingProfile.accountId,
       email: user.email?.trim() || existingProfile.email || '',
       createdAt: existingProfile.createdAt || user.created || nowIso(),
       updatedAt: user.created || existingProfile.updatedAt || nowIso(),
