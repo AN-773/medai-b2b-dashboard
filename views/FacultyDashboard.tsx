@@ -699,7 +699,6 @@ const MetricCard = ({ title, value, change, icon, color, subtitle }: any) => {
     emerald: 'bg-[#1BD183]/10 text-[#1BD183]',
     rose: 'bg-rose-50 text-rose-700',
     amber: 'bg-amber-50 text-amber-700',
-    emerald: 'bg-emerald-50 text-emerald-700',
   };
 
   return (
