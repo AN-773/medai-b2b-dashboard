@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   LogOut, 
   Settings,
+  Building2,
   LayoutDashboard, 
   Stethoscope, 
   Users, 
@@ -14,6 +15,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { View } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarContentProps {
   activeView: View;
@@ -22,7 +24,7 @@ interface SidebarContentProps {
 }
 
 const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate, onLogout }) => {
-  
+  const { isSuperadmin } = useAuth();
   const isActive = (view: View) => activeView === view;
 
   const getButtonClass = (view: View) => {
@@ -61,6 +63,16 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
           </div>
 
           <nav className="space-y-1">
+            {isSuperadmin ? (
+              <button 
+                onClick={() => onNavigate('TENANTS')}
+                className={getButtonClass('TENANTS')}
+              >
+                <Building2 size={20} className={getIconClass('TENANTS')} />
+                Tenant Management
+              </button>
+            ) : (
+              <>
             {/* Mission Control */}
             <button 
               onClick={() => onNavigate('DASHBOARD')}
@@ -169,7 +181,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
               <ClipboardList size={20} className={getIconClass('BLUEPRINT')} />
               Blueprint Builder
             </button>
-
+              </>
+            )}
           </nav>
         </div>
 
@@ -184,14 +197,16 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
           >
             <LogOut size={18} /> Sign Out
           </button>
-          <button 
-            onClick={() => onNavigate('SETTINGS')}
-            className={`w-full flex items-center gap-3 px-5 py-2 text-sm font-bold transition ${
-              isActive('SETTINGS') ? 'text-white' : 'text-[#848E8A] hover:text-white'
-            }`}
-          >
-            <Settings size={18} /> System Config
-          </button>
+          {!isSuperadmin && (
+            <button 
+              onClick={() => onNavigate('SETTINGS')}
+              className={`w-full flex items-center gap-3 px-5 py-2 text-sm font-bold transition ${
+                isActive('SETTINGS') ? 'text-white' : 'text-[#848E8A] hover:text-white'
+              }`}
+            >
+              <Settings size={18} /> System Config
+            </button>
+          )}
         </div>
     </div>
   );

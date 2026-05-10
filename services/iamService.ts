@@ -5,7 +5,7 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'editor' | 'viewer';
+  role: string;
   avatar?: string;
 }
 
@@ -32,6 +32,35 @@ export interface IamListUsersResponse {
   page: number;
 }
 
+export interface ListUsersOptions {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export interface IamTenant {
+  id: string;
+  name: string;
+  ownerUserId?: string | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  created?: string | null;
+  updated?: string | null;
+}
+
+export interface IamListTenantsResponse {
+  items: IamTenant[];
+  total: number;
+  page: number;
+}
+
+export interface CreateTenantRequest {
+  name: string;
+  userName: string;
+  userEmail: string;
+  userPassword: string;
+}
+
 export interface IamInvite {
   id: string;
   email: string;
@@ -52,6 +81,19 @@ export interface IamListInvitesResponse {
   page: number;
 }
 
+export interface InviteImportResultRow {
+  email: string;
+  status: 'created' | 'skipped';
+  message?: string;
+}
+
+export interface InviteImportResponse {
+  created: number;
+  skipped: number;
+  total: number;
+  results: InviteImportResultRow[];
+}
+
 export const iamService = {
   login: async (credentials: { email: string; password: string }): Promise<LoginResponse> => {
     return apiClient.post<LoginResponse>('IAM', '/auth/login', credentials, { authenticated: false });
@@ -65,10 +107,27 @@ export const iamService = {
     return apiClient.get<Author[]>('IAM', '/authors');
   },
 
-  listUsers: async (role = 'user'): Promise<IamListUsersResponse> => {
+  listUsers: async (
+    options: ListUsersOptions = {},
+  ): Promise<IamListUsersResponse> => {
+    const params = new URLSearchParams();
+    params.set('limit', String(options.limit ?? 200));
+    params.set('page', String(options.page ?? 1));
+    params.set('_sort', 'created');
+    if (options.search?.trim()) {
+      params.set('query', options.search.trim());
+    }
+
     return apiClient.get<IamListUsersResponse>(
       'IAM',
-      `/users/list?_filters[subscription][eq]=inactive&limit=200`,
+      `/users/list?${params.toString()}`,
+    );
+  },
+
+  listTenants: async (page = 1, limit = 10): Promise<IamListTenantsResponse> => {
+    return apiClient.get<IamListTenantsResponse>(
+      'IAM',
+      `/tenants?page=${page}&limit=${limit}`,
     );
   },
 
@@ -78,11 +137,11 @@ export const iamService = {
     });
   },
 
-  importInvites: async (file: File): Promise<unknown> => {
+  importInvites: async (file: File): Promise<InviteImportResponse> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    return apiClient.post<unknown>('IAM', '/invites/import', formData);
+    return apiClient.post<InviteImportResponse>('IAM', '/invites/import', formData);
   },
 
   listInvites: async (status?: string): Promise<IamListInvitesResponse> => {
@@ -94,5 +153,14 @@ export const iamService = {
       'IAM',
       `/invites${statusQuery}`,
     );
+  },
+
+  createTenant: async (payload: CreateTenantRequest): Promise<IamTenant> => {
+    return apiClient.post<IamTenant>('IAM', '/tenants', {
+      name: payload.name.trim(),
+      userName: payload.userName.trim(),
+      userEmail: payload.userEmail.trim(),
+      userPassword: payload.userPassword,
+    });
   },
 };

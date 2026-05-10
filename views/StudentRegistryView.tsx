@@ -12,6 +12,7 @@ import { academyStudioBackend } from '@/services/academyStudioBackend';
 import {
   iamService,
   type IamInvite,
+  type InviteImportResponse,
 } from '@/services/iamService';
 import {
   TeacherCohort,
@@ -45,6 +46,25 @@ interface RegistryRow {
 
 const emptyInviteForm = {
   email: '',
+};
+
+const formatSkippedInviteSummary = (response: InviteImportResponse) => {
+  if (response.skipped <= 0) {
+    return '';
+  }
+
+  const skippedEmails = response.results
+    .filter((result) => result.status === 'skipped')
+    .slice(0, 5)
+    .map((result) => result.email);
+
+  if (skippedEmails.length === 0) {
+    return `${response.skipped} invitation${response.skipped === 1 ? '' : 's'} skipped.`;
+  }
+
+  const moreCount = response.skipped - skippedEmails.length;
+  const moreLabel = moreCount > 0 ? ` and ${moreCount} more` : '';
+  return `Skipped ${skippedEmails.join(', ')}${moreLabel}.`;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) =>
@@ -94,7 +114,7 @@ const normalizeHeader = (value: string) =>
 const parseInviteCsvPreview = async (file: File): Promise<InvitePreviewRow[]> => {
   const lowerName = file.name.toLowerCase();
   if (!lowerName.endsWith('.csv')) {
-    throw new Error('Upload a CSV file for bulk invites.');
+    throw new Error('Upload a CSV file for bulk invitations.');
   }
 
   const rows = (await file.text())
@@ -104,7 +124,7 @@ const parseInviteCsvPreview = async (file: File): Promise<InvitePreviewRow[]> =>
     .map(splitCsvLine);
 
   if (rows.length < 2) {
-    throw new Error('The CSV must include a header row and at least one invite.');
+    throw new Error('The CSV must include a header row and at least one invitation.');
   }
 
   const headers = rows[0].map(normalizeHeader);
@@ -169,7 +189,7 @@ const buildLearnerRegistryRow = (
 
 const buildInviteRegistryRow = (invite: IamInvite): RegistryRow => ({
   id: invite.id,
-  displayName: 'Pending IAM invite',
+  displayName: 'Pending invitation',
   email: invite.email,
   codeOrRole: invite.role?.trim() || 'user',
   cohortTitles: [],
@@ -177,7 +197,7 @@ const buildInviteRegistryRow = (invite: IamInvite): RegistryRow => ({
   metadataSecondary: `Expires ${formatTimestamp(invite.expiresAt)}`,
   statusLabel: invite.status || 'pending',
   statusBadgeClass: 'bg-amber-100 text-amber-700',
-  sourceLabel: 'IAM invite',
+  sourceLabel: 'Invitation',
   sourceBadgeClass: 'bg-sky-100 text-sky-700',
   searchText: [
     invite.email,
@@ -216,22 +236,23 @@ const StudentRegistryView: React.FC = () => {
     setIsLoading(true);
     setLoadError(null);
 
-    const [snapshotResult, invitesResult] = await Promise.allSettled([
-      academyStudioBackend.loadSnapshot(),
+    const [registryResult, invitesResult] = await Promise.allSettled([
+      academyStudioBackend.loadStudentRegistrySnapshot(),
       iamService.listInvites('pending'),
     ]);
 
     const errors: string[] = [];
 
-    if (snapshotResult.status === 'fulfilled') {
-      setStudents(snapshotResult.value.students);
-      setCohorts(snapshotResult.value.cohorts);
+    if (registryResult.status === 'fulfilled') {
+      setStudents(registryResult.value.students);
+      setCohorts(registryResult.value.cohorts);
+      errors.push(...registryResult.value.warnings);
     } else {
-      console.error('Failed to load student registry:', snapshotResult.reason);
+      console.error('Failed to load student registry:', registryResult.reason);
       errors.push(
         getErrorMessage(
-          snapshotResult.reason,
-          'Unable to load learners from the backend.',
+          registryResult.reason,
+          'Unable to load users.',
         ),
       );
     }
@@ -243,7 +264,7 @@ const StudentRegistryView: React.FC = () => {
       errors.push(
         getErrorMessage(
           invitesResult.reason,
-          'Unable to load pending invites from IAM.',
+          'Unable to load pending invitations.',
         ),
       );
     }
@@ -310,20 +331,21 @@ const StudentRegistryView: React.FC = () => {
     setMessage(null);
 
     if (!isValidEmail(inviteForm.email)) {
-      setInviteError('Enter a valid learner email address.');
+      setInviteError('Enter a valid email address.');
       return;
     }
 
     setIsInviting(true);
 
     try {
-      await iamService.createInvite(inviteForm.email);
+      const email = inviteForm.email.trim();
+      await iamService.createInvite(email);
       setInviteForm(emptyInviteForm);
-      setMessage(`Invite sent to ${inviteForm.email.trim()}.`);
+      setMessage(`Invitation sent to ${email}.`);
       await loadRegistry();
     } catch (error) {
       setInviteError(
-        getErrorMessage(error, 'Unable to send the learner invite.'),
+        getErrorMessage(error, 'Unable to send the invitation.'),
       );
     } finally {
       setIsInviting(false);
@@ -342,7 +364,7 @@ const StudentRegistryView: React.FC = () => {
       const previewRows = await parseInviteCsvPreview(file);
 
       if (previewRows.length === 0) {
-        throw new Error('No invite rows were found in the CSV.');
+        throw new Error('No invitation rows were found in the CSV.');
       }
 
       setImportFile(file);
@@ -359,7 +381,7 @@ const StudentRegistryView: React.FC = () => {
 
   const handleImportSubmit = async () => {
     if (!importFile) {
-      setImportError('Choose a CSV file before importing invites.');
+      setImportError('Choose a CSV file before importing invitations.');
       return;
     }
 
@@ -370,13 +392,18 @@ const StudentRegistryView: React.FC = () => {
 
     try {
       const fileName = importFile.name;
-      await iamService.importInvites(importFile);
+      const response = await iamService.importInvites(importFile);
       clearImportSelection();
-      setMessage(`Invite import uploaded from ${fileName}.`);
+      const skippedSummary = formatSkippedInviteSummary(response);
+      setMessage(
+        skippedSummary
+          ? `${response.created} invitation${response.created === 1 ? '' : 's'} created from ${fileName}. ${skippedSummary}`
+          : `${response.created} invitation${response.created === 1 ? '' : 's'} created from ${fileName}.`,
+      );
       await loadRegistry();
     } catch (error) {
       setImportError(
-        getErrorMessage(error, 'Unable to import invites from the CSV file.'),
+        getErrorMessage(error, 'Unable to import invitations from the CSV file.'),
       );
     } finally {
       setIsImporting(false);
@@ -390,7 +417,7 @@ const StudentRegistryView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                Synced learners
+                Users
               </p>
               <p className="mt-3 text-3xl font-black tracking-tight text-slate-900">
                 {students.length}
@@ -422,7 +449,7 @@ const StudentRegistryView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.24em] text-amber-700">
-                Pending invites
+                Pending invitations
               </p>
               <p className="mt-3 text-3xl font-black tracking-tight text-amber-950">
                 {pendingInvites?.length ?? 0}
@@ -468,13 +495,13 @@ const StudentRegistryView: React.FC = () => {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
-                Manual invite
+                Manual invitation
               </p>
               <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-900">
-                Send one invite
+                Send one invitation
               </h3>
               <p className="mt-2 max-w-xl text-sm font-medium text-slate-500">
-                This creates a pending IAM invite using only the learner email.
+                Create a pending invitation using the user email address.
               </p>
             </div>
 
@@ -502,14 +529,14 @@ const StudentRegistryView: React.FC = () => {
                     email: event.target.value,
                   })
                 }
-                placeholder="learner@example.com"
+                placeholder="user@example.com"
                 className={inputClass}
               />
             </label>
 
             <div className="flex flex-col gap-4 border-t border-slate-100 pt-5">
               <p className="text-sm font-medium text-slate-500">
-                New invites will appear in the pending list after the request succeeds.
+                New invitations will appear in the pending list after the request succeeds.
               </p>
 
               <button
@@ -517,7 +544,7 @@ const StudentRegistryView: React.FC = () => {
                 disabled={isInviting}
                 className="inline-flex items-center justify-center rounded-2xl bg-[#16324F] px-5 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {isInviting ? 'Sending invite' : 'Send invite'}
+                {isInviting ? 'Sending invitation' : 'Send invitation'}
               </button>
             </div>
           </form>
@@ -530,11 +557,10 @@ const StudentRegistryView: React.FC = () => {
                 Bulk upload
               </p>
               <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-900">
-                Import invite CSV
+                Import invitation CSV
               </h3>
               <p className="mt-2 text-sm font-medium text-slate-500">
-                Upload the CSV to IAM using `/invites/import`. Expected columns:
-                email, role.
+                Upload a CSV of invitations. Expected columns: email, role.
               </p>
             </div>
 
@@ -563,7 +589,7 @@ const StudentRegistryView: React.FC = () => {
                 <p className="text-sm font-black text-slate-900">
                   {isParsingImport
                     ? 'Reading CSV'
-                    : importFile?.name || 'Choose invite CSV'}
+                    : importFile?.name || 'Choose invitation CSV'}
                 </p>
                 <p className="text-sm font-medium text-slate-500">
                   Example columns: email, role
@@ -589,7 +615,7 @@ const StudentRegistryView: React.FC = () => {
                       Parsed rows
                     </p>
                     <p className="mt-1 text-lg font-black text-slate-900">
-                      {importPreviewRows.length} invites ready to upload
+                      {importPreviewRows.length} invitations ready to upload
                     </p>
                   </div>
                   <span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-sky-700">
@@ -612,8 +638,8 @@ const StudentRegistryView: React.FC = () => {
 
                   {importPreviewRows.length > 4 && (
                     <p className="text-sm font-medium text-slate-500">
-                      {importPreviewRows.length - 4} more invites will be included in
-                      the upload.
+                      {importPreviewRows.length - 4} more invitations will be included
+                      in the upload.
                     </p>
                   )}
                 </div>
@@ -640,7 +666,7 @@ const StudentRegistryView: React.FC = () => {
                 }
                 className="inline-flex items-center justify-center rounded-2xl bg-[#16324F] px-5 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {isImporting ? 'Uploading CSV' : 'Upload invites'}
+                {isImporting ? 'Uploading CSV' : 'Upload invitations'}
               </button>
             </div>
           </div>
@@ -654,7 +680,7 @@ const StudentRegistryView: React.FC = () => {
               Registry
             </p>
             <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-900">
-              Learners and pending invites
+              Users and pending invitations
             </h3>
           </div>
 
@@ -666,7 +692,7 @@ const StudentRegistryView: React.FC = () => {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search by email, learner name, code, role, status, or id"
+              placeholder="Search by email, name, code, role, status, or id"
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#1BD183] focus:ring-2 focus:ring-[#1BD183]/10"
             />
           </div>
@@ -677,7 +703,7 @@ const StudentRegistryView: React.FC = () => {
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
                 <tr>
-                  <th className="px-5 py-4">Learner / Invite</th>
+                  <th className="px-5 py-4">User / Invitation</th>
                   <th className="px-5 py-4">Code / Role</th>
                   <th className="px-5 py-4">Cohorts</th>
                   <th className="px-5 py-4">Metadata</th>
@@ -694,7 +720,7 @@ const StudentRegistryView: React.FC = () => {
                     >
                       {isLoading
                         ? 'Loading registry data.'
-                        : 'No learners or invites matched the current search.'}
+                        : 'No users or invitations matched the current search.'}
                     </td>
                   </tr>
                 ) : (

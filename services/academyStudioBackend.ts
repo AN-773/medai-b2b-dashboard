@@ -51,6 +51,7 @@ interface ApiReferenceEntity {
 interface ApiUser {
   id: string;
   name?: string;
+  accountId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -71,7 +72,11 @@ interface ApiLearningObjective {
   title: string;
   identifier?: string;
   source?: string;
-  organSystem?: ApiReferenceEntity | null;
+  syndrome?: {
+    topic?: {
+      organSystem?: ApiReferenceEntity | null;
+    } | null;
+  } | null;
   cognitiveSkill?: ApiReferenceEntity | null;
   createdAt?: string;
   updatedAt?: string;
@@ -106,6 +111,23 @@ interface AcademyStudioSnapshot {
   students: TeacherStudent[];
   courses: TeacherCourse[];
   cohorts: TeacherCohort[];
+}
+
+interface AcademyStudioCatalogSnapshot {
+  courses: TeacherCourse[];
+  cohorts: TeacherCohort[];
+}
+
+interface PaginatedStudentsSnapshot {
+  students: TeacherStudent[];
+  total: number;
+  page: number;
+}
+
+interface StudentRegistrySnapshot {
+  students: TeacherStudent[];
+  cohorts: TeacherCohort[];
+  warnings: string[];
 }
 
 const emptyMetadata = (): AcademyBackendMetadata => ({
@@ -173,11 +195,6 @@ const sortByName = <T extends { name: string }>(items: T[]) =>
 
 const getIdSuffix = (value: string) => value.split('/').pop() || value;
 
-const toCanonicalIamPath = (
-  resource: 'users' | 'accounts',
-  value: string,
-) => `/${resource}/${getIdSuffix(value.trim())}`;
-
 const buildLearnerCode = (name: string, id: string) => {
   const normalizedName = name
     .replace(/[^a-z0-9]/gi, '')
@@ -196,7 +213,8 @@ const normalizeLearningObjective = (
 ): TeacherLearningObjective => ({
   id: learningObjective.id,
   title: learningObjective.title,
-  organSystem: learningObjective.organSystem?.title || undefined,
+  organSystem:
+    learningObjective.syndrome?.topic?.organSystem?.title || undefined,
   cognitiveSkill: learningObjective.cognitiveSkill?.title || undefined,
   source: learningObjective.source === 'ai' ? 'ai' : 'manual',
   createdAt: learningObjective.createdAt || nowIso(),
@@ -228,10 +246,11 @@ const normalizeStudent = (
   studentId: string,
   profile: LearnerProfile,
 ): TeacherStudent => {
-  const name = profile.name?.trim() || 'Unnamed learner';
+  const name = profile.name?.trim() || 'Unnamed user';
 
   return {
     id: studentId,
+    accountId: profile.accountId?.trim() || undefined,
     name,
     email: profile.email?.trim() || '',
     learnerCode:
@@ -243,6 +262,21 @@ const normalizeStudent = (
   };
 };
 
+const getLearnerProfileForId = (
+  metadata: AcademyBackendMetadata,
+  learnerId: string,
+): LearnerProfile => {
+  if (metadata.learnerProfiles[learnerId]) {
+    return metadata.learnerProfiles[learnerId];
+  }
+
+  const matchingKey = Object.keys(metadata.learnerProfiles).find(
+    (profileId) => getIdSuffix(profileId) === getIdSuffix(learnerId),
+  );
+
+  return matchingKey ? metadata.learnerProfiles[matchingKey] || {} : {};
+};
+
 const buildDisplayName = (user: ApiIamUser) => {
   const parts = [user.givenName, user.familyName]
     .map((value) => value?.trim())
@@ -252,54 +286,20 @@ const buildDisplayName = (user: ApiIamUser) => {
     return parts.join(' ');
   }
 
-  return user.email?.trim() || 'Unnamed learner';
+  return user.email?.trim() || 'Unnamed user';
 };
 
 const getPrimaryAccountId = (user: Pick<ApiIamUser, 'accountId' | 'accounts'>) =>
   user.accountId?.trim() || user.accounts?.[0]?.trim() || undefined;
 
-const buildLearnerIdBySuffix = (
-  users: ApiIamUser[],
+const buildLearnerIdBySuffix = <T extends { id: string }>(
+  users: T[],
 ) => new Map(users.map((user) => [getIdSuffix(user.id), user.id] as const));
 
 const findCanonicalLearnerId = (
   learnerId: string,
   learnerIdBySuffix: ReadonlyMap<string, string>,
 ) => learnerIdBySuffix.get(getIdSuffix(learnerId)) || learnerId;
-
-const findLearnerProfile = (
-  metadata: AcademyBackendMetadata,
-  learnerId: string,
-) => {
-  const directProfile = metadata.learnerProfiles[learnerId];
-  if (directProfile) {
-    return directProfile;
-  }
-
-  const learnerIdSuffix = getIdSuffix(learnerId);
-  const matchedProfileId = Object.keys(metadata.learnerProfiles).find(
-    (profileId) => getIdSuffix(profileId) === learnerIdSuffix,
-  );
-
-  return matchedProfileId
-    ? metadata.learnerProfiles[matchedProfileId]
-    : undefined;
-};
-
-const buildLearnerRequestPayload = (
-  learnerIds: string[],
-  metadata: AcademyBackendMetadata,
-) =>
-  learnerIds.map((learnerId) => {
-    debugger
-    const profile = findLearnerProfile(metadata, learnerId);
-    const accountId = profile?.accountId || `/accounts/${getIdSuffix(learnerId)}`;
-    const res = {
-      userId: toCanonicalIamPath('users', learnerId),
-      accountId: toCanonicalIamPath('accounts', accountId),
-    };
-    return  res;
-  });
 
 const normalizeCohort = (
   cohort: ApiCohort,
@@ -349,7 +349,8 @@ const syncLearnerProfilesFromCohorts = (
       const existingProfile = nextProfiles[learnerProfileKey] || {};
       const nextProfile: LearnerProfile = {
         ...existingProfile,
-        name: learner.name || existingProfile.name || 'Unnamed learner',
+        name: learner.name || existingProfile.name || 'Unnamed user',
+        accountId: learner.accountId || existingProfile.accountId,
         createdAt: existingProfile.createdAt || learner.createdAt || nowIso(),
         updatedAt: learner.updatedAt || existingProfile.updatedAt || nowIso(),
       };
@@ -435,6 +436,57 @@ const fetchAllPages = async <T>(endpoint: string): Promise<T[]> => {
   return items;
 };
 
+const fetchAllIamUsers = async (): Promise<ApiIamUser[]> => {
+  const items: ApiIamUser[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (items.length < total) {
+    const response = await iamService.listUsers({
+      page,
+      limit: DEFAULT_PAGE_LIMIT,
+    });
+
+    items.push(...(response.items as ApiIamUser[]));
+    total = response.total || response.items.length;
+
+    if (response.items.length < DEFAULT_PAGE_LIMIT) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return items;
+};
+
+const loadCatalogSnapshot = async (): Promise<AcademyStudioCatalogSnapshot> => {
+  const [coursesResponse, cohortsResponse] = await Promise.all([
+    fetchAllPages<ApiCourse>('/courses'),
+    fetchAllPages<ApiCohort>('/cohorts'),
+  ]);
+
+  const syncedMetadata = syncLearnerProfilesFromCohorts(
+    readMetadata(),
+    cohortsResponse,
+  );
+  const cohortLearners = cohortsResponse.flatMap(
+    (cohort) => cohort.learners || [],
+  );
+  const learnerIdBySuffix = buildLearnerIdBySuffix(cohortLearners);
+
+  return {
+    courses: sortByTitle(
+      coursesResponse.map((course) => normalizeCourse(course, syncedMetadata)),
+    ),
+    cohorts: sortByTitle(
+      cohortsResponse.map((cohort) =>
+        normalizeCohort(cohort, syncedMetadata, learnerIdBySuffix),
+      ),
+    ),
+  };
+};
+
 const findCourseIdentifier = (course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>) =>
   course.backendIdentifier || course.id.split('/').pop() || course.id;
 
@@ -458,18 +510,18 @@ const buildStudyPlanExamDate = (baseDate = new Date()) => {
 };
 
 const loadSnapshot = async (): Promise<AcademyStudioSnapshot> => {
-  const [coursesResponse, cohortsResponse, iamUsersResponse] = await Promise.all([
+  const [coursesResponse, cohortsResponse, iamUsers] = await Promise.all([
     fetchAllPages<ApiCourse>('/courses'),
     fetchAllPages<ApiCohort>('/cohorts'),
-    iamService.listUsers('user'),
+    fetchAllIamUsers(),
   ]);
   const learnerIdBySuffix = buildLearnerIdBySuffix(
-    iamUsersResponse.items as ApiIamUser[],
+    iamUsers,
   );
 
   const iamSyncedMetadata = syncLearnerProfilesFromIamUsers(
     readMetadata(),
-    iamUsersResponse.items as ApiIamUser[],
+    iamUsers,
   );
   const syncedMetadata = syncLearnerProfilesFromCohorts(
     iamSyncedMetadata,
@@ -487,7 +539,7 @@ const loadSnapshot = async (): Promise<AcademyStudioSnapshot> => {
 
   const studentsById = new Map<string, TeacherStudent>();
 
-  iamUsersResponse.items.forEach((user) => {
+  iamUsers.forEach((user) => {
     const profile = syncedMetadata.learnerProfiles[user.id] || {};
     studentsById.set(user.id, normalizeStudent(user.id, profile));
   });
@@ -510,6 +562,102 @@ const loadSnapshot = async (): Promise<AcademyStudioSnapshot> => {
     students: sortByName(Array.from(studentsById.values())),
     courses,
     cohorts,
+  };
+};
+
+const loadPagedStudents = async ({
+  page,
+  limit,
+  search,
+}: {
+  page?: number;
+  limit?: number;
+  search?: string;
+} = {}): Promise<PaginatedStudentsSnapshot> => {
+  const response = await iamService.listUsers({
+    page,
+    limit,
+    search,
+  });
+  const metadata = syncLearnerProfilesFromIamUsers(
+    readMetadata(),
+    response.items as ApiIamUser[],
+  );
+
+  return {
+    students: response.items.map((user) =>
+      normalizeStudent(user.id, metadata.learnerProfiles[user.id] || {}),
+    ),
+    total: response.total || 0,
+    page: response.page || page || 1,
+  };
+};
+
+const toErrorMessage = (
+  error: unknown,
+  fallback: string,
+) => (error instanceof Error ? error.message : fallback);
+
+const loadStudentRegistrySnapshot = async (): Promise<StudentRegistrySnapshot> => {
+  const [cohortsResult, usersResult] = await Promise.allSettled([
+    fetchAllPages<ApiCohort>('/cohorts'),
+    fetchAllIamUsers(),
+  ]);
+
+  if (usersResult.status !== 'fulfilled') {
+    throw usersResult.reason;
+  }
+
+  const iamUsers = usersResult.value;
+  const warnings: string[] = [];
+  let metadata = syncLearnerProfilesFromIamUsers(readMetadata(), iamUsers);
+  let cohortsResponse: ApiCohort[] = [];
+
+  if (cohortsResult.status === 'fulfilled') {
+    cohortsResponse = cohortsResult.value;
+    metadata = syncLearnerProfilesFromCohorts(metadata, cohortsResponse);
+  } else {
+    console.error('Failed to load cohorts for registry:', cohortsResult.reason);
+    warnings.push(
+      toErrorMessage(
+        cohortsResult.reason,
+        'Unable to load cohorts. Users are shown without cohort assignments.',
+      ),
+    );
+  }
+
+  const learnerIdBySuffix = buildLearnerIdBySuffix(iamUsers);
+  const cohorts = sortByTitle(
+    cohortsResponse.map((cohort) =>
+      normalizeCohort(cohort, metadata, learnerIdBySuffix),
+    ),
+  );
+
+  const studentsById = new Map<string, TeacherStudent>();
+
+  iamUsers.forEach((user) => {
+    const profile = metadata.learnerProfiles[user.id] || {};
+    studentsById.set(user.id, normalizeStudent(user.id, profile));
+  });
+
+  cohortsResponse.forEach((cohort) => {
+    (cohort.learners || []).forEach((learner) => {
+      const studentId = findCanonicalLearnerId(learner.id, learnerIdBySuffix);
+
+      if (!studentsById.has(studentId)) {
+        const profile =
+          metadata.learnerProfiles[studentId] ||
+          metadata.learnerProfiles[learner.id] ||
+          {};
+        studentsById.set(studentId, normalizeStudent(studentId, profile));
+      }
+    });
+  });
+
+  return {
+    students: sortByName(Array.from(studentsById.values())),
+    cohorts,
+    warnings,
   };
 };
 
@@ -622,6 +770,16 @@ const upsertCohort = async (
     >,
 ) => {
   const metadata = readMetadata();
+  const learners = cohort.studentIds.map((studentId) => {
+    const profile = getLearnerProfileForId(metadata, studentId);
+
+    return {
+      userId: studentId,
+      ...(profile.accountId?.trim()
+        ? { accountId: profile.accountId.trim() }
+        : {}),
+    };
+  });
   const response = await apiClient.post<ApiCohort>(
     'TESTS',
     '/cohorts',
@@ -630,7 +788,8 @@ const upsertCohort = async (
         ...(cohort.id ? { id: cohort.id } : {}),
         title: cohort.title.trim(),
       },
-      learners: buildLearnerRequestPayload(cohort.studentIds, metadata),
+      learnerIds: cohort.studentIds,
+      learners,
       courseIds: cohort.courseIds,
       courseSelections: cohort.courseSelections,
     },
@@ -649,7 +808,10 @@ const upsertCohort = async (
 };
 
 export const academyStudioBackend = {
+  loadCatalogSnapshot,
   loadSnapshot,
+  loadPagedStudents,
+  loadStudentRegistrySnapshot,
 
   saveCourse: upsertCourse,
 

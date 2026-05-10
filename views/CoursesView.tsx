@@ -104,7 +104,7 @@ const CoursesView: React.FC = () => {
     setLoadError(null);
 
     try {
-      const snapshot = await academyStudioBackend.loadSnapshot();
+      const snapshot = await academyStudioBackend.loadCatalogSnapshot();
       setCourses(snapshot.courses);
       setCohorts(snapshot.cohorts);
     } catch (error) {

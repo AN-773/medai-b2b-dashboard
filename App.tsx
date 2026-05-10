@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Building2,
   Stethoscope,
   Users,
   BookOpen,
@@ -29,6 +30,7 @@ import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
 import SidebarContent from './components/SidebarContent';
 import SettingsView from './views/SettingsView';
+import TenantManagementView from './views/TenantManagementView';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
@@ -40,13 +42,14 @@ import CoursesView from './views/CoursesView';
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, isSuperadmin } = useAuth();
   const [isAuditMapOpen, setIsAuditMapOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Map routes to View types for active state
   const getActiveView = (): View => {
     const path = location.pathname;
+    if (path.startsWith('/tenants')) return 'TENANTS';
     if (path === '/' || path === '/dashboard') return 'DASHBOARD';
     if (path.startsWith('/workbench')) return 'WORKBENCH';
     if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
@@ -71,6 +74,7 @@ const DashboardLayout: React.FC = () => {
   const getRoutePath = (view: View): string => {
     const routes: Record<View, string> = {
       DASHBOARD: '/dashboard',
+      TENANTS: '/tenants',
       WORKBENCH: '/workbench',
       BANK_EXPLORER: '/bank-explorer',
       QB_HEALTH: '/qb-health',
@@ -113,20 +117,23 @@ const DashboardLayout: React.FC = () => {
   );
 
   const navItems = [
-    { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
-    { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
-    { id: 'STUDENTS', label: 'Student Registry', icon: Users },
-    { id: 'COHORTS', label: 'Cohorts', icon: Users },
-    { id: 'COURSES', label: 'Courses', icon: BookOpen },
-    { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
-    { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
-    { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
-    { id: 'MASTERY', label: 'Student Mastery', icon: Users },
-    { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
-    { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
-    // { id: 'AGENTS', label: 'AI Agent Fleet', icon: Cpu },
-    { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
-    { id: 'SETTINGS', label: 'Settings', icon: Settings }
+    ...(isSuperadmin
+      ? [{ id: 'TENANTS', label: 'Tenant Management', icon: Building2 }]
+      : [
+          { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
+          { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
+          { id: 'STUDENTS', label: 'Student Registry', icon: Users },
+          { id: 'COHORTS', label: 'Cohorts', icon: Users },
+          { id: 'COURSES', label: 'Courses', icon: BookOpen },
+          { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
+          { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
+          { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
+          { id: 'MASTERY', label: 'Student Mastery', icon: Users },
+          { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
+          { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
+          { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
+          { id: 'SETTINGS', label: 'Settings', icon: Settings },
+        ]),
   ];
 
   return (
@@ -176,8 +183,9 @@ const DashboardLayout: React.FC = () => {
 
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<AIAgentCenter />} />
+              <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/dashboard"} replace />} />
+              <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} />
+              <Route path="/tenants" element={isSuperadmin ? <TenantManagementView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
@@ -198,8 +206,8 @@ const DashboardLayout: React.FC = () => {
               <Route path="/assessment" element={<AssessmentPlaceholder />} />
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
-              <Route path="/settings" element={<SettingsView />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/settings" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <SettingsView />} />
+              <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/dashboard"} replace />} />
             </Routes>
           </div>
         </div>

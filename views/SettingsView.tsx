@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import PromptManager from '../components/settings/PromptManager';
 import { ShieldAlert, BookOpen } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const SettingsView: React.FC = () => {
+  const { isSuperadmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'prompts' | 'general'>('prompts');
+
+  useEffect(() => {
+    if (isSuperadmin) {
+      setActiveTab('prompts');
+    }
+  }, [activeTab, isSuperadmin]);
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">

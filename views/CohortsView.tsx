@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
@@ -32,6 +38,7 @@ const emptyCohortForm = {
 };
 
 const PUBLISH_POLL_INTERVAL_MS = 5000;
+const STUDENT_PAGE_SIZE = 25;
 
 type CohortPublishState =
   | 'not-ready'
@@ -208,7 +215,12 @@ const getCohortPublishSupportText = (
 const CohortsView: React.FC = () => {
   const navigate = useNavigate();
   const createTitleRef = useRef<HTMLInputElement | null>(null);
+  const studentRequestIdRef = useRef(0);
   const [students, setStudents] = useState<TeacherStudent[]>([]);
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentTotal, setStudentTotal] = useState(0);
+  const [isStudentLoading, setIsStudentLoading] = useState(false);
+  const [studentLoadError, setStudentLoadError] = useState<string | null>(null);
   const [courses, setCourses] = useState<TeacherCourse[]>([]);
   const [cohorts, setCohorts] = useState<TeacherCohort[]>([]);
   const [cohortPublishJobs, setCohortPublishJobs] = useState<
@@ -229,6 +241,7 @@ const CohortsView: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const cohortRequestPendingRef = useRef(false);
   const [isCohortRequestPending, setIsCohortRequestPending] = useState(false);
+  const deferredStudentSearch = useDeferredValue(studentSearch.trim());
 
   const loadCohortPublishJobs = async (nextCohorts: TeacherCohort[]) => {
     if (nextCohorts.length === 0) {
@@ -297,8 +310,7 @@ const CohortsView: React.FC = () => {
     setLoadError(null);
 
     try {
-      const snapshot = await academyStudioBackend.loadSnapshot();
-      setStudents(snapshot.students);
+      const snapshot = await academyStudioBackend.loadCatalogSnapshot();
       setCourses(snapshot.courses);
       setCohorts(snapshot.cohorts);
       await loadCohortPublishJobs(snapshot.cohorts);
@@ -317,6 +329,36 @@ const CohortsView: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    const requestId = studentRequestIdRef.current + 1;
+    studentRequestIdRef.current = requestId;
+    setIsStudentLoading(true);
+    setStudentLoadError(null);
+
+    void academyStudioBackend
+      .loadPagedStudents({
+        page: studentPage,
+        limit: STUDENT_PAGE_SIZE,
+        search: deferredStudentSearch,
+      })
+      .then((result) => {
+        if (studentRequestIdRef.current !== requestId) return;
+        setStudents(result.students);
+        setStudentTotal(result.total);
+      })
+      .catch((error: unknown) => {
+        if (studentRequestIdRef.current !== requestId) return;
+        console.error('Failed to load paginated learners:', error);
+        setStudentLoadError(
+          getErrorMessage(error, 'Unable to load learners from the backend.'),
+        );
+      })
+      .finally(() => {
+        if (studentRequestIdRef.current !== requestId) return;
+        setIsStudentLoading(false);
+      });
+  }, [deferredStudentSearch, studentPage]);
 
   useEffect(() => {
     if (!cohorts.length) {
@@ -483,17 +525,6 @@ const CohortsView: React.FC = () => {
     );
   }, [cohorts, searchQuery]);
 
-  const filteredStudents = useMemo(() => {
-    const query = studentSearch.trim().toLowerCase();
-    if (!query) return students;
-
-    return students.filter((student) =>
-      [student.name, student.email, student.program, student.learnerCode]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query)),
-    );
-  }, [studentSearch, students]);
-
   const filteredCourses = useMemo(() => {
     const query = courseSearch.trim().toLowerCase();
     if (!query) return courses;
@@ -524,6 +555,14 @@ const CohortsView: React.FC = () => {
       ),
     [cohorts],
   );
+  const studentTotalPages = Math.max(
+    1,
+    Math.ceil(studentTotal / STUDENT_PAGE_SIZE),
+  );
+  const visibleStudentRangeStart =
+    studentTotal === 0 ? 0 : (studentPage - 1) * STUDENT_PAGE_SIZE + 1;
+  const visibleStudentRangeEnd =
+    studentTotal === 0 ? 0 : visibleStudentRangeStart + students.length - 1;
 
   const runLockedCohortRequest = async <T,>(
     action: () => Promise<T>,
@@ -785,6 +824,7 @@ const CohortsView: React.FC = () => {
   const openWorkspace = (cohortId: string) => {
     setSelectedCohortId(cohortId);
     setStudentSearch('');
+    setStudentPage(1);
     setCourseSearch('');
     setIsWorkspaceOpen(true);
   };
@@ -984,7 +1024,10 @@ const CohortsView: React.FC = () => {
                   />
                   <input
                     value={studentSearch}
-                    onChange={(event) => setStudentSearch(event.target.value)}
+                    onChange={(event) => {
+                      setStudentSearch(event.target.value);
+                      setStudentPage(1);
+                    }}
                     placeholder="Search students"
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#1BD183] focus:ring-2 focus:ring-[#1BD183]/10"
                   />
@@ -999,15 +1042,30 @@ const CohortsView: React.FC = () => {
               </div>
             </div>
 
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+              <p>
+                {studentTotal === 0
+                  ? 'No learners available.'
+                  : `Showing ${visibleStudentRangeStart}-${visibleStudentRangeEnd} of ${studentTotal} learners`}
+              </p>
+              {isStudentLoading && <p>Loading learners...</p>}
+            </div>
+
             <div className="mt-6 max-h-[520px] space-y-3 overflow-y-auto pr-1">
-              {students.length === 0 ? (
+              {studentLoadError ? (
+                <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-12 text-center text-sm font-semibold text-rose-600">
+                  {studentLoadError}
+                </div>
+              ) : students.length === 0 ? (
                 <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm font-semibold text-slate-500">
-                  {isLoading
+                  {isStudentLoading
                     ? 'Loading learners from the backend.'
-                    : 'No learners found.'}
+                    : deferredStudentSearch
+                      ? 'No learners matched this search.'
+                      : 'No learners found.'}
                 </div>
               ) : (
-                filteredStudents.map((student) => {
+                students.map((student) => {
                   const isAssigned = assignedStudentIdSuffixes.has(
                     getIdSuffix(student.id),
                   );
@@ -1051,6 +1109,36 @@ const CohortsView: React.FC = () => {
                   );
                 })
               )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setStudentPage((current) => Math.max(1, current - 1))
+                }
+                disabled={studentPage === 1 || isStudentLoading}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <p className="text-sm font-semibold text-slate-500">
+                Page {studentPage} of {studentTotalPages}
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setStudentPage((current) =>
+                    Math.min(studentTotalPages, current + 1),
+                  )
+                }
+                disabled={
+                  studentPage >= studentTotalPages || isStudentLoading
+                }
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
             </div>
           </section>
 

@@ -1,5 +1,6 @@
 export interface TeacherStudent {
   id: string;
+  accountId?: string;
   name: string;
   email: string;
   learnerCode: string;

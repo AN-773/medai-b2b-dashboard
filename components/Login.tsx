@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { AUTH_ERROR_STORAGE_KEY } from '../contexts/AuthContext';
 
 const getIamLoginUrl = () => {
   const iamApiUrl =
@@ -24,6 +25,17 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const authError = window.sessionStorage.getItem(AUTH_ERROR_STORAGE_KEY);
+
+    if (!authError) {
+      return;
+    }
+
+    setError(authError);
+    window.sessionStorage.removeItem(AUTH_ERROR_STORAGE_KEY);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +66,7 @@ const Login: React.FC = () => {
 
         if (accessToken) {
           login(accessToken);
-          navigate('/dashboard');
+          navigate('/');
         } else {
           // Fallback: check query params for error
           const errorDescription = urlObj.searchParams.get('error_description');
@@ -74,6 +86,8 @@ const Login: React.FC = () => {
       // specific error handling if possible
       if (err.response) {
           setError(`Login failed: ${err.response.data?.message || err.response.statusText}`);
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
       } else {
         setError('Invalid email or password. Please try again.');
       }
@@ -84,14 +98,11 @@ const Login: React.FC = () => {
 
   const handleSSOLogin = (provider: 'google' | 'microsoft') => {
     setIsLoading(true);
-    // TODO: Implement SSO authentication
     console.log(`SSO Login with ${provider}`);
-    // For demo purposes, simulate successful login
-    setTimeout(() => {
-      const token = 'demo_sso_token'; // Replace with actual token from SSO provider
-      login(token);
-      navigate('/dashboard');
-    }, 1000);
+    window.setTimeout(() => {
+      setError('SSO sign-in is not available yet.');
+      setIsLoading(false);
+    }, 300);
   };
 
   return (

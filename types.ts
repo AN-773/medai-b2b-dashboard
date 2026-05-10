@@ -2,6 +2,7 @@ import React from 'react';
 
 export type View =
   | 'DASHBOARD'
+  | 'TENANTS'
   | 'WORKBENCH'
   | 'BANK_EXPLORER'
   | 'QB_HEALTH'

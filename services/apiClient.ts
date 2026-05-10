@@ -63,10 +63,14 @@ class ApiClient {
             localStorage.removeItem('msai_educator_token');
             window.location.href = '/login';
           }
-           // Throw an error with status and text to mimic previous behavior if needed, 
-           // or just propagate the axios error. 
-           // The previous implementation threw: Error(`API Error: ${response.status} ${response.statusText}`)
-           throw new Error(`API Error: ${error.response.status} ${error.response.statusText}`);
+          const responseData = error.response.data as
+            | { error?: string; message?: string }
+            | undefined;
+          const backendMessage =
+            responseData?.message?.trim() || responseData?.error?.trim();
+          throw new Error(
+            backendMessage || `API Error: ${error.response.status} ${error.response.statusText}`,
+          );
         } else if (error.request) {
            // The request was made but no response was received
            throw new Error('API Error: No response received');
