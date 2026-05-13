@@ -130,6 +130,14 @@ interface StudentRegistrySnapshot {
   warnings: string[];
 }
 
+interface StudentRegistryPageSnapshot {
+  students: TeacherStudent[];
+  total: number;
+  page: number;
+  cohorts: TeacherCohort[];
+  warnings: string[];
+}
+
 const emptyMetadata = (): AcademyBackendMetadata => ({
   learnerProfiles: {},
   courseMetadata: {},
@@ -593,6 +601,65 @@ const loadPagedStudents = async ({
   };
 };
 
+const loadStudentRegistryPage = async ({
+  page,
+  limit,
+  search,
+}: {
+  page?: number;
+  limit?: number;
+  search?: string;
+} = {}): Promise<StudentRegistryPageSnapshot> => {
+  const [studentsResult, cohortsResult] = await Promise.allSettled([
+    loadPagedStudents({
+      page,
+      limit,
+      search,
+    }),
+    fetchAllPages<ApiCohort>('/cohorts'),
+  ]);
+
+  if (studentsResult.status !== 'fulfilled') {
+    throw studentsResult.reason;
+  }
+
+  const pagedStudents = studentsResult.value;
+  const warnings: string[] = [];
+  let cohortsResponse: ApiCohort[] = [];
+  let metadata = readMetadata();
+
+  if (cohortsResult.status === 'fulfilled') {
+    cohortsResponse = cohortsResult.value;
+    metadata = syncLearnerProfilesFromCohorts(metadata, cohortsResponse);
+  } else {
+    console.error(
+      'Failed to load cohorts for paged student registry:',
+      cohortsResult.reason,
+    );
+    warnings.push(
+      toErrorMessage(
+        cohortsResult.reason,
+        'Unable to load cohorts. Learners are shown without cohort assignments.',
+      ),
+    );
+  }
+
+  const learnerIdBySuffix = buildLearnerIdBySuffix(pagedStudents.students);
+  const cohorts = sortByTitle(
+    cohortsResponse.map((cohort) =>
+      normalizeCohort(cohort, metadata, learnerIdBySuffix),
+    ),
+  );
+
+  return {
+    students: pagedStudents.students,
+    total: pagedStudents.total,
+    page: pagedStudents.page,
+    cohorts,
+    warnings,
+  };
+};
+
 const toErrorMessage = (
   error: unknown,
   fallback: string,
@@ -811,6 +878,7 @@ export const academyStudioBackend = {
   loadCatalogSnapshot,
   loadSnapshot,
   loadPagedStudents,
+  loadStudentRegistryPage,
   loadStudentRegistrySnapshot,
 
   saveCourse: upsertCourse,
