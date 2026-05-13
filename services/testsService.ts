@@ -331,10 +331,13 @@ export const testsService = {
     name: string,
     id?: string,
   ): Promise<OrganSystem> => {
-    let payload = { title: name };
-    if (id) {
-      payload['id'] = id;
-    }
+    const payload = {
+      organSystem: {
+        title: name,
+        ...(id ? { id } : {}),
+      },
+    };
+
     return apiClient.post<OrganSystem>('TESTS', '/organ-systems', payload);
   },
 
