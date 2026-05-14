@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Prompt, PromptPayload } from '../../types';
 import { testsService } from '../../services/testsService';
 import { X, Save, AlertCircle, FilePlus, Loader2, Trash } from 'lucide-react';
+import {
+  DEFAULT_PROMPT_EXAM,
+  PROMPT_TYPE_OPTIONS,
+  getSystemPromptPlaceholder,
+  getPromptTypeOption,
+  getUserTemplatePlaceholder,
+  normalizePromptExamForType,
+} from './promptConfig';
 
 interface PromptEditorModalProps {
   prompt: Prompt | null;
@@ -9,13 +17,21 @@ interface PromptEditorModalProps {
   onClose: (didChange: boolean) => void;
 }
 
-const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingPrompts, onClose }) => {
-  const [formData, setFormData] = useState<PromptPayload>({
-    exam: prompt?.exam || 'Step 1',
-    type: prompt?.type || 'Question',
+const getInitialPromptFormData = (prompt: Prompt | null): PromptPayload => {
+  const type = prompt?.type || PROMPT_TYPE_OPTIONS[0].value;
+
+  return {
+    id: prompt?.id,
+    exam: normalizePromptExamForType(type, prompt?.exam || DEFAULT_PROMPT_EXAM),
+    type,
     text: prompt?.text || '',
+    userTemplate: prompt?.userTemplate || '',
     enforcedSchema: prompt?.enforcedSchema || '',
-  });
+  };
+};
+
+const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingPrompts, onClose }) => {
+  const [formData, setFormData] = useState<PromptPayload>(() => getInitialPromptFormData(prompt));
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -24,47 +40,95 @@ const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingP
   const [attachedFiles, setAttachedFiles] = useState(prompt?.files || []);
   const [isUploading, setIsUploading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const userTemplateRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const selectedPromptType = getPromptTypeOption(formData.type);
+  const normalizedExam = normalizePromptExamForType(formData.type, formData.exam);
+  const systemPromptPlaceholder = getSystemPromptPlaceholder(formData.type, normalizedExam);
+  const userTemplatePlaceholder = getUserTemplatePlaceholder(formData.type);
+  const isStudyPlanFlow = selectedPromptType.value === 'study_plan' || selectedPromptType.value.startsWith('study_plan_');
+  const isStudyPlanBasePrompt = selectedPromptType.value === 'study_plan';
+  const supportsVariableTemplate = selectedPromptType.variables.length > 0;
+  const showUserTemplateEditor = supportsVariableTemplate || Boolean(formData.userTemplate?.trim());
+  const systemPromptLabel = isStudyPlanFlow ? 'Persona' : 'System Instruction';
+  const systemPromptHint = selectedPromptType.value === 'study_plan'
+    ? 'Shared system prompt for study-plan generation flows.'
+    : selectedPromptType.value.startsWith('study_plan_')
+      ? 'Optional override. If left blank, the shared study-plan base prompt will be used.'
+      : 'Primary system instruction for this prompt type.';
 
   // Sync state if prompt changes (unlikely in modal but good practice)
   useEffect(() => {
     if (prompt) {
-      setFormData({
-        id: prompt.id,
-        exam: prompt.exam,
-        type: prompt.type,
-        text: prompt.text,
-        enforcedSchema: prompt.enforcedSchema || '',
-      });
+      setFormData(getInitialPromptFormData(prompt));
       setAttachedFiles(prompt.files || []);
     }
   }, [prompt]);
 
   const handleChange = (field: keyof PromptPayload, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (errorMsg) {
+      setErrorMsg('');
+    }
+  };
+
+  const handleTypeChange = (nextType: string) => {
+    setFormData(prev => ({
+      ...prev,
+      type: nextType,
+      exam: normalizePromptExamForType(nextType, prev.exam),
+    }));
+    if (errorMsg) {
+      setErrorMsg('');
+    }
+  };
+
+  const handleInsertVariable = (token: string) => {
+    const textarea = userTemplateRef.current;
+    const currentValue = formData.userTemplate || '';
+    const selectionStart = textarea?.selectionStart ?? currentValue.length;
+    const selectionEnd = textarea?.selectionEnd ?? currentValue.length;
+    const nextValue = `${currentValue.slice(0, selectionStart)}${token}${currentValue.slice(selectionEnd)}`;
+
+    setFormData(prev => ({
+      ...prev,
+      userTemplate: nextValue,
+    }));
+
+    requestAnimationFrame(() => {
+      if (!textarea) return;
+      const cursorPosition = selectionStart + token.length;
+      textarea.focus();
+      textarea.setSelectionRange(cursorPosition, cursorPosition);
+    });
   };
 
   const handleSave = async () => {
-    if (!formData.text.trim()) {
-      setErrorMsg('Prompt instruction text cannot be empty.');
+    if (!formData.text.trim() && !(formData.userTemplate || '').trim()) {
+      setErrorMsg('Provide a system instruction, a variable template, or both.');
       return;
     }
 
     // Ensure only one prompt per type and exam combination
     const isDuplicate = existingPrompts.some(p => 
-      p.exam === formData.exam && 
       p.type === formData.type && 
+      normalizePromptExamForType(p.type, p.exam) === normalizedExam &&
       p.id !== prompt?.id
     );
 
     if (isDuplicate) {
-      setErrorMsg(`A prompt for ${formData.exam} - ${formData.type} already exists.`);
+      const targetScope = selectedPromptType.requiresExam ? normalizedExam : 'the global scope';
+      setErrorMsg(`A prompt for ${selectedPromptType.label} in ${targetScope} already exists.`);
       return;
     }
     
     setIsLoading(true);
     setErrorMsg('');
     try {
-      await testsService.upsertPrompt(formData);
+      await testsService.upsertPrompt({
+        ...formData,
+        exam: normalizedExam,
+      });
       onClose(true);
     } catch (err: any) {
       console.error(err);
@@ -108,6 +172,22 @@ const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingP
     }
   };
 
+  const systemPromptEditor = (
+    <div>
+      <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex justify-between">
+        <span>{systemPromptLabel}</span>
+        <span className="text-xs text-slate-500 font-normal">{systemPromptHint}</span>
+      </label>
+      <textarea
+        value={formData.text}
+        onChange={e => handleChange('text', e.target.value)}
+        rows={8}
+        placeholder={systemPromptPlaceholder}
+        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+      />
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 font-['Inter'] backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -137,42 +217,123 @@ const PromptEditorModal: React.FC<PromptEditorModalProps> = ({ prompt, existingP
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Target Exam</label>
-              <select
-                value={formData.exam}
-                onChange={e => handleChange('exam', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="STEP 1">Step 1</option>
-                <option value="STEP 2">Step 2</option>
-                <option value="STEP 3">Step 3</option>
-              </select>
+              {selectedPromptType.requiresExam ? (
+                <select
+                  value={normalizedExam}
+                  onChange={e => handleChange('exam', e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="STEP 1">Step 1</option>
+                  <option value="STEP 2">Step 2</option>
+                  <option value="STEP 3">Step 3</option>
+                </select>
+              ) : (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+                  This prompt applies globally and does not require an exam target.
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Target Feature Type</label>
               <select
                 value={formData.type}
-                onChange={e => handleChange('type', e.target.value)}
+                onChange={e => handleTypeChange(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="Question">Question Generation</option>
-                <option value="Learning Objective">Learning Objective Generation</option>
+                {PROMPT_TYPE_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
+              <p className="mt-1.5 text-xs text-slate-500">{selectedPromptType.description}</p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex justify-between">
-              <span>System Instruction (Main Prompt)</span>
-              <span className="text-xs text-slate-500 font-normal">Supports markdown mapping</span>
-            </label>
-            <textarea
-              value={formData.text}
-              onChange={e => handleChange('text', e.target.value)}
-              rows={8}
-              placeholder="e.g., Act as an expert medical education faculty. Generate USMLE style questions..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
-            />
-          </div>
+          {isStudyPlanBasePrompt && systemPromptEditor}
+
+          {showUserTemplateEditor && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-4 space-y-3">
+                <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700">Template Editor</label>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Edit the runtime message and insert supported variables directly into the template.
+                    </p>
+                  </div>
+                  
+                </div>
+
+                {supportsVariableTemplate ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Insert Variables
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        Click a token to add it at the cursor.
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedPromptType.variables.map(variable => (
+                        <button
+                          key={variable.token}
+                          type="button"
+                          onClick={() => handleInsertVariable(variable.token)}
+                          className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+                        >
+                          {variable.token}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-500">
+                    This prompt type does not expose predefined template variables.
+                  </div>
+                )}
+              </div>
+
+              <div className={supportsVariableTemplate ? 'grid lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]' : ''}>
+                {supportsVariableTemplate && (
+                  <div className="order-1 border-b border-slate-200 bg-white/70 px-4 py-4 lg:order-2 lg:border-b-0 lg:border-l">
+                    <div className="mb-3">
+                      <h4 className="text-sm font-semibold text-slate-800">Variable Guide</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Reference the available runtime values while you edit.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      {selectedPromptType.variables.map(variable => (
+                        <div
+                          key={`${variable.token}-description`}
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                        >
+                          <div className="font-mono text-xs text-slate-800">{variable.token}</div>
+                          <div className="mt-1 text-xs leading-5 text-slate-500">{variable.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className={supportsVariableTemplate ? 'order-2 px-4 py-4 lg:order-1' : 'px-4 py-4'}>
+                  <textarea
+                    ref={userTemplateRef}
+                    value={formData.userTemplate || ''}
+                    onChange={e => handleChange('userTemplate', e.target.value)}
+                    rows={supportsVariableTemplate ? 16 : 10}
+                    placeholder={userTemplatePlaceholder}
+                    className="w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isStudyPlanBasePrompt && systemPromptEditor}
 
 
           {prompt && prompt.id && (

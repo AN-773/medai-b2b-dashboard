@@ -192,6 +192,7 @@ export interface MediaAsset {
 export interface PromptPayload {
   id?: string;
   text: string;
+  userTemplate?: string;
   type: string;
   exam: string;
   enforcedSchema?: string;
@@ -200,6 +201,7 @@ export interface PromptPayload {
 export interface Prompt {
   id: string;
   text: string;
+  userTemplate?: string;
   type: string;
   exam: string;
   enforcedSchema?: string;

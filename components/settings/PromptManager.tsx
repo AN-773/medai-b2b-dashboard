@@ -6,6 +6,7 @@ import {
   FileText, Loader2, RefreshCw 
 } from 'lucide-react';
 import PromptEditorModal from './PromptEditorModal';
+import { formatPromptExam, getPromptTypeOption } from './promptConfig';
 
 const PromptManager: React.FC = () => {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -67,7 +68,8 @@ const PromptManager: React.FC = () => {
   const filteredPrompts = prompts.filter(p => 
     p.exam.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.text.toLowerCase().includes(searchTerm.toLowerCase())
+    p.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.userTemplate || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -154,26 +156,34 @@ const PromptManager: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredPrompts.map((p) => {
-                const isStep1 = p.exam.toLowerCase().includes('step 1');
+                const promptType = getPromptTypeOption(p.type);
+                const examLabel = formatPromptExam(p.type, p.exam);
+                const isGlobalPrompt = examLabel === 'Global';
+                const isStep1 = examLabel.toLowerCase().includes('step 1');
+                const previewText = p.text || p.userTemplate || '';
                 
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-5 py-4 whitespace-nowrap">
                       <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${
-                        isStep1 ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'
+                        isGlobalPrompt
+                          ? 'bg-slate-100 text-slate-700 border-slate-200'
+                          : isStep1
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-purple-50 text-purple-700 border-purple-200'
                       }`}>
-                        {p.exam}
+                        {examLabel}
                       </span>
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap">
                       <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                         {p.type === 'Question' ? <FileText size={14} className="text-[#1BD183]"/> : <BookOpen size={14} className="text-amber-500"/>}
-                        {p.type}
+                        {promptType.label}
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-sm text-slate-600 line-clamp-2 max-w-[250px]" title={p.text}>
-                        {p.text}
+                      <p className="text-sm text-slate-600 line-clamp-2 max-w-[250px]" title={previewText}>
+                        {previewText}
                       </p>
                     </td>
                     <td className="px-5 py-4 text-center">

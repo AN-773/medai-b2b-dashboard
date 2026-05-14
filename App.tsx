@@ -118,7 +118,10 @@ const DashboardLayout: React.FC = () => {
 
   const navItems = [
     ...(isSuperadmin
-      ? [{ id: 'TENANTS', label: 'Tenant Management', icon: Building2 }]
+      ? [
+          { id: 'TENANTS', label: 'Tenant Management', icon: Building2 },
+          { id: 'SETTINGS', label: 'Settings', icon: Settings },
+        ]
       : [
           { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
           { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
@@ -132,7 +135,6 @@ const DashboardLayout: React.FC = () => {
           { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
           { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
           { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
-          { id: 'SETTINGS', label: 'Settings', icon: Settings },
         ]),
   ];
 
@@ -206,7 +208,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/assessment" element={<AssessmentPlaceholder />} />
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
-              <Route path="/settings" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <SettingsView />} />
+              <Route path="/settings" element={isSuperadmin ? <SettingsView /> : <Navigate to="/dashboard" replace />} />
               <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/dashboard"} replace />} />
             </Routes>
           </div>

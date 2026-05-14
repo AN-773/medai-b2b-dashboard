@@ -64,13 +64,23 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
 
           <nav className="space-y-1">
             {isSuperadmin ? (
-              <button 
-                onClick={() => onNavigate('TENANTS')}
-                className={getButtonClass('TENANTS')}
-              >
-                <Building2 size={20} className={getIconClass('TENANTS')} />
-                Tenant Management
-              </button>
+              <>
+                <button 
+                  onClick={() => onNavigate('TENANTS')}
+                  className={getButtonClass('TENANTS')}
+                >
+                  <Building2 size={20} className={getIconClass('TENANTS')} />
+                  Tenant Management
+                </button>
+
+                <button 
+                  onClick={() => onNavigate('SETTINGS')}
+                  className={getButtonClass('SETTINGS')}
+                >
+                  <Settings size={20} className={getIconClass('SETTINGS')} />
+                  Prompt Settings
+                </button>
+              </>
             ) : (
               <>
             {/* Mission Control */}
@@ -197,16 +207,6 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
           >
             <LogOut size={18} /> Sign Out
           </button>
-          {!isSuperadmin && (
-            <button 
-              onClick={() => onNavigate('SETTINGS')}
-              className={`w-full flex items-center gap-3 px-5 py-2 text-sm font-bold transition ${
-                isActive('SETTINGS') ? 'text-white' : 'text-[#848E8A] hover:text-white'
-              }`}
-            >
-              <Settings size={18} /> System Config
-            </button>
-          )}
         </div>
     </div>
   );
