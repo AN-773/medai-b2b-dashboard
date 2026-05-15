@@ -286,6 +286,24 @@ export const testsService = {
     );
   },
 
+  getDiscipline: async (identifier: string): Promise<Discipline> => {
+    return apiClient.get<Discipline>('TESTS', `/disciplines/${identifier}`);
+  },
+
+  upsertDiscipline: async (
+    title: string,
+    id?: string,
+  ): Promise<Discipline> => {
+    return apiClient.post<Discipline>('TESTS', '/disciplines', {
+      title,
+      ...(id ? { id } : {}),
+    });
+  },
+
+  deleteDiscipline: async (identifier: string): Promise<void> => {
+    return apiClient.delete<void>('TESTS', `/disciplines/${identifier}`);
+  },
+
   getDifficultyLevels: async (
     page = 1,
     limit = 200,

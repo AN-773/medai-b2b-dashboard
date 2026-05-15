@@ -5,7 +5,7 @@ import {
   Plus, Search, Edit2, Trash2, BookOpen, 
   FileText, Loader2, RefreshCw 
 } from 'lucide-react';
-import PromptEditorModal from './PromptEditorModal';
+import PromptEditorPage from './PromptEditorPage';
 import { formatPromptExam, getPromptTypeOption } from './promptConfig';
 
 const PromptManager: React.FC = () => {
@@ -14,7 +14,7 @@ const PromptManager: React.FC = () => {
   const [isError, setIsError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modal State
+  // Editor State
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
 
@@ -57,7 +57,7 @@ const PromptManager: React.FC = () => {
     }
   };
 
-  const handleModalClose = (didChange: boolean) => {
+  const handleEditorClose = (didChange: boolean) => {
     setIsEditorOpen(false);
     setSelectedPrompt(null);
     if (didChange) {
@@ -71,6 +71,16 @@ const PromptManager: React.FC = () => {
     p.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.userTemplate || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (isEditorOpen) {
+    return (
+      <PromptEditorPage
+        prompt={selectedPrompt}
+        existingPrompts={prompts}
+        onClose={handleEditorClose}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white text-slate-900 font-['Inter']">
@@ -215,13 +225,6 @@ const PromptManager: React.FC = () => {
         )}
       </div>
 
-      {isEditorOpen && (
-        <PromptEditorModal 
-          prompt={selectedPrompt} 
-          existingPrompts={prompts}
-          onClose={handleModalClose} 
-        />
-      )}
     </div>
   );
 };

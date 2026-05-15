@@ -78,7 +78,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
                   className={getButtonClass('SETTINGS')}
                 >
                   <Settings size={20} className={getIconClass('SETTINGS')} />
-                  Prompt Settings
+                  System Settings
                 </button>
               </>
             ) : (
@@ -126,6 +126,14 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
               >
                 <div className={getSubMenuDotClass('COURSES')}></div>
                 Courses
+              </button>
+
+              <button 
+                onClick={() => onNavigate('DISCIPLINES')}
+                className={getSubMenuButtonClass('DISCIPLINES')}
+              >
+                <div className={getSubMenuDotClass('DISCIPLINES')}></div>
+                Disciplines
               </button>
 
               <button 

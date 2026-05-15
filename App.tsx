@@ -38,6 +38,7 @@ import { View } from './types';
 import StudentRegistryView from './views/StudentRegistryView';
 import CohortsView from './views/CohortsView';
 import CoursesView from './views/CoursesView';
+import DisciplinesView from './views/DisciplinesView';
 
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -56,6 +57,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/qb-health')) return 'QB_HEALTH';
     if (path.startsWith('/mastery')) return 'MASTERY';
     if (path.startsWith('/curriculum')) return 'CURRICULUM';
+    if (path.startsWith('/disciplines')) return 'DISCIPLINES';
     if (path.startsWith('/students')) return 'STUDENTS';
     if (path.startsWith('/cohorts')) return 'COHORTS';
     if (path.startsWith('/courses')) return 'COURSES';
@@ -80,6 +82,7 @@ const DashboardLayout: React.FC = () => {
       QB_HEALTH: '/qb-health',
       MASTERY: '/mastery',
       CURRICULUM: '/curriculum',
+      DISCIPLINES: '/disciplines',
       STUDENTS: '/students',
       COHORTS: '/cohorts',
       COURSES: '/courses',
@@ -128,6 +131,7 @@ const DashboardLayout: React.FC = () => {
           { id: 'STUDENTS', label: 'Student Registry', icon: Users },
           { id: 'COHORTS', label: 'Cohorts', icon: Users },
           { id: 'COURSES', label: 'Courses', icon: BookOpen },
+          { id: 'DISCIPLINES', label: 'Disciplines', icon: BookOpen },
           { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
           { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
           { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
@@ -196,6 +200,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/students" element={<StudentRegistryView />} />
               <Route path="/cohorts" element={<CohortsView />} />
               <Route path="/courses" element={<CoursesView />} />
+              <Route path="/disciplines" element={<DisciplinesView />} />
               <Route path="/cohort-studio" element={<Navigate to="/cohorts" replace />} />
               <Route
                 path="/curriculum"
