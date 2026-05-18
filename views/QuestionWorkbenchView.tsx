@@ -383,7 +383,7 @@ const QuestionWorkbenchView: React.FC = () => {
       )}
 
       {/* Global Type Selector */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
+      {/* <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
         <div className="flex items-center justify-between xl:justify-start gap-2 p-1.5 bg-white rounded-[2.5rem] w-full xl:w-fit overflow-x-auto no-scrollbar">
           {[ItemType.MCQ, ItemType.SAQ, ItemType.LECTURE].map((type) => (
             <button
@@ -411,10 +411,10 @@ const QuestionWorkbenchView: React.FC = () => {
         >
           <Database size={14} /> Global Repository
         </button>
-      </div>
+      </div> */}
 
       {/* Workbench Sub-Navigation */}
-      <div className="flex items-center gap-2 w-full xl:w-auto">
+      {/* <div className="flex items-center gap-2 w-full xl:w-auto">
         <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-full xl:w-fit shadow-sm overflow-x no-scrollbar">
           {[
             { id: 'DASHBOARD', icon: Layout, label: 'Dashboard' },
@@ -440,7 +440,7 @@ const QuestionWorkbenchView: React.FC = () => {
             </button>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* View Content */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

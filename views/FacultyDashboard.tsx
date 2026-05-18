@@ -434,7 +434,7 @@ const FacultyDashboard: React.FC = () => {
         <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
           Cohort Management
         </h3>
-        <div className="flex items-center gap-3">
+        {/* <div className="flex items-center gap-3">
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
             Time Range:
           </span>
@@ -448,7 +448,7 @@ const FacultyDashboard: React.FC = () => {
             <option value="SEMESTER">This Semester</option>
             <option value="YEAR">This Year</option>
           </select>
-        </div>
+        </div> */}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -492,7 +492,7 @@ const FacultyDashboard: React.FC = () => {
             </div>
             <Users className="text-[#1BD183]" />
           </div>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex justify-between items-center">
+          {/* <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex justify-between items-center">
             <div>
               <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">
                 Faculty Time Saved
@@ -505,7 +505,7 @@ const FacultyDashboard: React.FC = () => {
               </div>
             </div>
             <Clock className="text-emerald-500" />
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
@@ -588,7 +588,7 @@ const FacultyDashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm h-full">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-black text-slate-900 uppercase tracking-tight">
@@ -702,7 +702,7 @@ const FacultyDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 
@@ -898,7 +898,7 @@ const FacultyDashboard: React.FC = () => {
 
   return (
     <div>
-      <HeaderNavigation />
+      {/* <HeaderNavigation /> */}
 
       <div className="pt-6 space-y-6">
         {catalogError && (

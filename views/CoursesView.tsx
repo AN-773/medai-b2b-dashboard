@@ -535,14 +535,14 @@ const CoursesView: React.FC = () => {
               >
                 Save course
               </button>
-              <button
+              {/* <button
                 type="button"
                 onClick={handleOpenAiPreview}
                 className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
               >
                 <Upload size={15} />
                 AI preview
-              </button>
+              </button> */}
               <button
                 type="button"
                 onClick={() => handleDeleteCourse(selectedCourse.id)}
@@ -760,7 +760,7 @@ const CoursesView: React.FC = () => {
           </section>
 
           <div className="space-y-6">
-            <section className={panelClass}>
+            {/* <section className={panelClass}>
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-500">
@@ -846,7 +846,7 @@ const CoursesView: React.FC = () => {
                   ))
                 )}
               </div>
-            </section>
+            </section> */}
 
             <section className="rounded-[2rem] border border-slate-200 bg-[#101311] p-6 text-white shadow-sm">
               <div className="flex items-center gap-3">
@@ -971,14 +971,14 @@ const CoursesView: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <button
+                  {/* <button
                     type="button"
                     onClick={cycleFilterAndSort}
                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-400"
                   >
                     <SlidersHorizontal size={16} />
                     Filter and sort
-                  </button>
+                  </button> */}
 
                   <button
                     type="button"
@@ -989,14 +989,14 @@ const CoursesView: React.FC = () => {
                     Add course
                   </button>
 
-                  <button
+                  {/* <button
                     type="button"
                     onClick={handleOpenAiPreview}
                     className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#7F54E9] to-[#57B6E6] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95"
                   >
                     <Sparkles size={16} />
                     Generate course
-                  </button>
+                  </button> */}
                 </div>
               </div>
 

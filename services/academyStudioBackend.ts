@@ -861,6 +861,7 @@ const upsertCohort = async (
 
     return {
       userId: studentId,
+      ...(profile.name?.trim() ? { name: profile.name.trim() } : {}),
       ...(profile.accountId?.trim()
         ? { accountId: profile.accountId.trim() }
         : {}),

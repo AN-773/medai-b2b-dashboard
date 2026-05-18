@@ -443,9 +443,9 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       
       {/* 1. Repository Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6"> */}
         {/* Summative Gold */}
-        <div 
+        {/* <div 
           onClick={() => handleCardClick('GOLD')}
           className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
             ${filterType === 'GOLD' 
@@ -465,10 +465,10 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
               <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'GOLD' ? 'text-[#1BD183]/70' : 'text-slate-400'}`}>Published • Validated</p>
            </div>
            <p className={`text-4xl font-black relative z-10 ${filterType === 'GOLD' ? 'text-[#1BD183]' : 'text-slate-300 group-hover:text-[#1BD183]/50'}`}>{metrics.gold}</p>
-        </div>
+        </div> */}
 
         {/* Remediation Hub */}
-        <div 
+        {/* <div 
           onClick={() => handleCardClick('REMEDIATION')}
           className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
             ${filterType === 'REMEDIATION' 
@@ -488,10 +488,10 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
               <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'REMEDIATION' ? 'text-amber-700' : 'text-slate-400'}`}>Draft • Needs Review</p>
            </div>
            <p className={`text-4xl font-black relative z-10 ${filterType === 'REMEDIATION' ? 'text-amber-600' : 'text-slate-300 group-hover:text-amber-600/50'}`}>{metrics.remediation}</p>
-        </div>
+        </div> */}
 
         {/* Emerging Vault */}
-        <div 
+        {/* <div 
           onClick={() => handleCardClick('EMERGING')}
           className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
             ${filterType === 'EMERGING' 
@@ -512,7 +512,7 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
            </div>
            <p className={`text-4xl font-black relative z-10 ${filterType === 'EMERGING' ? 'text-[#1BD183]' : 'text-slate-300 group-hover:text-[#1BD183]/50'}`}>{metrics.emerging}</p>
         </div>
-      </div>
+      </div> */}
 
       {/* 2. Main Explorer & Filters */}
       <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-8">

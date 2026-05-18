@@ -112,8 +112,11 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
          </div>
          
          <div className="p-6 border-t border-slate-100 bg-slate-50">
-            <button className="w-full py-3 bg-primary-gradient hover:bg-primary-gradient-hover   text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition flex items-center justify-center gap-2">
-               <Plus size={14} /> Link Existing Asset
+            <button
+              onClick={() => onCreateNew?.(objective)}
+              className="w-full py-3 bg-primary-gradient hover:bg-primary-gradient-hover   text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition flex items-center justify-center gap-2"
+            >
+               <Plus size={14} /> Create New Item
             </button>
          </div>
       </div>

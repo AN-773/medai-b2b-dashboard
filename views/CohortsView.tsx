@@ -988,7 +988,7 @@ const CohortsView: React.FC = () => {
                 placeholder="Cohort title"
                 className={inputClass}
               />
-              <input
+              {/* <input
                 value={cohortForm.term}
                 onChange={(event) =>
                   setCohortForm((current) => ({
@@ -998,7 +998,7 @@ const CohortsView: React.FC = () => {
                 }
                 placeholder="Term or intake"
                 className={inputClass}
-              />
+              /> */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-2 text-xs font-semibold text-slate-500">
                   <span>Start date</span>
@@ -1031,7 +1031,7 @@ const CohortsView: React.FC = () => {
               </div>
             </div>
 
-            <textarea
+            {/* <textarea
               value={cohortForm.description}
               onChange={(event) =>
                 setCohortForm((current) => ({
@@ -1041,10 +1041,10 @@ const CohortsView: React.FC = () => {
               }
               placeholder="Short description"
               className={textareaClass}
-            />
+            /> */}
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs text-slate-500">Students</p>
               <p className="mt-2 text-lg font-black text-slate-900">
@@ -1057,12 +1057,12 @@ const CohortsView: React.FC = () => {
                 {selectedCohort.courseIds.length}
               </p>
             </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+            {/* <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs text-slate-500">Delivery</p>
               <p className="mt-2 text-lg font-black text-slate-900">
                 {formatModeLabel(selectedCohort, selectedAssignedCourse)}
               </p>
-            </div>
+            </div> */}
             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs text-slate-500">Publish status</p>
               <p
@@ -1291,9 +1291,9 @@ const CohortsView: React.FC = () => {
                             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {course.learningObjectives.length} objectives
                             </span>
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                            {/* <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {course.contentDrafts.length} AI drafts
-                            </span>
+                            </span> */}
                           </div>
                         </div>
 
@@ -1610,9 +1610,9 @@ const CohortsView: React.FC = () => {
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
+              {/* <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
                 {students.length} registry students
-              </span>
+              </span> */}
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
                 {courses.length} shared courses
               </span>

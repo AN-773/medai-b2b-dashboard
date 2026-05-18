@@ -148,7 +148,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="gap-6">
         {/* Main List with Dynamic Table Headings */}
         <div className="xl:col-span-2 bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -210,7 +210,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
         </div>
 
         {/* Alerts Side Panel */}
-        <div className="bg-white p-4 xl:p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
+        {/* <div className="bg-white p-4 xl:p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
           <h3 className="font-black text-slate-900 uppercase tracking-tight mb-6 flex justify-between items-center">
             <span>Agent Alerts</span>
             {activeIssues.length > 0 && (
@@ -245,7 +245,7 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

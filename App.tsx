@@ -54,7 +54,7 @@ const DashboardLayout: React.FC = () => {
   const getActiveView = (): View => {
     const path = location.pathname;
     if (path.startsWith('/tenants')) return 'TENANTS';
-    if (path === '/' || path === '/dashboard') return 'DASHBOARD';
+    // if (path === '/' || path === '/dashboard') return 'DASHBOARD';
     if (path.startsWith('/workbench')) return 'WORKBENCH';
     if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
     if (path.startsWith('/qb-health')) return 'QB_HEALTH';
@@ -70,7 +70,8 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/blueprint')) return 'BLUEPRINT';
     if (path.startsWith('/faculty')) return 'FACULTY';
     if (path.startsWith('/settings')) return 'SETTINGS';
-    return 'DASHBOARD';
+    // return 'DASHBOARD';
+    return 'FACULTY';
   };
 
   const activeView = getActiveView();
@@ -192,8 +193,8 @@ const DashboardLayout: React.FC = () => {
 
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
             <Routes>
-              <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/dashboard"} replace />} />
-              <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} />
+              <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
+              {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}
               <Route path="/tenants" element={isSuperadmin ? <TenantManagementView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
@@ -224,7 +225,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
               <Route path="/settings" element={isSuperadmin ? <SettingsView /> : <Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/dashboard"} replace />} />
+              <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
             </Routes>
           </div>
         </div>

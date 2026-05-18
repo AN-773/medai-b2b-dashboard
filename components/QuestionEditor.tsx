@@ -4,7 +4,6 @@ import { testsService } from '../services/testsService'; // Import testsService
 import { 
   Sparkles, 
   ArrowLeft, 
-  Save, 
   Eye, 
   Check, 
   X,
@@ -34,7 +33,7 @@ import ConfirmationModal from './ConfirmationModal';
 
 interface QuestionEditorProps {
   onBack: () => void;
-  onSave: (request: ItemUpsertRequest) => void;
+  onSave: (request: ItemUpsertRequest) => void | Promise<void>;
   onChangeStatus?: (identifier: string, status: string) => void;
   initialQuestion?: BackendApiItem | null;
 }
@@ -81,6 +80,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [imageModalTarget, setImageModalTarget] = useState<string>('stem'); // 'stem' | 'choice-N' | 'explanation-N'
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
   
@@ -429,7 +429,10 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     }
   };
 
-  const handleSave = (targetStatus: 'draft' | 'live') => {
+  const handleSave = async (targetStatus: 'draft' | 'live') => {
+    if (isSaving) {
+      return;
+    }
     if (!questionText || options.length < 2 || !options.some(o => o.isCorrect)) {
       setError("Please ensure question text exists and there is at least one correct option.");
       return;
@@ -465,7 +468,12 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
         } : null,
       })),
     };
-    onSave(request);
+    setIsSaving(true);
+    try {
+      await Promise.resolve(onSave(request));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCreateTopic = async (data: { name: string; identifier?: string; organSystemId: string }) => {
@@ -531,8 +539,14 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
             </select>
           )}
 
-          <button onClick={() => handleSave('draft')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
-            <FileText size={18} /> <span className="hidden sm:inline">Save</span><span className="inline sm:hidden">Draft</span>
+          <button
+            onClick={() => handleSave('draft')}
+            disabled={isSaving}
+            className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isSaving ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            <span className="hidden sm:inline">{isSaving ? 'Saving...' : 'Save'}</span>
+            <span className="inline sm:hidden">{isSaving ? 'Saving' : 'Draft'}</span>
           </button>
           {/* <button onClick={() => handleSave('Published')} className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors">
             <Save size={18} /> <span className="hidden sm:inline">Publish</span><span className="inline sm:hidden">Save</span>

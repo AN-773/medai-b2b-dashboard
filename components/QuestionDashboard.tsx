@@ -220,7 +220,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
         </div>
 
         {/* Alerts Side Panel */}
-        <div className="space-y-6">
+        {/* <div className="space-y-6">
           <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
             <h3 className="font-black text-slate-900 uppercase tracking-tight mb-6 flex justify-between items-center">
               <span>Agent Alerts</span>
@@ -263,7 +263,7 @@ const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
               )}
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

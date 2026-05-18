@@ -295,8 +295,10 @@ export const testsService = {
     id?: string,
   ): Promise<Discipline> => {
     return apiClient.post<Discipline>('TESTS', '/disciplines', {
-      title,
-      ...(id ? { id } : {}),
+      discipline: {
+        title,
+        ...(id ? { id } : {}),
+      },
     });
   },
 

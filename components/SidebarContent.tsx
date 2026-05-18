@@ -84,13 +84,13 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
             ) : (
               <>
             {/* Mission Control */}
-            <button 
+            {/* <button 
               onClick={() => onNavigate('DASHBOARD')}
               className={getButtonClass('DASHBOARD')}
             >
               <LayoutDashboard size={20} className={getIconClass('DASHBOARD')} />
               Mission Control
-            </button>
+            </button> */}
 
             {/* Faculty Command Group */}
             <button 
@@ -183,22 +183,22 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
             </div>
 
             {/* Assessment Quality */}
-            <button 
+            {/* <button 
               onClick={() => onNavigate('ASSESSMENT')}
               className={getButtonClass('ASSESSMENT')}
             >
               <LineChart size={20} className={getIconClass('ASSESSMENT')} />
               Assessment Quality
-            </button>
+            </button> */}
 
             {/* Blueprint Builder */}
-            <button 
+            {/* <button 
               onClick={() => onNavigate('BLUEPRINT')}
               className={getButtonClass('BLUEPRINT')}
             >
               <ClipboardList size={20} className={getIconClass('BLUEPRINT')} />
               Blueprint Builder
-            </button>
+            </button> */}
               </>
             )}
           </nav>
