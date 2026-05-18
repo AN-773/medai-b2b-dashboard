@@ -21,7 +21,10 @@ import {
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
-import StudentMasteryView from './views/StudentMasteryView';
+import MasteryLayout from './views/mastery/MasteryLayout';
+import MasteryGlobalView from './views/mastery/MasteryGlobalView';
+import MasteryCohortView from './views/mastery/MasteryCohortView';
+import MasteryLearnerView from './views/mastery/MasteryLearnerView';
 import AIAgentCenter from './views/AIAgentCenter';
 import ExamBlueprintView from './views/ExamBlueprintView';
 import CurriculumHealthView from './views/CurriculumHealthView';
@@ -196,7 +199,14 @@ const DashboardLayout: React.FC = () => {
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />
-              <Route path="/mastery" element={<StudentMasteryView />} />
+              <Route path="/mastery" element={<MasteryLayout />}>
+                <Route index element={<MasteryGlobalView />} />
+                <Route path="cohorts/:cohortId" element={<MasteryCohortView />} />
+              </Route>
+              <Route
+                path="/mastery/cohorts/:cohortId/learners/:studentId"
+                element={<MasteryLearnerView />}
+              />
               <Route path="/students" element={<StudentRegistryView />} />
               <Route path="/cohorts" element={<CohortsView />} />
               <Route path="/courses" element={<CoursesView />} />

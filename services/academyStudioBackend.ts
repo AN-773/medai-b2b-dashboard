@@ -35,6 +35,8 @@ interface CourseMetadata {
 interface CohortMetadata {
   term?: string;
   description?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 interface AcademyBackendMetadata {
@@ -100,6 +102,10 @@ interface ApiCohort {
   id: string;
   identifier?: string;
   title: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
   learners?: ApiUser[];
   courses?: ApiCourse[];
   courseSelections?: ApiCohortCourseSelection[];
@@ -202,6 +208,13 @@ const sortByName = <T extends { name: string }>(items: T[]) =>
   [...items].sort((left, right) => left.name.localeCompare(right.name));
 
 const getIdSuffix = (value: string) => value.split('/').pop() || value;
+
+const normalizeDateValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.includes('T') ? trimmed.slice(0, 10) : trimmed;
+};
 
 const buildLearnerCode = (name: string, id: string) => {
   const normalizedName = name
@@ -322,6 +335,12 @@ const normalizeCohort = (
     title: cohort.title || 'Untitled Cohort',
     term: cohortMetadata.term || '',
     description: cohortMetadata.description || '',
+    startDate: normalizeDateValue(
+      cohort.startDate || cohort.startsAt || cohortMetadata.startDate,
+    ),
+    endDate: normalizeDateValue(
+      cohort.endDate || cohort.endsAt || cohortMetadata.endDate,
+    ),
     studentIds: (cohort.learners || []).map((learner) =>
       findCanonicalLearnerId(learner.id, learnerIdBySuffix),
     ),
@@ -832,7 +851,7 @@ const upsertCohort = async (
     Partial<
       Pick<
         TeacherCohort,
-        'id' | 'backendIdentifier' | 'term' | 'description'
+        'id' | 'backendIdentifier' | 'term' | 'description' | 'startDate' | 'endDate'
       >
     >,
 ) => {
@@ -854,6 +873,8 @@ const upsertCohort = async (
       cohort: {
         ...(cohort.id ? { id: cohort.id } : {}),
         title: cohort.title.trim(),
+        startDate: normalizeDateValue(cohort.startDate),
+        endDate: normalizeDateValue(cohort.endDate),
       },
       learnerIds: cohort.studentIds,
       learners,
@@ -865,6 +886,8 @@ const upsertCohort = async (
   saveCohortMetadata(response.id, {
     term: cohort.term || '',
     description: cohort.description || '',
+    startDate: normalizeDateValue(cohort.startDate),
+    endDate: normalizeDateValue(cohort.endDate),
   });
 
   const learnerIdBySuffix = new Map(

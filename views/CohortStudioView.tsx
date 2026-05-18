@@ -58,6 +58,8 @@ const emptyCohortForm = {
   title: '',
   term: '',
   description: '',
+  startDate: '',
+  endDate: '',
 };
 
 const emptyCourseForm = {
@@ -109,6 +111,18 @@ const studioSteps: StudioStep[] = [
     description: 'Upload a PDF and save AI-generated module shells.',
   },
 ];
+
+const getCohortDateRangeError = (startDate: string, endDate: string) => {
+  if ((startDate && !endDate) || (!startDate && endDate)) {
+    return 'Set both a start date and an end date for the cohort.';
+  }
+
+  if (startDate && endDate && startDate > endDate) {
+    return 'The cohort start date must be on or before the end date.';
+  }
+
+  return null;
+};
 
 const StepFooter: React.FC<StepFooterProps> = ({
   onBack,
@@ -226,6 +240,8 @@ const CohortStudioView: React.FC = () => {
       title: selectedCohort.title,
       term: selectedCohort.term,
       description: selectedCohort.description,
+      startDate: selectedCohort.startDate,
+      endDate: selectedCohort.endDate,
     });
   }, [selectedCohort]);
 
@@ -354,12 +370,23 @@ const CohortStudioView: React.FC = () => {
     event.preventDefault();
     if (!newCohortForm.title.trim()) return;
 
+    const dateError = getCohortDateRangeError(
+      newCohortForm.startDate,
+      newCohortForm.endDate,
+    );
+    if (dateError) {
+      setWorkspaceMessage(dateError);
+      return;
+    }
+
     const nextId = academyStudioService.makeId('cohort');
     academyStudioService.saveCohort({
       id: nextId,
       title: newCohortForm.title.trim(),
       term: newCohortForm.term.trim(),
       description: newCohortForm.description.trim(),
+      startDate: newCohortForm.startDate.trim(),
+      endDate: newCohortForm.endDate.trim(),
       studentIds: [],
       courseIds: [],
       courseSelections: [],
@@ -377,11 +404,22 @@ const CohortStudioView: React.FC = () => {
   const handleSaveCohortDetails = () => {
     if (!selectedCohort || !cohortForm.title.trim()) return;
 
+    const dateError = getCohortDateRangeError(
+      cohortForm.startDate,
+      cohortForm.endDate,
+    );
+    if (dateError) {
+      setWorkspaceMessage(dateError);
+      return;
+    }
+
     saveCohortRecord({
       ...selectedCohort,
       title: cohortForm.title.trim(),
       term: cohortForm.term.trim(),
       description: cohortForm.description.trim(),
+      startDate: cohortForm.startDate.trim(),
+      endDate: cohortForm.endDate.trim(),
     });
     setWorkspaceMessage('Cohort details saved.');
   };
@@ -807,6 +845,36 @@ const CohortStudioView: React.FC = () => {
                     placeholder="Term or intake"
                     className={inputClass}
                   />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2 text-xs font-semibold text-slate-500">
+                      <span>Start date</span>
+                      <input
+                        type="date"
+                        value={newCohortForm.startDate}
+                        onChange={(event) =>
+                          setNewCohortForm((current) => ({
+                            ...current,
+                            startDate: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="grid gap-2 text-xs font-semibold text-slate-500">
+                      <span>End date</span>
+                      <input
+                        type="date"
+                        value={newCohortForm.endDate}
+                        onChange={(event) =>
+                          setNewCohortForm((current) => ({
+                            ...current,
+                            endDate: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
                   <textarea
                     value={newCohortForm.description}
                     onChange={(event) =>
@@ -873,6 +941,36 @@ const CohortStudioView: React.FC = () => {
                       placeholder="Term or intake"
                       className={inputClass}
                     />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="grid gap-2 text-xs font-semibold text-slate-500">
+                        <span>Start date</span>
+                        <input
+                          type="date"
+                          value={cohortForm.startDate}
+                          onChange={(event) =>
+                            setCohortForm((current) => ({
+                              ...current,
+                              startDate: event.target.value,
+                            }))
+                          }
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="grid gap-2 text-xs font-semibold text-slate-500">
+                        <span>End date</span>
+                        <input
+                          type="date"
+                          value={cohortForm.endDate}
+                          onChange={(event) =>
+                            setCohortForm((current) => ({
+                              ...current,
+                              endDate: event.target.value,
+                            }))
+                          }
+                          className={inputClass}
+                        />
+                      </label>
+                    </div>
                     <textarea
                       value={cohortForm.description}
                       onChange={(event) =>

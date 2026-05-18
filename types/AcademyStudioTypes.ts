@@ -56,6 +56,8 @@ export interface TeacherCohort {
   title: string;
   term: string;
   description: string;
+  startDate: string;
+  endDate: string;
   studentIds: string[];
   courseIds: string[];
   courseSelections: CohortCourseSelection[];

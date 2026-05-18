@@ -1,141 +1,390 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Target,
   Activity,
   AlertTriangle,
-  Brain,
-  Clock,
-  Calendar,
-  GraduationCap,
-  TrendingUp,
-  Download,
-  Settings,
-  Plus,
-  BarChart3,
-  Users,
-  RefreshCw,
   ArrowRightLeft,
+  BarChart3,
+  Brain,
+  Calendar,
+  Clock,
   Clock as ClockIcon,
+  Download,
+  Plus,
+  RefreshCw,
+  Target,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
-import { MOCK_STUDENTS, MOCK_COHORTS } from '../constants';
-import { FacultyAlert, SINACohort } from '../types';
-import {
-  generateFacultyAlerts,
-  getFacultyTimeSavings,
-  exportFacultyReport,
-} from '../utils/facultyEngine';
 import { CohortRiskChart } from '@/components/student_mastery/CohortRiskChart';
 import { SystemMasteryChart } from '@/components/student_mastery/SystemMasteryChart';
+import { academyStudioBackend } from '@/services/academyStudioBackend';
+import { cohortMetricsService } from '@/services/cohortMetricsService';
+import type { TeacherCohort } from '@/types/AcademyStudioTypes';
+import type { CohortMetricsReport } from '@/types/CohortMetricsTypes';
+import type { FacultyAlert, Intervention } from '@/types';
+import {
+  formatPacing,
+  formatScore,
+  getCohortIdentifier,
+  getIdSuffix,
+} from './mastery/masteryShared';
 
 type FacultyView = 'OVERVIEW' | 'INTERVENTIONS';
 type TimeRange = 'WEEK' | 'MONTH' | 'SEMESTER' | 'YEAR';
 
-interface FacultyDashboardProps {
-  onNavigate?: (view, context?: any) => void;
-}
+type ReadinessDistributionEntry = {
+  range: string;
+  count: number;
+};
 
-const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
+type CourseMasteryEntry = {
+  system: string;
+  mastery: number;
+};
+
+const emptyDistribution: ReadinessDistributionEntry[] = [
+  { range: 'High', count: 0 },
+  { range: 'Medium', count: 0 },
+  { range: 'Low', count: 0 },
+  { range: 'Critical', count: 0 },
+];
+
+const buildReadinessDistribution = (
+  report: CohortMetricsReport,
+): ReadinessDistributionEntry[] => [
+  { range: 'High', count: report.readinessDistribution.high },
+  { range: 'Medium', count: report.readinessDistribution.medium },
+  { range: 'Low', count: report.readinessDistribution.low },
+  { range: 'Critical', count: report.readinessDistribution.critical },
+];
+
+const buildTimeSavings = (learnerCount: number, atRiskCount: number) => {
+  const traditionalTime = learnerCount * 0.5;
+  const assistedTime =
+    atRiskCount * (5 / 60) + Math.max(learnerCount - atRiskCount, 0) * (2 / 60);
+  const weeklySavings = Math.max(traditionalTime - assistedTime, 0);
+
+  return {
+    hoursThisWeek: Math.round(weeklySavings * 5),
+    hoursThisMonth: Math.round(weeklySavings * 20),
+    efficiencyGain: Math.round(
+      ((traditionalTime - assistedTime) / (traditionalTime || 1)) * 100,
+    ),
+  };
+};
+
+const buildAlerts = (
+  report: CohortMetricsReport,
+  courseMastery: CourseMasteryEntry[],
+): FacultyAlert[] => {
+  const behindCount = report.statusDistribution.behind || 0;
+  const weakestCourse = courseMastery[0] || null;
+  const alerts: FacultyAlert[] = [];
+
+  if (behindCount > 0) {
+    alerts.push({
+      id: 'alert-at-risk',
+      title: `${behindCount} Students At Risk`,
+      description: `${Math.round((behindCount / Math.max(report.learnerCount, 1)) * 100)}% of the cohort is currently behind pacing expectations.`,
+      priority: behindCount / Math.max(report.learnerCount, 1) >= 0.25 ? 'HIGH' : 'MEDIUM',
+      timeAgo: 'Live',
+      suggestedAction: 'Review intervention queue',
+    });
+  }
+
+  if (weakestCourse) {
+    alerts.push({
+      id: 'alert-weakest-course',
+      title: `${weakestCourse.system} Weakness Detected`,
+      description: `Average mastery in ${weakestCourse.system} is ${weakestCourse.mastery}%.`,
+      priority: weakestCourse.mastery < 60 ? 'HIGH' : 'MEDIUM',
+      timeAgo: 'Live',
+      suggestedAction: `Schedule ${weakestCourse.system} review`,
+    });
+  }
+
+  if (report.window.daysRemaining > 0) {
+    alerts.push({
+      id: 'alert-window',
+      title: `${report.window.daysRemaining} Days Remaining`,
+      description: `${report.window.expectedLOsCovered.toFixed(0)} learning objectives should be covered by now to stay on pace.`,
+      priority: report.window.daysRemaining <= 14 ? 'HIGH' : 'LOW',
+      timeAgo: 'Live',
+      suggestedAction: 'Align pacing plan',
+    });
+  }
+
+  if (alerts.length > 0) return alerts;
+
+  return [
+    {
+      id: 'alert-clear',
+      title: 'No Priority Alerts',
+      description: 'This cohort currently has no critical readiness or pacing flags.',
+      priority: 'LOW',
+      timeAgo: 'Live',
+    },
+  ];
+};
+
+// TODO: restore per-learner student tagging once the paginated cohort roster
+// is integrated here. The cohort metrics endpoint no longer returns the full
+// learner list inline; intervention suggestions below derive only from the
+// aggregate statusDistribution counts.
+const buildInterventions = (
+  report: CohortMetricsReport,
+  courseMastery: CourseMasteryEntry[],
+): Intervention[] => {
+  const behindCount = report.statusDistribution.behind || 0;
+  const aheadCount = report.statusDistribution.ahead || 0;
+  const weakestCourse = courseMastery[0] || null;
+  const interventions: Intervention[] = [];
+
+  if (weakestCourse) {
+    interventions.push({
+      id: 'intervention-course-review',
+      priority: weakestCourse.mastery < 60 ? 'HIGH' : 'MEDIUM',
+      title: `${weakestCourse.system} Review Session`,
+      description: 'Targeted review session to close the largest measured course gap across the cohort.',
+      estimatedTime: '2 hours',
+      expectedImpact: Math.max(4, Math.round((80 - weakestCourse.mastery) / 3)),
+      confidence: weakestCourse.mastery < 60 ? 91 : 84,
+      studentCount: Math.max(behindCount, 1),
+      studentIds: [],
+    });
+  }
+
+  if (behindCount > 0) {
+    interventions.push({
+      id: 'intervention-behind-learners',
+      priority: behindCount >= Math.max(report.learnerCount * 0.25, 1) ? 'HIGH' : 'MEDIUM',
+      title: 'Pacing Reset Session',
+      description: 'Focused advising block for learners who are behind expected cohort progress.',
+      estimatedTime: '90 minutes',
+      expectedImpact: 6,
+      confidence: 88,
+      studentCount: behindCount,
+      studentIds: [],
+    });
+  }
+
+  if (aheadCount > 0) {
+    interventions.push({
+      id: 'intervention-peer-support',
+      priority: 'LOW',
+      title: 'Peer Mentoring Group',
+      description: 'Use ahead learners to support on-track peers in guided review sessions.',
+      estimatedTime: '1 hour',
+      expectedImpact: 3,
+      confidence: 79,
+      studentCount: aheadCount,
+      studentIds: [],
+    });
+  }
+
+  return interventions.slice(0, 3);
+};
+
+const FacultyDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<FacultyView>('OVERVIEW');
-  const [selectedCohortId, setSelectedCohortId] =
-    useState<string>('COH-MS1-FALL');
+  const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('SEMESTER');
   const [showAtRiskOnly, setShowAtRiskOnly] = useState(false);
-  const [alerts, setAlerts] = useState<FacultyAlert[]>([]);
 
-  // --- DATA PROCESSING via Static Mock (SSOT) ---
-  const currentCohortDef = useMemo(
+  const [cohorts, setCohorts] = useState<TeacherCohort[]>([]);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  const [cohortReport, setCohortReport] = useState<CohortMetricsReport | null>(null);
+  const [isCohortLoading, setIsCohortLoading] = useState(false);
+  const [cohortError, setCohortError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setIsCatalogLoading(true);
+    setCatalogError(null);
+
+    academyStudioBackend
+      .loadCatalogSnapshot()
+      .then((snapshot) => {
+        if (!active) return;
+        setCohorts(snapshot.cohorts);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error('Failed to load faculty dashboard catalog:', error);
+        setCatalogError(
+          error instanceof Error ? error.message : 'Unable to load cohorts.',
+        );
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsCatalogLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cohorts.length) {
+      setSelectedCohortId(null);
+      return;
+    }
+
+    if (
+      !selectedCohortId ||
+      !cohorts.some((cohort) => cohort.id === selectedCohortId)
+    ) {
+      setSelectedCohortId(cohorts[0].id);
+    }
+  }, [cohorts, selectedCohortId]);
+
+  const selectedCohort = useMemo(
+    () => cohorts.find((cohort) => cohort.id === selectedCohortId) || null,
+    [cohorts, selectedCohortId],
+  );
+
+  useEffect(() => {
+    if (!selectedCohort) {
+      setCohortReport(null);
+      return;
+    }
+
+    let active = true;
+    setCohortReport(null);
+    setIsCohortLoading(true);
+    setCohortError(null);
+
+    cohortMetricsService
+      .getCohortMetrics(getCohortIdentifier(selectedCohort))
+      .then((report) => {
+        if (!active) return;
+        setCohortReport(report);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error('Failed to load cohort metrics:', error);
+        setCohortError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load cohort metrics.',
+        );
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsCohortLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedCohort]);
+
+  const courseMastery = useMemo(
     () =>
-      MOCK_COHORTS.find((c) => c.id === selectedCohortId) || MOCK_COHORTS[0],
-    [selectedCohortId],
+      (cohortReport?.courses || [])
+        .map((course) => ({
+          system: course.courseTitle,
+          mastery: formatScore(course.metrics.mastery),
+        }))
+        .sort((left, right) => left.mastery - right.mastery),
+    [cohortReport],
   );
 
-  const cohortStudentsRaw = useMemo(
-    () => MOCK_STUDENTS.filter((s) => s.cohortId === selectedCohortId),
-    [selectedCohortId],
-  );
+  const readinessDistribution = useMemo(() => {
+    if (!cohortReport) return emptyDistribution;
 
-  // Use static mock data to generate the unified SINACohort model
-  const cohortData: SINACohort = useMemo(
-    () => ({
-      analytics: {
-        avgReadiness: 72,
-        readinessChange: '+4%',
-        atRiskCount: 12,
-        riskChange: '-2',
-        avgTAPR: 85,
-        taprChange: '+1.2',
-        avgCoverage: 64,
-        coverageChange: '+8%',
-        readinessDistribution: [
-          { range: 'High', count: 45 },
-          { range: 'Medium', count: 30 },
-          { range: 'Low', count: 12 },
-          { range: 'Critical', count: 5 },
-        ],
-        systemMastery: [
-          { system: 'Cardiovascular', mastery: 82 },
-          { system: 'Respiratory', mastery: 78 },
-          { system: 'Renal', mastery: 65 },
-          { system: 'Neurology', mastery: 70 },
-          { system: 'Gastrointestinal', mastery: 75 },
-        ],
-      },
-      interventions: [
-        {
-          id: '1',
-          priority: 'HIGH',
-          title: 'Renal Physiology Workshop',
-          description:
-            'Targeted session to address specific gaps in renal physiology concepts observed across the cohort.',
-          estimatedTime: '2 hours',
-          expectedImpact: 8,
-          confidence: 92,
-          studentCount: 15,
-          studentIds: ['S001', 'S005', 'S012'],
-        },
-        {
-          id: '2',
-          priority: 'MEDIUM',
-          title: 'Pharmacology Review',
-          description:
-            'Review session for key pharmacological agents and mechanisms.',
-          estimatedTime: '1.5 hours',
-          expectedImpact: 5,
-          confidence: 85,
-          studentCount: 22,
-          studentIds: ['S002', 'S008'],
-        },
-        {
-          id: '3',
-          priority: 'LOW',
-          title: 'Study Group Formation',
-          description:
-            'Facilitate peer-led study groups for students with similar learning paces.',
-          estimatedTime: '1 hour',
-          expectedImpact: 3,
-          confidence: 78,
-          studentCount: 10,
-          studentIds: [],
-        },
-      ],
-    }),
-    [cohortStudentsRaw, selectedCohortId],
-  );
+    const distribution = buildReadinessDistribution(cohortReport);
+    if (!showAtRiskOnly) return distribution;
+    return distribution.filter(
+      (entry) => entry.range === 'Low' || entry.range === 'Critical',
+    );
+  }, [cohortReport, showAtRiskOnly]);
 
   const timeSavings = useMemo(
-    () => getFacultyTimeSavings(cohortStudentsRaw),
-    [cohortStudentsRaw],
+    () =>
+      buildTimeSavings(
+        cohortReport?.learnerCount || selectedCohort?.studentIds.length || 0,
+        cohortReport?.atRiskCount || 0,
+      ),
+    [cohortReport, selectedCohort],
   );
 
-  // Generate alerts (can also be moved to backend service in future)
-  useEffect(() => {
-    const newAlerts = generateFacultyAlerts(cohortStudentsRaw);
-    setAlerts(newAlerts);
-  }, [cohortStudentsRaw]);
+  const alerts = useMemo(
+    () => (cohortReport ? buildAlerts(cohortReport, courseMastery) : []),
+    [cohortReport, courseMastery],
+  );
 
-  // --- COMPONENTS ---
+  const interventions = useMemo(
+    () =>
+      cohortReport ? buildInterventions(cohortReport, courseMastery) : [],
+    [cohortReport, courseMastery],
+  );
 
-  // 1. Header Navigation
+  const analytics = useMemo(() => {
+    if (!cohortReport) {
+      return {
+        avgReadiness: 0,
+        atRiskCount: 0,
+        avgPacing: 0,
+        avgCoverage: 0,
+      };
+    }
+
+    return {
+      avgReadiness: formatScore(cohortReport.metrics.readiness),
+      atRiskCount: cohortReport.atRiskCount || 0,
+      avgPacing: cohortReport.metrics.pacing,
+      avgCoverage: formatScore(cohortReport.metrics.coverage),
+    };
+  }, [cohortReport]);
+
+  const selectedCohortName = selectedCohort?.title || 'No cohort selected';
+  const selectedCohortMeta = selectedCohort?.term || `${cohortReport?.learnerCount || 0} learners`;
+  const weakestCourse = courseMastery[0] || null;
+
+  const handleExportReport = () => {
+    if (!selectedCohort || !cohortReport || typeof window === 'undefined') return;
+
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            exportedAt: new Date().toISOString(),
+            cohort: {
+              id: selectedCohort.id,
+              title: selectedCohort.title,
+              term: selectedCohort.term,
+            },
+            cohortMetrics: cohortReport,
+            courseMastery,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: 'application/json' },
+    );
+
+    const url = window.URL.createObjectURL(blob);
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = `${getIdSuffix(selectedCohort.id)}-faculty-report.json`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleLaunchAnalytics = () => {
+    if (!selectedCohort) return;
+    navigate(
+      `/mastery/cohorts/${encodeURIComponent(getIdSuffix(selectedCohort.id))}`,
+    );
+  };
+
   const HeaderNavigation = () => (
     <div>
       <div className="flex items-center justify-between">
@@ -143,21 +392,21 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
             <div className="flex items-center justify-between xl:justify-start gap-2 p-1.5 bg-white rounded-[2.5rem] w-full xl:w-fit overflow-x-auto no-scrollbar">
               {[
-                { id: 'OVERVIEW', icon: BarChart3, label: 'Overview' },
-                { id: 'INTERVENTIONS', icon: Brain, label: 'Interventions' },
+                { id: 'OVERVIEW' as const, icon: BarChart3, label: 'Overview' },
+                {
+                  id: 'INTERVENTIONS' as const,
+                  icon: Brain,
+                  label: 'Interventions',
+                },
               ].map((type) => (
                 <button
-                  key={type}
+                  key={type.id}
                   onClick={() => {
                     setActiveView(type.id);
                   }}
                   className={`flex-1 xl:flex-none flex items-center justify-center gap-2 xl:gap-3 px-4 xl:px-8 py-3 xl:py-3.5 rounded-[2rem] text-[10px] xl:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeView === type.id ? 'bg-[#1BD183] text-white shadow-md shadow-[#1BD183]/20' : 'text-slate-500 hover:bg-slate-300/50'}`}
                 >
-                  {type.id === 'OVERVIEW' ? (
-                    <BarChart3 size={14} />
-                  ) : (
-                    <Brain size={14} />
-                  )}{' '}
+                  <type.icon size={14} />
                   {type.label}
                 </button>
               ))}
@@ -167,20 +416,18 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
 
         <div className="flex items-center gap-4">
           <button
-              onClick={() =>
-                exportFacultyReport(cohortStudentsRaw, cohortData.analytics)
-              }
-              className="w-full xl:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "
-            >
-              <Download size={14} />
-              Export Report
-            </button>
+            onClick={handleExportReport}
+            disabled={!cohortReport}
+            className="w-full xl:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            <Download size={14} />
+            Export Report
+          </button>
         </div>
       </div>
     </div>
   );
 
-  // 2. Cohort Selector & Quick Stats
   const CohortSelector = () => (
     <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm">
       <div className="flex items-center justify-between mb-6">
@@ -207,7 +454,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            {MOCK_COHORTS.map((cohort) => (
+            {cohorts.map((cohort) => (
               <button
                 key={cohort.id}
                 onClick={() => setSelectedCohortId(cohort.id)}
@@ -220,10 +467,14 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
                 <div
                   className={`font-black text-sm mb-1 ${selectedCohortId === cohort.id ? 'text-[#1BD183]' : 'text-slate-700'}`}
                 >
-                  {cohort.yearLevel} {cohort.intakeTerm}
+                  {cohort.title}
                 </div>
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <Calendar size={12} /> {cohort.studentCount} students
+                  <Calendar size={12} />
+                  {cohortReport && selectedCohortId === cohort.id
+                    ? cohortReport.learnerCount
+                    : cohort.studentIds.length}{' '}
+                  learners
                 </div>
               </button>
             ))}
@@ -236,7 +487,8 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
                 Active View
               </div>
-              <div className="font-bold text-lg">{currentCohortDef.name}</div>
+              <div className="font-bold text-lg">{selectedCohortName}</div>
+              <div className="text-xs text-slate-400 mt-1">{selectedCohortMeta}</div>
             </div>
             <Users className="text-[#1BD183]" />
           </div>
@@ -259,48 +511,40 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
     </div>
   );
 
-  // 3. Overview Dashboard (Default View)
   const OverviewDashboard = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Key Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Cohort Readiness"
-          value={`${cohortData.analytics.avgReadiness}%`}
-          change={cohortData.analytics.readinessChange}
+          value={`${analytics.avgReadiness}%`}
           icon={<Target className="text-[#1BD183]" size={24} />}
           color="emerald"
           subtitle="USMLE Step 1 Projection"
         />
         <MetricCard
           title="At Risk Students"
-          value={cohortData.analytics.atRiskCount}
-          change={cohortData.analytics.riskChange}
+          value={analytics.atRiskCount}
           icon={<AlertTriangle className="text-rose-600" size={24} />}
           color="rose"
           subtitle="Early detection rate"
         />
         <MetricCard
           title="Avg TAPR"
-          value={cohortData.analytics.avgTAPR}
-          change={cohortData.analytics.taprChange}
+          value={formatPacing(analytics.avgPacing)}
           icon={<Clock className="text-amber-600" size={24} />}
           color="amber"
           subtitle="Pacing velocity"
         />
         <MetricCard
           title="Coverage"
-          value={`${cohortData.analytics.avgCoverage}%`}
-          change={cohortData.analytics.coverageChange}
+          value={`${analytics.avgCoverage}%`}
           icon={<Activity className="text-emerald-600" size={24} />}
           color="emerald"
           subtitle="Curriculum completion"
         />
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Readiness Distribution */}
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-black text-slate-900 uppercase tracking-tight">
@@ -319,33 +563,39 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
               </button>
             </div>
           </div>
-          <CohortRiskChart data={cohortData.analytics.readinessDistribution} />
+          <CohortRiskChart data={readinessDistribution} />
         </div>
 
-        {/* System Mastery Comparison */}
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-black text-slate-900 uppercase tracking-tight">
-              System Mastery
+              Courses Mastery
             </h4>
             <div className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg">
-              Weakest: <span className="text-rose-600 font-black">Renal</span>
+              Weakest:{' '}
+              <span className="text-rose-600 font-black">
+                {weakestCourse?.system || 'No data'}
+              </span>
             </div>
           </div>
-          <SystemMasteryChart data={cohortData.analytics.systemMastery} />
+          {courseMastery.length > 0 ? (
+            <SystemMasteryChart data={courseMastery} />
+          ) : (
+            <div className="min-h-[250px] flex items-center justify-center text-xs font-bold uppercase tracking-widest text-slate-400">
+              No course mastery data
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Alerts & Interventions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Faculty Alerts */}
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm h-full">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-black text-slate-900 uppercase tracking-tight">
               Priority Alerts
             </h4>
             <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-widest">
-              {alerts.filter((a) => a.priority === 'HIGH').length} Critical
+              {alerts.filter((alert) => alert.priority === 'HIGH').length} Critical
             </span>
           </div>
           <div className="space-y-3">
@@ -385,7 +635,6 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-6">
@@ -412,9 +661,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
                 </div>
               </button>
               <button
-                onClick={() =>
-                  onNavigate?.('MASTERY', { cohortId: selectedCohortId })
-                }
+                onClick={handleLaunchAnalytics}
                 className="p-5 bg-purple-50 text-purple-700 rounded-2xl hover:bg-purple-100 transition-colors text-left group col-span-2"
               >
                 <div className="font-black text-sm mb-1 group-hover:translate-x-1 transition-transform flex items-center gap-2">
@@ -427,22 +674,29 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* System Insights */}
           <div className="mt-8 pt-6 border-t border-slate-100">
             <div className="flex items-start gap-4 p-4 bg-slate-900 rounded-2xl text-white shadow-lg">
               <Brain className="text-[#1BD183] mt-1 shrink-0" size={24} />
               <div>
                 <div className="font-black text-sm uppercase tracking-widest text-slate-400 mb-1">
-                  System Insight
+                  Course Insight
                 </div>
                 <div className="text-sm font-medium leading-relaxed">
-                  Cohort would benefit from a focused{' '}
-                  <strong className="text-white">Renal workshop</strong>.
-                  Estimated impact:{' '}
-                  <span className="text-emerald-400 font-bold">
-                    +8% readiness
-                  </span>
-                  .
+                  {weakestCourse ? (
+                    <>
+                      Cohort would benefit from a focused{' '}
+                      <strong className="text-white">
+                        {weakestCourse.system} review
+                      </strong>
+                      . Estimated impact:{' '}
+                      <span className="text-emerald-400 font-bold">
+                        +{Math.max(4, Math.round((80 - weakestCourse.mastery) / 3))}% readiness
+                      </span>
+                      .
+                    </>
+                  ) : (
+                    'Course-level insight will appear once detailed cohort metrics are available.'
+                  )}
                 </div>
               </div>
             </div>
@@ -452,10 +706,8 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
     </div>
   );
 
-  // 5. Interventions View using unified SINACohort.interventions
   const InterventionsView = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-      {/* Intervention Queue */}
       <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
           <div>
@@ -463,15 +715,12 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
               Intervention Queue
             </h3>
             <p className="text-sm text-slate-500 font-medium mt-1">
-              System-recommended actions prioritized by impact
+              Course-recommended actions prioritized by impact
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-rose-200">
-              {
-                cohortData.interventions.filter((i) => i.priority === 'HIGH')
-                  .length
-              }{' '}
+              {interventions.filter((intervention) => intervention.priority === 'HIGH').length}{' '}
               Critical
             </span>
             <button className="px-5 py-2.5 bg-[#1BD183] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#1BD183]/90 transition shadow-lg shadow-[#1BD183]/20 flex items-center gap-2 active:scale-95">
@@ -482,7 +731,7 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
         </div>
 
         <div className="space-y-4">
-          {cohortData.interventions.map((intervention) => (
+          {interventions.map((intervention) => (
             <div
               key={intervention.id}
               className="p-6 border border-slate-200 rounded-[1.5rem] hover:border-emerald-200 hover:shadow-md transition-all group bg-white"
@@ -545,83 +794,38 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
-              {/* Students affected */}
-              {intervention.studentIds &&
-                intervention.studentIds.length > 0 && (
-                  <div className="mt-6 pt-6 border-t border-slate-100">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                      Affected Students:
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {intervention.studentIds
-                        .slice(0, 5)
-                        .map((studentId: string) => {
-                          const student = cohortStudentsRaw.find(
-                            (s) => s.studentId === studentId,
-                          );
-                          return student ? (
-                            <div
-                              key={studentId}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg"
-                            >
-                              <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                              <span className="text-xs font-bold text-slate-700">
-                                {student.studentName}
-                              </span>
-                            </div>
-                          ) : null;
-                        })}
-                      {intervention.studentIds.length > 5 && (
-                        <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-500">
-                          +{intervention.studentIds.length - 5} more
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
             </div>
           ))}
+
+          {interventions.length === 0 && (
+            <div className="p-8 text-center text-sm font-medium text-slate-500 bg-slate-50 rounded-[1.5rem]">
+              No intervention recommendations available for this cohort yet.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Intervention History & Impact */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
           <h4 className="font-black text-slate-900 uppercase tracking-tight mb-6">
             Intervention History
           </h4>
           <div className="space-y-3">
-            {[
-              {
-                type: 'Renal Workshop',
-                date: '2 weeks ago',
-                impact: '+8% readiness',
-              },
-              {
-                type: 'Study Group',
-                date: '3 weeks ago',
-                impact: '+5% engagement',
-              },
-              {
-                type: 'Flashcard Review',
-                date: '1 month ago',
-                impact: '+6% mastery',
-              },
-            ].map((item, index) => (
+            {alerts.slice(0, 3).map((alert) => (
               <div
-                key={index}
+                key={alert.id}
                 className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100"
               >
                 <div>
                   <div className="font-bold text-slate-900 text-sm">
-                    {item.type}
+                    {alert.title}
                   </div>
                   <div className="text-xs font-medium text-slate-500">
-                    {item.date}
+                    {alert.timeAgo}
                   </div>
                 </div>
                 <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-                  {item.impact}
+                  {alert.priority}
                 </div>
               </div>
             ))}
@@ -638,10 +842,10 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
                 Select Intervention Type
               </label>
               <select className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-[#1BD183]">
-                <option>Targeted Workshop</option>
-                <option>Study Group Session</option>
-                <option>Individual Tutoring</option>
-                <option>Resource Assignment</option>
+                {interventions.map((intervention) => (
+                  <option key={intervention.id}>{intervention.title}</option>
+                ))}
+                {interventions.length === 0 && <option>Targeted Workshop</option>}
               </select>
             </div>
             <div>
@@ -661,10 +865,10 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
                 Projection
               </div>
               <div className="text-2xl font-black text-[#1BD183]">
-                +6-9% Readiness Impact
+                +{interventions[0]?.expectedImpact || 0}% Readiness Impact
               </div>
               <div className="text-[10px] font-medium text-[#1BD183]/80 mt-2">
-                Based on similar interventions with this cohort
+                Based on current cohort metrics and recommended interventions
               </div>
             </div>
             <button className="w-full py-4 bg-[#1BD183] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#1BD183]/90 transition shadow-lg flex items-center justify-center gap-2">
@@ -676,12 +880,45 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
     </div>
   );
 
-  // --- MAIN RENDER ---
+  if (isCatalogLoading && cohorts.length === 0) {
+    return (
+      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
+        Loading faculty dashboard…
+      </div>
+    );
+  }
+
+  if (!selectedCohort) {
+    return (
+      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
+        No cohorts available yet.
+      </div>
+    );
+  }
+
   return (
-    <div className="">
+    <div>
       <HeaderNavigation />
 
-      <div className="pt-6">
+      <div className="pt-6 space-y-6">
+        {catalogError && (
+          <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800 shadow-sm">
+            {catalogError}
+          </div>
+        )}
+
+        {cohortError && (
+          <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700 shadow-sm">
+            {cohortError}
+          </div>
+        )}
+
+        {isCohortLoading && (
+          <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+            Loading live cohort metrics…
+          </div>
+        )}
+
         <CohortSelector />
 
         <div className="mt-8">
@@ -693,9 +930,22 @@ const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }) => {
   );
 };
 
-// Helper Components
-const MetricCard = ({ title, value, change, icon, color, subtitle }: any) => {
-  const colorClasses: any = {
+const MetricCard = ({
+  title,
+  value,
+  change,
+  icon,
+  color,
+  subtitle,
+}: {
+  title: string;
+  value: React.ReactNode;
+  change?: string;
+  icon: React.ReactNode;
+  color: 'emerald' | 'rose' | 'amber';
+  subtitle?: string;
+}) => {
+  const colorClasses = {
     emerald: 'bg-[#1BD183]/10 text-[#1BD183]',
     rose: 'bg-rose-50 text-rose-700',
     amber: 'bg-amber-50 text-amber-700',

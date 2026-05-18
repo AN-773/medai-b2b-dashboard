@@ -45,7 +45,11 @@ const safeStorage = {
               ),
             )
           : [],
-        cohorts: Array.isArray(parsed.cohorts) ? parsed.cohorts : [],
+        cohorts: Array.isArray(parsed.cohorts)
+          ? parsed.cohorts.map((cohort) =>
+              normalizeCohort(cohort as Partial<TeacherCohort>),
+            )
+          : [],
       };
     } catch (error) {
       console.error('Failed to parse academy studio state:', error);
@@ -95,6 +99,32 @@ const normalizeCourse = (
         : [],
     createdAt: course.createdAt || timestamp,
     updatedAt: course.updatedAt || timestamp,
+  };
+};
+
+const normalizeDateValue = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.includes('T') ? trimmed.slice(0, 10) : trimmed;
+};
+
+const normalizeCohort = (cohort: Partial<TeacherCohort>): TeacherCohort => {
+  const timestamp = nowIso();
+  return {
+    id: cohort.id || makeId('cohort'),
+    title: cohort.title?.trim() || 'Untitled Cohort',
+    term: cohort.term?.trim() || '',
+    description: cohort.description?.trim() || '',
+    startDate: normalizeDateValue(cohort.startDate),
+    endDate: normalizeDateValue(cohort.endDate),
+    studentIds: Array.isArray(cohort.studentIds) ? cohort.studentIds : [],
+    courseIds: Array.isArray(cohort.courseIds) ? cohort.courseIds : [],
+    courseSelections: Array.isArray(cohort.courseSelections)
+      ? cohort.courseSelections
+      : [],
+    createdAt: cohort.createdAt || timestamp,
+    updatedAt: cohort.updatedAt || timestamp,
   };
 };
 
@@ -338,6 +368,8 @@ export const academyStudioService = {
       title: cohort.title,
       term: cohort.term?.trim() || '',
       description: cohort.description?.trim() || '',
+      startDate: normalizeDateValue(cohort.startDate),
+      endDate: normalizeDateValue(cohort.endDate),
       studentIds: cohort.studentIds || [],
       courseIds: cohort.courseIds || [],
       courseSelections: cohort.courseSelections || [],
