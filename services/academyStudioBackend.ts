@@ -216,6 +216,13 @@ const normalizeDateValue = (value: string | null | undefined) => {
   return trimmed.includes('T') ? trimmed.slice(0, 10) : trimmed;
 };
 
+const toRfc3339DateTime = (value: string | null | undefined) => {
+  const normalizedDate = normalizeDateValue(value);
+  if (!normalizedDate) return undefined;
+
+  return `${normalizedDate}T00:00:00Z`;
+};
+
 const buildLearnerCode = (name: string, id: string) => {
   const normalizedName = name
     .replace(/[^a-z0-9]/gi, '')
@@ -856,6 +863,8 @@ const upsertCohort = async (
     >,
 ) => {
   const metadata = readMetadata();
+  const startsAt = toRfc3339DateTime(cohort.startDate);
+  const endsAt = toRfc3339DateTime(cohort.endDate);
   const learners = cohort.studentIds.map((studentId) => {
     const profile = getLearnerProfileForId(metadata, studentId);
 
@@ -874,8 +883,8 @@ const upsertCohort = async (
       cohort: {
         ...(cohort.id ? { id: cohort.id } : {}),
         title: cohort.title.trim(),
-        startDate: normalizeDateValue(cohort.startDate),
-        endDate: normalizeDateValue(cohort.endDate),
+        ...(startsAt ? { startsAt } : {}),
+        ...(endsAt ? { endsAt } : {}),
       },
       learnerIds: cohort.studentIds,
       learners,
