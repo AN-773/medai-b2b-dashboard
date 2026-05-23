@@ -81,6 +81,7 @@ const toBackendItem = (item: BackendApiItem): BackendItem => ({
 const QuestionWorkbenchView: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const redirectPath = searchParams.get('redirect');
   const [activeItemType, setActiveItemType] = useState<ItemType>(ItemType.MCQ);
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('DASHBOARD');
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>(
@@ -239,21 +240,38 @@ const QuestionWorkbenchView: React.FC = () => {
   }, []);
 
   const handleEditItem = (type: ItemType, identifier: string) => {
-    setSearchParams({ questionId: identifier });
+    const params = new URLSearchParams();
+    params.set('questionId', identifier);
+    if (redirectPath) {
+      params.set('redirect', redirectPath);
+    }
+    setSearchParams(params);
   };
 
   const handleCreateNew = () => {
+    const params = new URLSearchParams();
+
     if (activeItemType === ItemType.LECTURE) {
-      setSearchParams({ questionId: 'new_lecture' });
+      params.set('questionId', 'new_lecture');
     } else if (activeItemType === ItemType.SAQ) {
-      setSearchParams({ questionId: 'new_saq' });
+      params.set('questionId', 'new_saq');
     } else {
-      setSearchParams({ questionId: 'new' });
+      params.set('questionId', 'new');
     }
+
+    if (redirectPath) {
+      params.set('redirect', redirectPath);
+    }
+
+    setSearchParams(params);
   };
 
   const handleBackToDashboard = () => {
-    debugger
+    if (redirectPath) {
+      navigate(redirectPath);
+      return;
+    }
+
     setSearchParams({});
     setEditingItem(null);
   };
