@@ -111,32 +111,32 @@ const QuestionWorkbenchView: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const loadItems = async (itemType: ItemType = activeItemType) => {
+    setIsLoading(true);
+    try {
+      const typeFilter = itemType.toLowerCase();
+      const [draft, live, pending, response] = await Promise.all([
+        testsService.getItems(1, 1, typeFilter, 'draft'),
+        testsService.getItems(1, 1, typeFilter, 'live'),
+        testsService.getItems(1, 1, typeFilter, 'pending'),
+        testsService.getItems(1, 200, typeFilter),
+      ]);
+
+      setTotalQuestions(response.total);
+      setTotalDraftQuestions(draft.total + pending.total);
+      setTotalLiveQuestions(live.total);
+      setItemsList(response.items);
+    } catch (error) {
+      console.error('Failed to fetch items:', error);
+      showToast('Failed to fetch items', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch items on mount based on activeItemType
   useEffect(() => {
-    const fetchItems = async () => {
-      setIsLoading(true);
-      try {
-        const typeFilter = activeItemType.toLowerCase();
-        const [draft, live, pending, response] = await Promise.all([
-          testsService.getItems(1, 1, typeFilter, 'draft'),
-          testsService.getItems(1, 1, typeFilter, 'live'),
-          testsService.getItems(1, 1, typeFilter, 'pending'),
-          testsService.getItems(1, 200, typeFilter),
-        ]);
-
-        setTotalQuestions(response.total);
-        setTotalDraftQuestions(draft.total + pending.total);
-        setTotalLiveQuestions(live.total);
-        setItemsList(response.items);
-      } catch (error) {
-        console.error('Failed to fetch items:', error);
-        showToast('Failed to fetch items', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchItems();
+    void loadItems();
   }, [activeItemType]);
 
   // Deep-link: auto-open query param
@@ -332,6 +332,18 @@ const QuestionWorkbenchView: React.FC = () => {
     }
   };
 
+  const handleDeleteItem = async (identifier: string) => {
+    try {
+      showToast('Deleting item...', 'success');
+      await testsService.deleteItem(identifier);
+      await loadItems();
+      showToast('Asset Deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      showToast('Failed to delete item', 'error');
+    }
+  };
+
   if (viewMode === 'QUESTION_EDITOR')
     return (
       <QuestionEditor
@@ -472,10 +484,7 @@ const QuestionWorkbenchView: React.FC = () => {
               onCreateClick={handleCreateNew}
               onViewAllClick={() => navigate('/bank-explorer')}
               onEditClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
-              onDelete={(id) => {
-                setItemsList((prev) => prev.filter((i) => i.id !== id));
-                showToast('Asset Deleted', 'success');
-              }}
+              onDelete={handleDeleteItem}
               onIssueClick={() => {
                 setActiveTab('INTEGRITY');
               }}

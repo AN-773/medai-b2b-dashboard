@@ -19,7 +19,7 @@ interface ItemModuleDashboardProps {
   onCreateClick: () => void;
   onViewAllClick: () => void;
   onEditClick: (question: Question) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onIssueClick: (issue: Issue) => void;
   onItemClick?: (question: Question) => void;
   questions: Question[];
@@ -109,10 +109,13 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
 
   const activeIssues = issues.filter(i => i.status === 'Open').slice(0, 5);
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = (e: React.MouseEvent, identifier?: string) => {
     e.stopPropagation();
+    if (!identifier) {
+      return;
+    }
     if (window.confirm(`Are you sure you want to delete this ${config.singular.toLowerCase()}? This action cannot be undone.`)) {
-      onDelete(id);
+      onDelete(identifier);
     }
   };
 
@@ -195,7 +198,8 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
                           <FileEdit size={16} />
                         </button>
                         <button 
-                          onClick={(e) => handleDelete(e, q.id)}
+                          onClick={(e) => handleDelete(e, q.identifier)}
+                          disabled={!q.identifier}
                           className="p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-colors"
                         >
                           <Trash2 size={16} />
