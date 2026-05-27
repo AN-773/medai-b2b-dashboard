@@ -198,32 +198,37 @@ const DisciplinesView: React.FC = () => {
     setEditingTitle('');
   };
 
-  const focusMovePanel = () => {
-    movePanelRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-    });
-  };
-
   const assignMoveDiscipline = (
     type: 'source' | 'target',
     discipline: Discipline,
   ) => {
     resetMessages();
+    let nextSourceId = moveSourceId;
+    let nextTargetId = moveTargetId;
 
     if (type === 'source') {
-      setMoveSourceId(discipline.id);
+      nextSourceId = discipline.id;
       if (moveTargetId === discipline.id) {
-        setMoveTargetId('');
+        nextTargetId = '';
       }
     } else {
-      setMoveTargetId(discipline.id);
+      nextTargetId = discipline.id;
       if (moveSourceId === discipline.id) {
-        setMoveSourceId('');
+        nextSourceId = '';
       }
     }
 
-    focusMovePanel();
+    setMoveSourceId(nextSourceId);
+    setMoveTargetId(nextTargetId);
+
+    if (nextSourceId && nextTargetId) {
+      requestAnimationFrame(() => {
+        movePanelRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+    }
   };
 
   const handleSwapMoveDisciplines = () => {
@@ -390,211 +395,220 @@ const DisciplinesView: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-start">
-          <form onSubmit={handleCreate} className={`${actionCardClass} space-y-5`}>
-            <div>
-              <p className="text-sm font-bold text-slate-900">
-                Add a discipline
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                New disciplines become available anywhere the taxonomy is used.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="discipline-title"
-                className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500"
-              >
-                Title
-              </label>
-              <input
-                id="discipline-title"
-                type="text"
-                value={newTitle}
-                onChange={(event) => setNewTitle(event.target.value)}
-                placeholder="Pathology"
-                className={inputClass}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSaving || isMoving}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="space-y-6 p-6">
+          <div className="grid gap-6 xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.45fr)] xl:items-start">
+            <form
+              onSubmit={handleCreate}
+              className={`${actionCardClass} flex h-full flex-col gap-5`}
             >
-              {isSaving && !editingId ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Plus size={16} />
-              )}
-              Create Discipline
-            </button>
-          </form>
-
-          <div
-            ref={movePanelRef}
-            className="rounded-[1.75rem] border border-emerald-200 bg-gradient-to-br from-white via-emerald-50/60 to-slate-50 p-5 shadow-sm"
-          >
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-900">
-                    Move learning objectives
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Reassign all linked objectives from one discipline to
-                    another without opening each objective individually.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSwapMoveDisciplines}
-                  disabled={isMoving || (!moveSourceId && !moveTargetId)}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <ArrowRightLeft size={16} />
-                  Swap
-                </button>
+              <div>
+                <p className="text-sm font-bold text-slate-900">
+                  Add a discipline
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  New disciplines become available anywhere the taxonomy is used.
+                </p>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <SearchableSelect
-                  label="From"
-                  options={moveSourceOptions}
-                  value={moveSourceId}
-                  onChange={(value) => {
-                    resetMessages();
-                    setMoveSourceId(value);
-                  }}
-                  placeholder="Select source discipline..."
-                  allOption={{ id: '', name: 'Select source discipline...' }}
-                  disabled={isMoving || isSaving || disciplines.length === 0}
-                />
-
-                <SearchableSelect
-                  label="To"
-                  options={moveTargetOptions}
-                  value={moveTargetId}
-                  onChange={(value) => {
-                    resetMessages();
-                    setMoveTargetId(value);
-                  }}
-                  placeholder="Select target discipline..."
-                  allOption={{ id: '', name: 'Select target discipline...' }}
-                  disabled={isMoving || isSaving || disciplines.length === 0}
+              <div className="space-y-2">
+                <label
+                  htmlFor="discipline-title"
+                  className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500"
+                >
+                  Title
+                </label>
+                <input
+                  id="discipline-title"
+                  type="text"
+                  value={newTitle}
+                  onChange={(event) => setNewTitle(event.target.value)}
+                  placeholder="Pathology"
+                  className={inputClass}
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    Source
-                  </p>
-                  {moveSourceDiscipline ? (
-                    <>
-                      <p className="mt-2 truncate text-sm font-bold text-slate-900">
-                        {moveSourceDiscipline.title}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {formatLearningObjectiveCount(
-                          moveSourceDiscipline.learningObjectivesTotal,
-                        )}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-500">
-                      Pick the discipline currently holding the objective links.
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    Target
-                  </p>
-                  {moveTargetDiscipline ? (
-                    <>
-                      <p className="mt-2 truncate text-sm font-bold text-slate-900">
-                        {moveTargetDiscipline.title}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Incoming links will be added to this discipline.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-500">
-                      Pick the discipline that should receive the moved links.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/70 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {moveSelectionError
-                      ? moveSelectionError
-                      : moveSourceDiscipline && moveTargetDiscipline
-                        ? moveSourceObjectiveCount === null
-                          ? `Move linked objectives from "${moveSourceDiscipline.title}" into "${moveTargetDiscipline.title}".`
-                          : `Move ${formatLearningObjectiveCount(
-                              moveSourceObjectiveCount,
-                            ).toLowerCase()} from "${moveSourceDiscipline.title}" into "${moveTargetDiscipline.title}".`
-                        : 'Choose a source and target discipline to prepare the transfer.'}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    This updates discipline links only. The learning objective
-                    records themselves stay intact.
-                  </p>
-                </div>
-
+              <div className="mt-auto pt-2">
                 <button
-                  type="button"
-                  onClick={openMoveConfirmation}
-                  disabled={
-                    isMoving ||
-                    isSaving ||
-                    !moveSourceId ||
-                    !moveTargetId ||
-                    Boolean(moveSelectionError)
-                  }
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  type="submit"
+                  disabled={isSaving || isMoving}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isMoving ? (
+                  {isSaving && !editingId ? (
                     <Loader2 size={16} className="animate-spin" />
                   ) : (
-                    <ArrowRightLeft size={16} />
+                    <Plus size={16} />
                   )}
-                  Move Learning Objectives
+                  Create Discipline
                 </button>
+              </div>
+            </form>
+
+            <div
+              ref={movePanelRef}
+              className="rounded-[1.75rem] border border-emerald-200 bg-gradient-to-br from-white via-emerald-50/60 to-slate-50 p-6 shadow-sm"
+            >
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-sm font-bold text-slate-900">
+                      Move learning objectives
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      Reassign all linked objectives from one discipline to
+                      another without opening each objective individually.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSwapMoveDisciplines}
+                    disabled={isMoving || (!moveSourceId && !moveTargetId)}
+                    className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <ArrowRightLeft size={16} />
+                    Swap
+                  </button>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <SearchableSelect
+                    label="From"
+                    options={moveSourceOptions}
+                    value={moveSourceId}
+                    onChange={(value) => {
+                      resetMessages();
+                      setMoveSourceId(value);
+                    }}
+                    placeholder="Select source discipline..."
+                    allOption={{ id: '', name: 'Select source discipline...' }}
+                    disabled={isMoving || isSaving || disciplines.length === 0}
+                  />
+
+                  <SearchableSelect
+                    label="To"
+                    options={moveTargetOptions}
+                    value={moveTargetId}
+                    onChange={(value) => {
+                      resetMessages();
+                      setMoveTargetId(value);
+                    }}
+                    placeholder="Select target discipline..."
+                    allOption={{ id: '', name: 'Select target discipline...' }}
+                    disabled={isMoving || isSaving || disciplines.length === 0}
+                  />
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      Source
+                    </p>
+                    {moveSourceDiscipline ? (
+                      <>
+                        <p className="mt-2 truncate text-sm font-bold text-slate-900">
+                          {moveSourceDiscipline.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatLearningObjectiveCount(
+                            moveSourceDiscipline.learningObjectivesTotal,
+                          )}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        Pick the discipline currently holding the objective links.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      Target
+                    </p>
+                    {moveTargetDiscipline ? (
+                      <>
+                        <p className="mt-2 truncate text-sm font-bold text-slate-900">
+                          {moveTargetDiscipline.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Incoming links will be added to this discipline.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        Pick the discipline that should receive the moved links.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4 rounded-2xl border border-white/70 bg-white/80 px-4 py-4 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="max-w-2xl space-y-1">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {moveSelectionError
+                        ? moveSelectionError
+                        : moveSourceDiscipline && moveTargetDiscipline
+                          ? moveSourceObjectiveCount === null
+                            ? `Move linked objectives from "${moveSourceDiscipline.title}" into "${moveTargetDiscipline.title}".`
+                            : `Move ${formatLearningObjectiveCount(
+                                moveSourceObjectiveCount,
+                              ).toLowerCase()} from "${moveSourceDiscipline.title}" into "${moveTargetDiscipline.title}".`
+                          : 'Choose a source and target discipline to prepare the transfer.'}
+                    </p>
+                    <p className="text-xs leading-5 text-slate-500">
+                      This updates discipline links only. The learning objective
+                      records themselves stay intact.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openMoveConfirmation}
+                    disabled={
+                      isMoving ||
+                      isSaving ||
+                      !moveSourceId ||
+                      !moveTargetId ||
+                      Boolean(moveSelectionError)
+                    }
+                    className="inline-flex items-center justify-center gap-2 self-start rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 xl:self-auto"
+                  >
+                    {isMoving ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <ArrowRightLeft size={16} />
+                    )}
+                    Move Learning Objectives
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 xl:max-w-[420px] xl:justify-end">
-            <div className="inline-flex items-baseline gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
                 Total
               </p>
-              <p className="text-xl font-black tracking-tight text-slate-900">
+              <p className="mt-2 text-2xl font-black tracking-tight text-slate-900">
                 {totalDisciplines}
               </p>
             </div>
-            <div className="inline-flex items-baseline gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
                 Showing
               </p>
-              <p className="text-xl font-black tracking-tight text-slate-900">
+              <p className="mt-2 text-2xl font-black tracking-tight text-slate-900">
                 {filteredDisciplines.length}
               </p>
             </div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
                 Status
               </p>
-              <div className="flex items-center gap-2">
+              <div className="mt-2 flex items-center gap-2">
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
                     isLoading
@@ -604,8 +618,8 @@ const DisciplinesView: React.FC = () => {
                         : 'bg-emerald-500'
                   }`}
                 />
-                <p className="text-sm font-black tracking-tight text-slate-900">
-                {isLoading ? 'Loading' : isRefreshing ? 'Refreshing' : 'Synced'}
+                <p className="text-base font-black tracking-tight text-slate-900">
+                  {isLoading ? 'Loading' : isRefreshing ? 'Refreshing' : 'Synced'}
                 </p>
               </div>
             </div>
@@ -704,6 +718,9 @@ const DisciplinesView: React.FC = () => {
               const isDeleting = deletingId === discipline.id;
               const isMoveSource = moveSourceId === discipline.id;
               const isMoveTarget = moveTargetId === discipline.id;
+              const hasLinkedLearningObjectives =
+                typeof discipline.learningObjectivesTotal === 'number' &&
+                discipline.learningObjectivesTotal > 0;
               const isRowBusy = isSaving || isDeleting || isMoving;
 
               return (
@@ -826,7 +843,12 @@ const DisciplinesView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => void handleDelete(discipline)}
-                          disabled={isRowBusy}
+                          disabled={isRowBusy || hasLinkedLearningObjectives}
+                          title={
+                            hasLinkedLearningObjectives
+                              ? 'Move or remove linked learning objectives before deleting this discipline.'
+                              : undefined
+                          }
                           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isDeleting ? (
@@ -834,7 +856,9 @@ const DisciplinesView: React.FC = () => {
                           ) : (
                             <Trash2 size={16} />
                           )}
-                          Delete
+                          {hasLinkedLearningObjectives
+                            ? 'Delete blocked'
+                            : 'Delete'}
                         </button>
                       </>
                     )}
