@@ -124,6 +124,12 @@ export interface Discipline {
   questions?: Question[];
 }
 
+export interface MoveDisciplineLearningObjectivesResponse {
+  from: string;
+  to: string;
+  moved: number;
+}
+
 export interface Subject {
   id: string;
   title: string;

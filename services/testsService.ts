@@ -9,6 +9,7 @@ import {
   Question,
   Tag,
   Discipline,
+  MoveDisciplineLearningObjectivesResponse,
   Difficulty,
   Competency,
   Subject,
@@ -304,6 +305,17 @@ export const testsService = {
 
   deleteDiscipline: async (identifier: string): Promise<void> => {
     return apiClient.delete<void>('TESTS', `/disciplines/${identifier}`);
+  },
+
+  moveDisciplineLearningObjectives: async (
+    from: string,
+    to: string,
+  ): Promise<MoveDisciplineLearningObjectivesResponse> => {
+    return apiClient.post<MoveDisciplineLearningObjectivesResponse>(
+      'TESTS',
+      '/disciplines/move-learning-objectives',
+      { from, to },
+    );
   },
 
   getDifficultyLevels: async (
