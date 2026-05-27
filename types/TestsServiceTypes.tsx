@@ -119,6 +119,7 @@ export interface Discipline {
   title: string;
   createdAt: string;
   updatedAt: string;
+  learningObjectivesTotal?: number;
   blocks?: Block[];
   questions?: Question[];
 }

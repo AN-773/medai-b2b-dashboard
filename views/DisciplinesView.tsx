@@ -430,6 +430,12 @@ const DisciplinesView: React.FC = () => {
                           <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
                             ID: {getShortIdentifier(discipline.id)}
                           </span>
+                          <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+                            Learning objectives:{' '}
+                            {typeof discipline.learningObjectivesTotal === 'number'
+                              ? discipline.learningObjectivesTotal
+                              : 'N/A'}
+                          </span>
                           <span>
                             Updated{' '}
                             {new Date(discipline.updatedAt).toLocaleDateString()}
