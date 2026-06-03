@@ -281,7 +281,7 @@ const DisciplinesView: React.FC = () => {
     resetMessages();
 
     try {
-      await testsService.deleteDiscipline(discipline.id);
+      await testsService.deleteDiscipline(getShortIdentifier(discipline.id));
       if (editingId === discipline.id) {
         cancelEdit();
       }
