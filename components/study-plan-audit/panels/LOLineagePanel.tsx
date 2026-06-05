@@ -19,24 +19,28 @@ import {
 } from '../shared';
 
 type Props = {
-  loId: string | null;
+  loIdentifier: string | null;
   onClose: () => void;
-  onOpenItem: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
 };
 
-const LOLineagePanel: React.FC<Props> = ({ loId, onClose, onOpenItem }) => {
+const LOLineagePanel: React.FC<Props> = ({
+  loIdentifier,
+  onClose,
+  onOpenItem,
+}) => {
   const [data, setData] =
     useState<GetLearningObjectiveLineageResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    if (!loId) return;
+    if (!loIdentifier) return;
     setLoading(true);
     setError(null);
     try {
       const resp =
-        await studyPlanAuditService.getLearningObjectiveLineage(loId);
+        await studyPlanAuditService.getLearningObjectiveLineage(loIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load LO lineage.');
@@ -47,16 +51,16 @@ const LOLineagePanel: React.FC<Props> = ({ loId, onClose, onOpenItem }) => {
   };
 
   useEffect(() => {
-    if (loId) {
+    if (loIdentifier) {
       setData(null);
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loId]);
+  }, [loIdentifier]);
 
   return (
     <Drawer
-      open={!!loId}
+      open={!!loIdentifier}
       onClose={onClose}
       title={
         loading
@@ -68,7 +72,7 @@ const LOLineagePanel: React.FC<Props> = ({ loId, onClose, onOpenItem }) => {
       subtitle={
         data
           ? `${data.learning_objective.identifier} · ${data.learning_objective.exam}`
-          : loId ?? undefined
+          : loIdentifier ?? undefined
       }
     >
       {loading && <LoadingBlock />}
@@ -187,7 +191,7 @@ const LOLineagePanel: React.FC<Props> = ({ loId, onClose, onOpenItem }) => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => onOpenItem(it.id)}
+                      onClick={() => onOpenItem(it.identifier)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <GitBranch size={11} />

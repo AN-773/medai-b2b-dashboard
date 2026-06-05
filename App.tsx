@@ -202,7 +202,7 @@ const DashboardLayout: React.FC = () => {
               {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}
               <Route path="/tenants" element={isSuperadmin ? <TenantManagementView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/study-plan-audit" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
-              <Route path="/study-plan-audit/:studyPlanId" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/study-plan-audit/:studyPlanIdentifier" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />

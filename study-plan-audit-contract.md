@@ -10,6 +10,7 @@ It is derived from the live handlers in `application/controllers.go` and the HTT
 - All endpoints are cross-tenant.
 - No tenant filter is applied at the API layer.
 - No endpoint in this contract takes query params today.
+- All drill-down route params in this document are resource `identifier` values, not internal `id` values.
 - All timestamps are ISO-8601 UTC strings.
 - Nullable fields are returned as `null`.
 - `langfuse_trace_url` and `langfuse_span_url` can be an empty string when `LANGFUSE_HOST` is not configured, even if the corresponding IDs are present.
@@ -32,12 +33,12 @@ Common auth errors:
 | Method | Path | Success |
 | --- | --- | --- |
 | `GET` | `/superadmin/audit/study-plans` | `200` |
-| `GET` | `/superadmin/audit/study-plans/{id}/audit` | `200` |
-| `GET` | `/superadmin/audit/study-plans/uploads/{id}/audit` | `200` |
-| `GET` | `/superadmin/audit/study-plans/sessions/{id}/audit` | `200` |
-| `POST` | `/superadmin/audit/study-plans/sessions/{id}/score` | `201` |
-| `GET` | `/superadmin/audit/study-plans/items/{id}/lineage` | `200` |
-| `GET` | `/superadmin/audit/study-plans/learning-objectives/{id}/lineage` | `200` |
+| `GET` | `/superadmin/audit/study-plans/{identifier}/audit` | `200` |
+| `GET` | `/superadmin/audit/study-plans/uploads/{identifier}/audit` | `200` |
+| `GET` | `/superadmin/audit/study-plans/sessions/{identifier}/audit` | `200` |
+| `POST` | `/superadmin/audit/study-plans/sessions/{identifier}/score` | `201` |
+| `GET` | `/superadmin/audit/study-plans/items/{identifier}/lineage` | `200` |
+| `GET` | `/superadmin/audit/study-plans/learning-objectives/{identifier}/lineage` | `200` |
 
 ## Shared types
 
@@ -284,11 +285,11 @@ type ListStudyPlanAuditsResponse = {
 
 ### Request
 
-`GET /superadmin/audit/study-plans/{id}/audit`
+`GET /superadmin/audit/study-plans/{identifier}/audit`
 
 Path params:
 
-- `id: string` - study plan ID
+- `identifier: string` - study plan identifier
 
 ### Success response
 
@@ -374,6 +375,7 @@ type GetStudyPlanAuditResponse = {
 
 - `stages` is grouped by `(tenant_id, stage)`.
 - `success_rate` and `failure_rate` are percentages from `0` to `100`.
+- The path param is a study plan identifier, while `study_plan_id` and `study_plan.id` in the payload remain the internal resource ID.
 - `totals` keeps the legacy semantics: it counts all study plan uploads, LOs, items, and sessions, not just the audited subset.
 - `uploads`, `learning_objectives`, `items`, and `sessions` are the audited subsets used by the dashboard drill-down.
 - `uploads` is driven by upload-linked `generation_runs`.
@@ -383,18 +385,18 @@ type GetStudyPlanAuditResponse = {
 
 ### Non-auth errors
 
-- `400`: `{ "error": "study plan id is required" }`
+- `400`: `{ "error": "study plan identifier is required" }`
 - `404`: `{ "error": "study plan not found" }`
 
 ## 3. Get upload audit
 
 ### Request
 
-`GET /superadmin/audit/study-plans/uploads/{id}/audit`
+`GET /superadmin/audit/study-plans/uploads/{identifier}/audit`
 
 Path params:
 
-- `id: string` - study plan upload ID
+- `identifier: string` - study plan upload identifier
 
 ### Success response
 
@@ -424,21 +426,22 @@ type GetUploadAuditResponse = {
 - `unlinked_chunks` returns upload chunks that are not linked to any LO included in `learning_objectives`.
 - `learning_objectives[].chunks` is deduplicated by chunk ID.
 - `extraction_runs` currently returns upload-scoped runs from LO extraction stages.
+- The path param is an upload identifier, while `upload_id` in the payload remains the internal upload ID.
 
 ### Non-auth errors
 
-- `400`: `{ "error": "upload id is required" }`
+- `400`: `{ "error": "upload identifier is required" }`
 - `404`: `{ "error": "upload not found" }`
 
 ## 4. Get session audit
 
 ### Request
 
-`GET /superadmin/audit/study-plans/sessions/{id}/audit`
+`GET /superadmin/audit/study-plans/sessions/{identifier}/audit`
 
 Path params:
 
-- `id: string` - study plan session ID
+- `identifier: string` - study plan session identifier
 
 ### Success response
 
@@ -491,10 +494,11 @@ type GetSessionAuditResponse = {
 - `chunks_used` is the union of the run `chunk_ids` that resolved to stored chunks.
 - The chunk snippet key here is `snippet`, not `content_snippet`.
 - `source_scope.upload_ids` and `source_scope.internal_source_exams` are always arrays and can be empty.
+- The path param is a session identifier, while `session.id` in the payload remains the internal session ID.
 
 ### Non-auth errors
 
-- `400`: `{ "error": "session id is required" }`
+- `400`: `{ "error": "session identifier is required" }`
 - `404`: `{ "error": "session not found" }`
 - `404`: `{ "error": "session audit not found" }`
 
@@ -502,11 +506,11 @@ type GetSessionAuditResponse = {
 
 ### Request
 
-`POST /superadmin/audit/study-plans/sessions/{id}/score`
+`POST /superadmin/audit/study-plans/sessions/{identifier}/score`
 
 Path params:
 
-- `id: string` - study plan session ID
+- `identifier: string` - study plan session identifier
 
 Request body:
 
@@ -542,11 +546,12 @@ type RecordSessionScoreResponse = {
 - `good` is mirrored to Langfuse as numeric `1`.
 - `bad` is mirrored to Langfuse as numeric `0`.
 - The response mirrors the persisted `audit_scores` row.
+- The path param is a session identifier, while `session_id` in the response remains the internal session ID.
 - The backend currently treats `lo_id` and `item_id` as optional opaque IDs. Frontend should only send IDs that actually belong to the session.
 
 ### Non-auth errors
 
-- `400`: `{ "error": "session id is required" }`
+- `400`: `{ "error": "session identifier is required" }`
 - `400`: `{ "error": "invalid request body: ..." }`
 - `400`: `{ "error": "value must be 'good' or 'bad'" }`
 - `404`: `{ "error": "session audit not found" }`
@@ -555,11 +560,11 @@ type RecordSessionScoreResponse = {
 
 ### Request
 
-`GET /superadmin/audit/study-plans/items/{id}/lineage`
+`GET /superadmin/audit/study-plans/items/{identifier}/lineage`
 
 Path params:
 
-- `id: string` - item ID
+- `identifier: string` - item identifier
 
 ### Success response
 
@@ -579,10 +584,11 @@ type GetItemLineageResponse = {
 - The backend selects one producing run for the item, preferring generated lineage over reused lineage when both exist.
 - `chunks` can be empty. This is valid, especially when the chosen run used `chunk_source = "internal_reused"`.
 - `chunks[].upload` is omitted when the chunk has no upload row.
+- The path param is an item identifier, while `item.id` in the payload remains the internal item ID.
 
 ### Non-auth errors
 
-- `400`: `{ "error": "item id is required" }`
+- `400`: `{ "error": "item identifier is required" }`
 - `404`: `{ "error": "item not found" }`
 - `404`: `{ "error": "item lineage not found" }`
 
@@ -590,11 +596,11 @@ type GetItemLineageResponse = {
 
 ### Request
 
-`GET /superadmin/audit/study-plans/learning-objectives/{id}/lineage`
+`GET /superadmin/audit/study-plans/learning-objectives/{identifier}/lineage`
 
 Path params:
 
-- `id: string` - learning objective ID
+- `identifier: string` - learning objective identifier
 
 ### Success response
 
@@ -624,10 +630,11 @@ type GetLearningObjectiveLineageResponse = {
 - `items` includes all downstream derived items.
 - `items` is deduplicated by item ID.
 - `items[].run_id` is the run attached to the first-recorded LO -> item edge kept in the response.
+- The path param is a learning objective identifier, while `learning_objective.id` in the payload remains the internal LO ID.
 
 ### Non-auth errors
 
-- `400`: `{ "error": "learning objective id is required" }`
+- `400`: `{ "error": "learning objective identifier is required" }`
 - `404`: `{ "error": "learning objective not found" }`
 
 ## Frontend integration notes

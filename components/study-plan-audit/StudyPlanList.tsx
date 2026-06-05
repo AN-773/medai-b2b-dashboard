@@ -225,7 +225,7 @@ const StudyPlanList: React.FC = () => {
                     key={p.id}
                     onClick={() =>
                       navigate(
-                        `/study-plan-audit/${encodeURIComponent(p.id)}`,
+                        `/study-plan-audit/${encodeURIComponent(p.identifier)}`,
                       )
                     }
                     className="group cursor-pointer transition hover:bg-emerald-50/40"

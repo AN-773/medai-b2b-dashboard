@@ -25,22 +25,26 @@ import {
 } from '../shared';
 
 type Props = {
-  uploadId: string | null;
+  uploadIdentifier: string | null;
   onClose: () => void;
-  onOpenLo: (id: string) => void;
+  onOpenLo: (identifier: string) => void;
 };
 
-const UploadAuditPanel: React.FC<Props> = ({ uploadId, onClose, onOpenLo }) => {
+const UploadAuditPanel: React.FC<Props> = ({
+  uploadIdentifier,
+  onClose,
+  onOpenLo,
+}) => {
   const [data, setData] = useState<GetUploadAuditResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    if (!uploadId) return;
+    if (!uploadIdentifier) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await studyPlanAuditService.getUploadAudit(uploadId);
+      const resp = await studyPlanAuditService.getUploadAudit(uploadIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load upload audit.');
@@ -51,16 +55,16 @@ const UploadAuditPanel: React.FC<Props> = ({ uploadId, onClose, onOpenLo }) => {
   };
 
   useEffect(() => {
-    if (uploadId) {
+    if (uploadIdentifier) {
       setData(null);
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadId]);
+  }, [uploadIdentifier]);
 
   return (
     <Drawer
-      open={!!uploadId}
+      open={!!uploadIdentifier}
       onClose={onClose}
       title={
         loading
@@ -69,7 +73,11 @@ const UploadAuditPanel: React.FC<Props> = ({ uploadId, onClose, onOpenLo }) => {
             ? data.file_name
             : 'Upload'
       }
-      subtitle={data ? `Upload ${data.upload_id}` : uploadId ?? undefined}
+      subtitle={
+        data
+          ? `Upload ${uploadIdentifier ?? data.upload_id}`
+          : uploadIdentifier ?? undefined
+      }
     >
       {loading && <LoadingBlock />}
       {error && <ErrorBlock error={error} onRetry={load} />}
@@ -183,7 +191,7 @@ const ExtractionRuns: React.FC<{
 
 const ExtractedLOs: React.FC<{
   los: GetUploadAuditResponse['learning_objectives'];
-  onOpenLo: (id: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ los, onOpenLo }) => (
   <Section
     title={`Extracted learning objectives (${los.length})`}
@@ -204,7 +212,7 @@ const ExtractedLOs: React.FC<{
 
 const LOAccordion: React.FC<{
   lo: GetUploadAuditResponse['learning_objectives'][number];
-  onOpenLo: (id: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ lo, onOpenLo }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -238,7 +246,7 @@ const LOAccordion: React.FC<{
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onOpenLo(lo.id);
+            onOpenLo(lo.identifier);
           }}
           className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
         >

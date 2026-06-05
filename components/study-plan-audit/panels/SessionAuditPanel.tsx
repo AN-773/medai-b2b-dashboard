@@ -38,14 +38,14 @@ import {
 } from '../shared';
 
 type Props = {
-  sessionId: string | null;
+  sessionIdentifier: string | null;
   onClose: () => void;
-  onOpenItem: (id: string) => void;
-  onOpenLo: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
+  onOpenLo: (identifier: string) => void;
 };
 
 const SessionAuditPanel: React.FC<Props> = ({
-  sessionId,
+  sessionIdentifier,
   onClose,
   onOpenItem,
   onOpenLo,
@@ -55,11 +55,12 @@ const SessionAuditPanel: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    if (!sessionId) return;
+    if (!sessionIdentifier) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await studyPlanAuditService.getSessionAudit(sessionId);
+      const resp =
+        await studyPlanAuditService.getSessionAudit(sessionIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load session audit.');
@@ -70,28 +71,28 @@ const SessionAuditPanel: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    if (sessionId) {
+    if (sessionIdentifier) {
       setData(null);
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionIdentifier]);
 
   return (
     <Drawer
-      open={!!sessionId}
+      open={!!sessionIdentifier}
       onClose={onClose}
       title={
         loading
           ? 'Loading session…'
           : data
-            ? `Session ${data.session.id}`
+            ? `Session ${sessionIdentifier ?? data.session.id}`
             : 'Session'
       }
       subtitle={
         data
           ? `Study plan ${data.session.study_plan_id} · ${data.session.mode}`
-          : sessionId ?? undefined
+          : sessionIdentifier ?? undefined
       }
       right={
         data?.session.langfuse_trace_url ? (
@@ -110,7 +111,10 @@ const SessionAuditPanel: React.FC<Props> = ({
             onOpenItem={onOpenItem}
             onOpenLo={onOpenLo}
           />
-          <ScoreForm sessionId={data.session.id} data={data} />
+          <ScoreForm
+            sessionIdentifier={sessionIdentifier ?? ''}
+            data={data}
+          />
         </div>
       )}
     </Drawer>
@@ -348,8 +352,8 @@ const Selection: React.FC<{ data: GetSessionAuditResponse }> = ({ data }) => {
 
 const LOs: React.FC<{
   data: GetSessionAuditResponse;
-  onOpenItem: (id: string) => void;
-  onOpenLo: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ data, onOpenItem, onOpenLo }) => {
   if (data.los.length === 0) {
     return (
@@ -383,8 +387,8 @@ const LOs: React.FC<{
 
 const LOBlock: React.FC<{
   lo: GetSessionAuditResponse['los'][number];
-  onOpenItem: (id: string) => void;
-  onOpenLo: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ lo, onOpenItem, onOpenLo }) => {
   const [open, setOpen] = useState(true);
   return (
@@ -418,7 +422,7 @@ const LOBlock: React.FC<{
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onOpenLo(lo.id);
+              onOpenLo(lo.identifier);
             }}
             className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 font-semibold hover:bg-slate-50"
           >
@@ -640,7 +644,7 @@ const ChunksList: React.FC<{
 
 const ItemsList: React.FC<{
   items: GetSessionAuditResponse['los'][number]['items'];
-  onOpenItem: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
 }> = ({ items, onOpenItem }) => {
   if (items.length === 0) return null;
   return (
@@ -666,7 +670,7 @@ const ItemsList: React.FC<{
             </div>
             <button
               type="button"
-              onClick={() => onOpenItem(it.id)}
+              onClick={() => onOpenItem(it.identifier)}
               className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
             >
               <GitBranch size={11} />
@@ -682,9 +686,9 @@ const ItemsList: React.FC<{
 // ---------- Score form ----------
 
 const ScoreForm: React.FC<{
-  sessionId: string;
+  sessionIdentifier: string;
   data: GetSessionAuditResponse;
-}> = ({ sessionId, data }) => {
+}> = ({ sessionIdentifier, data }) => {
   const [value, setValue] = useState<'good' | 'bad'>('good');
   const [targetType, setTargetType] = useState<'session' | 'lo' | 'item'>(
     'session',
@@ -729,7 +733,7 @@ const ScoreForm: React.FC<{
     setSubmitting(true);
     try {
       const resp = await studyPlanAuditService.recordSessionScore(
-        sessionId,
+        sessionIdentifier,
         payload,
       );
       setSubmitOk(`Recorded score ${resp.id}.`);

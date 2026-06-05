@@ -4,8 +4,10 @@ import StudyPlanList from './StudyPlanList';
 import StudyPlanDetail from './StudyPlanDetail';
 
 const StudyPlanAuditDashboard: React.FC = () => {
-  const { studyPlanId } = useParams<{ studyPlanId: string }>();
-  return studyPlanId ? <StudyPlanDetail /> : <StudyPlanList />;
+  const { studyPlanIdentifier } = useParams<{
+    studyPlanIdentifier: string;
+  }>();
+  return studyPlanIdentifier ? <StudyPlanDetail /> : <StudyPlanList />;
 };
 
 export default StudyPlanAuditDashboard;

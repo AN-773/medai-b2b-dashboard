@@ -22,22 +22,26 @@ import {
 } from '../shared';
 
 type Props = {
-  itemId: string | null;
+  itemIdentifier: string | null;
   onClose: () => void;
-  onOpenLo: (id: string) => void;
+  onOpenLo: (identifier: string) => void;
 };
 
-const ItemLineagePanel: React.FC<Props> = ({ itemId, onClose, onOpenLo }) => {
+const ItemLineagePanel: React.FC<Props> = ({
+  itemIdentifier,
+  onClose,
+  onOpenLo,
+}) => {
   const [data, setData] = useState<GetItemLineageResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    if (!itemId) return;
+    if (!itemIdentifier) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await studyPlanAuditService.getItemLineage(itemId);
+      const resp = await studyPlanAuditService.getItemLineage(itemIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load item lineage.');
@@ -48,16 +52,16 @@ const ItemLineagePanel: React.FC<Props> = ({ itemId, onClose, onOpenLo }) => {
   };
 
   useEffect(() => {
-    if (itemId) {
+    if (itemIdentifier) {
       setData(null);
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId]);
+  }, [itemIdentifier]);
 
   return (
     <Drawer
-      open={!!itemId}
+      open={!!itemIdentifier}
       onClose={onClose}
       title={
         loading
@@ -69,7 +73,7 @@ const ItemLineagePanel: React.FC<Props> = ({ itemId, onClose, onOpenLo }) => {
       subtitle={
         data
           ? `Type ${data.item.type} · plan ${data.study_plan_id}`
-          : itemId ?? undefined
+          : itemIdentifier ?? undefined
       }
     >
       {loading && <LoadingBlock />}
@@ -107,7 +111,7 @@ const ItemLineagePanel: React.FC<Props> = ({ itemId, onClose, onOpenLo }) => {
             right={
               <button
                 type="button"
-                onClick={() => onOpenLo(data.learning_objective.id)}
+                onClick={() => onOpenLo(data.learning_objective.identifier)}
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <GitBranch size={11} />

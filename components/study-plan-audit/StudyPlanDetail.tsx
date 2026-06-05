@@ -46,26 +46,29 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
 ];
 
 const StudyPlanDetail: React.FC = () => {
-  const { studyPlanId } = useParams<{ studyPlanId: string }>();
+  const { studyPlanIdentifier } = useParams<{
+    studyPlanIdentifier: string;
+  }>();
   const navigate = useNavigate();
   const [data, setData] = useState<GetStudyPlanAuditResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('overview');
 
-  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
-  const [openUploadId, setOpenUploadId] = useState<string | null>(null);
-  const [openItemLineageId, setOpenItemLineageId] = useState<string | null>(
+  const [openSessionIdentifier, setOpenSessionIdentifier] = useState<string | null>(null);
+  const [openUploadIdentifier, setOpenUploadIdentifier] = useState<string | null>(null);
+  const [openItemIdentifier, setOpenItemIdentifier] = useState<string | null>(
     null,
   );
-  const [openLoLineageId, setOpenLoLineageId] = useState<string | null>(null);
+  const [openLoIdentifier, setOpenLoIdentifier] = useState<string | null>(null);
 
   const load = async () => {
-    if (!studyPlanId) return;
+    if (!studyPlanIdentifier) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await studyPlanAuditService.getStudyPlanAudit(studyPlanId);
+      const resp =
+        await studyPlanAuditService.getStudyPlanAudit(studyPlanIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load study plan audit.');
@@ -77,7 +80,7 @@ const StudyPlanDetail: React.FC = () => {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyPlanId]);
+  }, [studyPlanIdentifier]);
 
   if (loading) return <LoadingBlock />;
   if (error) return <ErrorBlock error={error} onRetry={load} />;
@@ -129,47 +132,52 @@ const StudyPlanDetail: React.FC = () => {
         {tab === 'uploads' && (
           <UploadsTab
             data={data}
-            onOpenUpload={(id) => setOpenUploadId(id)}
+            onOpenUpload={(identifier) => setOpenUploadIdentifier(identifier)}
           />
         )}
         {tab === 'los' && (
-          <LOsTab data={data} onOpenLo={(id) => setOpenLoLineageId(id)} />
+          <LOsTab
+            data={data}
+            onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
+          />
         )}
         {tab === 'items' && (
           <ItemsTab
             data={data}
-            onOpenItem={(id) => setOpenItemLineageId(id)}
-            onOpenLo={(id) => setOpenLoLineageId(id)}
+            onOpenItem={(identifier) => setOpenItemIdentifier(identifier)}
+            onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
           />
         )}
         {tab === 'sessions' && (
           <SessionsTab
             data={data}
-            onOpenSession={(id) => setOpenSessionId(id)}
+            onOpenSession={(identifier) =>
+              setOpenSessionIdentifier(identifier)
+            }
           />
         )}
       </div>
 
       <SessionAuditPanel
-        sessionId={openSessionId}
-        onClose={() => setOpenSessionId(null)}
-        onOpenItem={(id) => setOpenItemLineageId(id)}
-        onOpenLo={(id) => setOpenLoLineageId(id)}
+        sessionIdentifier={openSessionIdentifier}
+        onClose={() => setOpenSessionIdentifier(null)}
+        onOpenItem={(identifier) => setOpenItemIdentifier(identifier)}
+        onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
       />
       <UploadAuditPanel
-        uploadId={openUploadId}
-        onClose={() => setOpenUploadId(null)}
-        onOpenLo={(id) => setOpenLoLineageId(id)}
+        uploadIdentifier={openUploadIdentifier}
+        onClose={() => setOpenUploadIdentifier(null)}
+        onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
       />
       <ItemLineagePanel
-        itemId={openItemLineageId}
-        onClose={() => setOpenItemLineageId(null)}
-        onOpenLo={(id) => setOpenLoLineageId(id)}
+        itemIdentifier={openItemIdentifier}
+        onClose={() => setOpenItemIdentifier(null)}
+        onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
       />
       <LOLineagePanel
-        loId={openLoLineageId}
-        onClose={() => setOpenLoLineageId(null)}
-        onOpenItem={(id) => setOpenItemLineageId(id)}
+        loIdentifier={openLoIdentifier}
+        onClose={() => setOpenLoIdentifier(null)}
+        onOpenItem={(identifier) => setOpenItemIdentifier(identifier)}
       />
     </div>
   );
@@ -440,7 +448,7 @@ const QuickPick: React.FC<{
 
 const UploadsTab: React.FC<{
   data: GetStudyPlanAuditResponse;
-  onOpenUpload: (id: string) => void;
+  onOpenUpload: (identifier: string) => void;
 }> = ({ data, onOpenUpload }) => {
   const [q, setQ] = useState('');
   const filtered = useMemo(() => {
@@ -517,7 +525,7 @@ const UploadsTab: React.FC<{
                   <td className="px-2 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onOpenUpload(u.id)}
+                      onClick={() => onOpenUpload(u.identifier)}
                       className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <Microscope size={12} />
@@ -538,7 +546,7 @@ const UploadsTab: React.FC<{
 
 const LOsTab: React.FC<{
   data: GetStudyPlanAuditResponse;
-  onOpenLo: (id: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ data, onOpenLo }) => {
   const [q, setQ] = useState('');
   const filtered = useMemo(() => {
@@ -610,7 +618,7 @@ const LOsTab: React.FC<{
                   <td className="px-2 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onOpenLo(lo.id)}
+                      onClick={() => onOpenLo(lo.identifier)}
                       className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <GitBranch size={12} />
@@ -631,8 +639,8 @@ const LOsTab: React.FC<{
 
 const ItemsTab: React.FC<{
   data: GetStudyPlanAuditResponse;
-  onOpenItem: (id: string) => void;
-  onOpenLo: (id: string) => void;
+  onOpenItem: (identifier: string) => void;
+  onOpenLo: (identifier: string) => void;
 }> = ({ data, onOpenItem, onOpenLo }) => {
   const [q, setQ] = useState('');
   const filtered = useMemo(() => {
@@ -695,7 +703,9 @@ const ItemsTab: React.FC<{
                     {it.learning_objective_id ? (
                       <button
                         type="button"
-                        onClick={() => onOpenLo(it.learning_objective_id!)}
+                        onClick={() =>
+                          onOpenLo(it.learning_objective_identifier)
+                        }
                         className="group flex max-w-xs flex-col items-start text-left"
                       >
                         <span className="truncate text-sm text-slate-700 group-hover:text-emerald-700">
@@ -718,7 +728,7 @@ const ItemsTab: React.FC<{
                   <td className="px-2 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onOpenItem(it.id)}
+                      onClick={() => onOpenItem(it.identifier)}
                       className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <GitBranch size={12} />
@@ -739,7 +749,7 @@ const ItemsTab: React.FC<{
 
 const SessionsTab: React.FC<{
   data: GetStudyPlanAuditResponse;
-  onOpenSession: (id: string) => void;
+  onOpenSession: (identifier: string) => void;
 }> = ({ data, onOpenSession }) => {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -842,7 +852,7 @@ const SessionsTab: React.FC<{
                   <td className="px-2 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onOpenSession(sess.id)}
+                      onClick={() => onOpenSession(sess.identifier)}
                       className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       <Microscope size={12} />
