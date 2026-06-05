@@ -12,7 +12,8 @@ import {
   ClipboardList, 
   Database,
   Wand2,
-  GraduationCap
+  GraduationCap,
+  Workflow
 } from 'lucide-react';
 import { View } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,6 +72,14 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
                 >
                   <Building2 size={20} className={getIconClass('TENANTS')} />
                   Tenant Management
+                </button>
+
+                <button 
+                  onClick={() => onNavigate('STUDY_PLAN_AUDIT')}
+                  className={getButtonClass('STUDY_PLAN_AUDIT')}
+                >
+                  <Workflow size={20} className={getIconClass('STUDY_PLAN_AUDIT')} />
+                  Study Plan Audit
                 </button>
 
                 <button 

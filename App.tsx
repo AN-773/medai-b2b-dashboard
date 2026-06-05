@@ -17,7 +17,8 @@ import {
   Database,
   Wand2,
   LogOut,
-  GraduationCap
+  GraduationCap,
+  Workflow
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
@@ -42,6 +43,7 @@ import StudentRegistryView from './views/StudentRegistryView';
 import CohortsView from './views/CohortsView';
 import CoursesView from './views/CoursesView';
 import DisciplinesView from './views/DisciplinesView';
+import StudyPlanAuditView from './views/StudyPlanAuditView';
 
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -54,6 +56,7 @@ const DashboardLayout: React.FC = () => {
   const getActiveView = (): View => {
     const path = location.pathname;
     if (path.startsWith('/tenants')) return 'TENANTS';
+    if (path.startsWith('/study-plan-audit')) return 'STUDY_PLAN_AUDIT';
     // if (path === '/' || path === '/dashboard') return 'DASHBOARD';
     if (path.startsWith('/workbench')) return 'WORKBENCH';
     if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
@@ -81,6 +84,7 @@ const DashboardLayout: React.FC = () => {
     const routes: Record<View, string> = {
       DASHBOARD: '/dashboard',
       TENANTS: '/tenants',
+      STUDY_PLAN_AUDIT: '/study-plan-audit',
       WORKBENCH: '/workbench',
       BANK_EXPLORER: '/bank-explorer',
       QB_HEALTH: '/qb-health',
@@ -127,6 +131,7 @@ const DashboardLayout: React.FC = () => {
     ...(isSuperadmin
       ? [
           { id: 'TENANTS', label: 'Tenant Management', icon: Building2 },
+          { id: 'STUDY_PLAN_AUDIT', label: 'Study Plan Audit', icon: Workflow },
           { id: 'SETTINGS', label: 'Settings', icon: Settings },
         ]
       : [
@@ -179,7 +184,7 @@ const DashboardLayout: React.FC = () => {
         <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
             MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
-            {activeView.replace('_', ' ')}
+            {activeView.split('_').join(' ')}
           </div>
           <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-10 gap-6">
             <div>
@@ -196,6 +201,8 @@ const DashboardLayout: React.FC = () => {
               <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
               {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}
               <Route path="/tenants" element={isSuperadmin ? <TenantManagementView /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/study-plan-audit" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/study-plan-audit/:studyPlanId" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
@@ -225,7 +232,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />
               <Route path="/settings" element={isSuperadmin ? <SettingsView /> : <Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
+              {/* <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} /> */}
             </Routes>
           </div>
         </div>
