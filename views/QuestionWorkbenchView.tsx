@@ -81,6 +81,7 @@ const toBackendItem = (item: BackendApiItem): BackendItem => ({
 const QuestionWorkbenchView: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const redirectPath = searchParams.get('redirect');
   const [activeItemType, setActiveItemType] = useState<ItemType>(ItemType.MCQ);
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('DASHBOARD');
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>(
@@ -110,32 +111,32 @@ const QuestionWorkbenchView: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const loadItems = async (itemType: ItemType = activeItemType) => {
+    setIsLoading(true);
+    try {
+      const typeFilter = itemType.toLowerCase();
+      const [draft, live, pending, response] = await Promise.all([
+        testsService.getItems(1, 1, typeFilter, 'draft'),
+        testsService.getItems(1, 1, typeFilter, 'live'),
+        testsService.getItems(1, 1, typeFilter, 'pending'),
+        testsService.getItems(1, 200, typeFilter),
+      ]);
+
+      setTotalQuestions(response.total);
+      setTotalDraftQuestions(draft.total + pending.total);
+      setTotalLiveQuestions(live.total);
+      setItemsList(response.items);
+    } catch (error) {
+      console.error('Failed to fetch items:', error);
+      showToast('Failed to fetch items', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch items on mount based on activeItemType
   useEffect(() => {
-    const fetchItems = async () => {
-      setIsLoading(true);
-      try {
-        const typeFilter = activeItemType.toLowerCase();
-        const [draft, live, pending, response] = await Promise.all([
-          testsService.getItems(1, 1, typeFilter, 'draft'),
-          testsService.getItems(1, 1, typeFilter, 'live'),
-          testsService.getItems(1, 1, typeFilter, 'pending'),
-          testsService.getItems(1, 200, typeFilter),
-        ]);
-
-        setTotalQuestions(response.total);
-        setTotalDraftQuestions(draft.total + pending.total);
-        setTotalLiveQuestions(live.total);
-        setItemsList(response.items);
-      } catch (error) {
-        console.error('Failed to fetch items:', error);
-        showToast('Failed to fetch items', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchItems();
+    void loadItems();
   }, [activeItemType]);
 
   // Deep-link: auto-open query param
@@ -239,21 +240,38 @@ const QuestionWorkbenchView: React.FC = () => {
   }, []);
 
   const handleEditItem = (type: ItemType, identifier: string) => {
-    setSearchParams({ questionId: identifier });
+    const params = new URLSearchParams();
+    params.set('questionId', identifier);
+    if (redirectPath) {
+      params.set('redirect', redirectPath);
+    }
+    setSearchParams(params);
   };
 
   const handleCreateNew = () => {
+    const params = new URLSearchParams();
+
     if (activeItemType === ItemType.LECTURE) {
-      setSearchParams({ questionId: 'new_lecture' });
+      params.set('questionId', 'new_lecture');
     } else if (activeItemType === ItemType.SAQ) {
-      setSearchParams({ questionId: 'new_saq' });
+      params.set('questionId', 'new_saq');
     } else {
-      setSearchParams({ questionId: 'new' });
+      params.set('questionId', 'new');
     }
+
+    if (redirectPath) {
+      params.set('redirect', redirectPath);
+    }
+
+    setSearchParams(params);
   };
 
   const handleBackToDashboard = () => {
-    debugger
+    if (redirectPath) {
+      navigate(redirectPath);
+      return;
+    }
+
     setSearchParams({});
     setEditingItem(null);
   };
@@ -311,6 +329,18 @@ const QuestionWorkbenchView: React.FC = () => {
     } catch (error) {
       console.error('Failed to update status:', error);
       showToast('Failed to update status', 'error');
+    }
+  };
+
+  const handleDeleteItem = async (identifier: string) => {
+    try {
+      showToast('Deleting item...', 'success');
+      await testsService.deleteItem(identifier);
+      await loadItems();
+      showToast('Asset Deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      showToast('Failed to delete item', 'error');
     }
   };
 
@@ -454,10 +484,7 @@ const QuestionWorkbenchView: React.FC = () => {
               onCreateClick={handleCreateNew}
               onViewAllClick={() => navigate('/bank-explorer')}
               onEditClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
-              onDelete={(id) => {
-                setItemsList((prev) => prev.filter((i) => i.id !== id));
-                showToast('Asset Deleted', 'success');
-              }}
+              onDelete={handleDeleteItem}
               onIssueClick={() => {
                 setActiveTab('INTEGRITY');
               }}

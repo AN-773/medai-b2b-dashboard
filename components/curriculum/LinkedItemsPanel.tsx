@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Database, X, ClipboardCheck, ExternalLink, Plus, Sparkles, Loader2 } from 'lucide-react';
 import { LearningObjective } from '@/types';
 import { testsService } from '@/services/testsService';
@@ -10,14 +10,25 @@ import { BackendApiItem } from '@/types/TestsServiceTypes';
 interface LinkedItemsPanelProps {
   objective: LearningObjective;
   onClose: () => void;
-  onCreateNew?: (obj: LearningObjective) => void;
+  onCreateNew?: (obj: LearningObjective, redirectTo?: string) => void;
 }
 
 const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose, onCreateNew }) => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [items, setItems] = useState<BackendApiItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const redirectTo = `${location.pathname}${location.search}${location.hash}`;
+
+  const navigateToItem = (questionId: string) => {
+    const params = new URLSearchParams({
+      questionId,
+      redirect: redirectTo,
+    });
+
+    navigate(`/workbench?${params.toString()}`);
+  };
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -72,7 +83,7 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
                     </h4>
                     {onCreateNew && (
                         <button 
-                            onClick={() => onCreateNew(objective)}
+                            onClick={() => onCreateNew(objective, redirectTo)}
                             className="text-[9px] font-black text-[#1BD183] uppercase tracking-widest flex items-center gap-1 hover:underline"
                         >
                             <Sparkles size={10} /> Create New
@@ -91,7 +102,7 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
                     <p className="text-xs text-slate-400 italic">No linked items found.</p>
                   ) : (
                     items.map(item => (
-                      <div key={item.id} onClick={() => navigate(`/workbench?questionId=${item.identifier}`)} className="p-4 border border-slate-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all group cursor-pointer bg-white">
+                      <div key={item.id} onClick={() => navigateToItem(item.identifier)} className="p-4 border border-slate-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all group cursor-pointer bg-white">
                          <div className="flex justify-between items-start mb-2">
                             <span className="px-2 py-0.5 bg-emerald-50 text-[#1BD183] rounded-lg text-[9px] font-black uppercase tracking-widest">
                               {item.status || item.type || 'MCQ'}
@@ -113,7 +124,7 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
          
          <div className="p-6 border-t border-slate-100 bg-slate-50">
             <button
-              onClick={() => onCreateNew?.(objective)}
+              onClick={() => onCreateNew?.(objective, redirectTo)}
               className="w-full py-3 bg-primary-gradient hover:bg-primary-gradient-hover   text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition flex items-center justify-center gap-2"
             >
                <Plus size={14} /> Create New Item

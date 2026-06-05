@@ -70,7 +70,7 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
     }
   }, [activeTopicId, activeSubTopicId, activeSystemId, activeSubjectId]);
 
-  const handleCreateLinkedItem = (obj: LearningObjective) => {
+  const handleCreateLinkedItem = (obj: LearningObjective, redirectTo?: string) => {
     const context: Partial<Taxonomy> | any = {
       questionId: 'new',
       organSystemId: activeSystemId,
@@ -82,6 +82,9 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
       cognitiveSkillId: obj.cognitiveSkillId || '',
       exam: obj.exam || '',
     };
+    if (redirectTo) {
+      context.redirect = redirectTo;
+    }
     setViewLinkedItems(null);
     if (onNavigate) onNavigate('WORKBENCH', context);
   };

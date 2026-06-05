@@ -119,8 +119,15 @@ export interface Discipline {
   title: string;
   createdAt: string;
   updatedAt: string;
+  learningObjectivesTotal?: number;
   blocks?: Block[];
   questions?: Question[];
+}
+
+export interface MoveDisciplineLearningObjectivesResponse {
+  from: string;
+  to: string;
+  moved: number;
 }
 
 export interface Subject {
