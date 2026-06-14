@@ -33,6 +33,7 @@ const CHUNK_SOURCE_TONE: Record<string, string> = {
   similarity_fallback: 'bg-amber-50 text-amber-700 ring-amber-200',
   random_fallback: 'bg-rose-50 text-rose-700 ring-rose-200',
   internal_reused: 'bg-violet-50 text-violet-700 ring-violet-200',
+  internal_generated: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200',
 };
 
 // ---------- Atoms ----------

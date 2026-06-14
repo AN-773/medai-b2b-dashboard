@@ -26,8 +26,25 @@ import {
   ApiItemType,
   ApiItemStatus,
 } from '../types/TestsServiceTypes';
-import { Prompt, PromptPayload } from '../types';
+import {
+  Prompt,
+  PromptCatalogResponse,
+  PromptPayload,
+  PromptUpsertResult,
+} from '../types';
 import { apiClient } from './apiClient';
+
+const extractResourceIdentifier = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutQuery = trimmed.split(/[?#]/, 1)[0];
+  const segments = withoutQuery.split('/').filter(Boolean);
+
+  return segments.length > 0 ? segments[segments.length - 1] : withoutQuery;
+};
 
 export const testsService = {
   getOrganSystems: async (
@@ -608,7 +625,7 @@ export const testsService = {
     exam?: string,
     type?: string,
     page = 1,
-    limit = 200,
+    limit = 0,
   ): Promise<PaginatedApiResponse<Prompt>> => {
     let url = `/prompts?page=${page}&limit=${limit}`;
     if (exam) url += `&exam=${encodeURIComponent(exam)}`;
@@ -617,33 +634,31 @@ export const testsService = {
     return apiClient.get<PaginatedApiResponse<Prompt>>('TESTS', url);
   },
 
-  getPrompt: async (id: string): Promise<Prompt> => {
-    // Strip prefix if any
-    const cleanId = id.replace('/prompts/', '');
-    return apiClient.get<Prompt>('TESTS', `/prompts/${cleanId}`);
+  getPromptCatalog: async (): Promise<PromptCatalogResponse> => {
+    return apiClient.get<PromptCatalogResponse>('TESTS', '/superadmin/prompts/catalog');
   },
 
-  upsertPrompt: async (prompt: PromptPayload): Promise<Prompt> => {
-    // Wrap to match expected backend structure 'PromptUpsertRequest'
-    return apiClient.post<Prompt>('TESTS', '/prompts', { prompt });
+  getPrompt: async (id: string): Promise<Prompt> => {
+    return apiClient.get<Prompt>('TESTS', `/prompts/${extractResourceIdentifier(id)}`);
+  },
+
+  upsertPrompt: async (prompt: PromptPayload): Promise<PromptUpsertResult> => {
+    return apiClient.post<PromptUpsertResult>('TESTS', '/prompts', { prompt });
   },
 
   deletePrompt: async (id: string): Promise<void> => {
-    const cleanId = id.replace('/prompts/', '');
-    return apiClient.delete<void>('TESTS', `/prompts/${cleanId}`);
+    return apiClient.delete<void>('TESTS', `/prompts/${extractResourceIdentifier(id)}`);
   },
 
   assignPromptContext: async (promptId: string, fileId: string): Promise<Prompt> => {
-    const cleanId = promptId.replace('/prompts/', '');
-    return apiClient.post<Prompt>('TESTS', `/prompts/${cleanId}/contexts`, { fileId });
+    return apiClient.post<Prompt>('TESTS', `/prompts/${extractResourceIdentifier(promptId)}/contexts`, { fileId });
   },
 
   removePromptContext: async (promptId: string, fileId: string): Promise<Prompt> => {
-    const cleanPromptId = promptId.replace('/prompts/', '');
-    const cleanFileId = fileId.replace('/files/', '');
-    // Using string because current apiClient.delete does not expect a return type,
-    // but assuming standard REST behavior we'll define it locally inside the caller block.
-    return apiClient.delete<any>('TESTS', `/prompts/${cleanPromptId}/contexts/${cleanFileId}`);
+    return apiClient.delete<Prompt>(
+      'TESTS',
+      `/prompts/${extractResourceIdentifier(promptId)}/contexts/${extractResourceIdentifier(fileId)}`,
+    );
   },
 
   searchOpenIImages: async (query: string, m: number = 1, n: number = 20): Promise<OpenISearchResponse> => {

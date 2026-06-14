@@ -32,6 +32,7 @@ export type ChunkSource =
   | 'similarity_fallback'
   | 'random_fallback'
   | 'internal_reused'
+  | 'internal_generated'
   | string;
 
 export interface UploadRef {

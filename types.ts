@@ -198,6 +198,22 @@ export interface PromptPayload {
   type: string;
   exam: string;
   enforcedSchema?: string;
+  tenantId?: string | null;
+}
+
+export interface PromptFile {
+  id: string;
+  questionId: string | null;
+  identifier: string;
+  name: string;
+  path: string;
+  type: string;
+  size: number;
+  url: string;
+  tenantId: string | null;
+  created: string;
+  updated: string;
+  deletedAt: string | null;
 }
 
 export interface Prompt {
@@ -206,10 +222,49 @@ export interface Prompt {
   userTemplate?: string;
   type: string;
   exam: string;
-  enforcedSchema?: string;
-  files?: Array<{ id: string; name: string; sizeBytes?: number }>;
+  enforcedSchema?: unknown;
+  vectorStoreId?: string;
+  tenantId?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string | null;
+  files?: PromptFile[] | null;
+}
+
+export interface PromptUpsertResult {
+  id: string;
+  ids: Record<string, string> | null;
+  _versions: Record<string, string> | null;
+  text: string;
+  userTemplate?: string;
+  type: string;
+  exam: string;
+  enforcedSchema: string;
+  tenantId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromptCatalogVariable {
+  token: string;
+  description: string;
+}
+
+export interface PromptCatalogItem {
+  type: string;
+  label: string;
+  description: string;
+  requiresExam: boolean;
+  defaultText?: string;
+  defaultUserTemplate?: string;
+  defaultEnforcedSchema?: unknown;
+  variables: PromptCatalogVariable[];
+  configuredPrompts: Prompt[];
+}
+
+export interface PromptCatalogResponse {
+  items: PromptCatalogItem[];
+  total: number;
 }
 
 export interface BackendItem {

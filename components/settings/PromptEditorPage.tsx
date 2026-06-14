@@ -1,50 +1,72 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Prompt, PromptPayload } from '../../types';
+import { Prompt, PromptCatalogItem, PromptFile, PromptPayload } from '../../types';
 import { testsService } from '../../services/testsService';
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   ChevronDown,
   FilePlus,
   Loader2,
   Save,
-  Sparkles,
   Trash,
 } from 'lucide-react';
 import {
-  DEFAULT_PROMPT_EXAM,
-  PROMPT_TYPE_OPTIONS,
-  getSystemPromptPlaceholder,
   getPromptTypeOption,
-  getUserTemplatePlaceholder,
-  normalizePromptExamForType,
+  getPromptTypeOptions,
+  normalizePromptExam,
+  serializePromptSchema,
 } from './promptConfig';
 
 interface PromptEditorPageProps {
   prompt: Prompt | null;
+  initialType?: string | null;
+  catalogItems: PromptCatalogItem[];
   existingPrompts: Prompt[];
   onClose: (didChange: boolean) => void;
 }
 
-type ReferencePanelKey = 'systemPrompt' | 'userTemplate' | 'variableGuide';
+type ReferencePanelKey = 'systemPrompt' | 'userTemplate' | 'variableGuide' | 'schema';
 type SectionKey = 'setup' | 'systemPrompt' | 'userTemplate' | 'context';
 
-const getInitialPromptFormData = (prompt: Prompt | null): PromptPayload => {
-  const type = prompt?.type || PROMPT_TYPE_OPTIONS[0].value;
+const getCatalogItemForType = (catalogItems: PromptCatalogItem[], type: string): PromptCatalogItem | null =>
+  catalogItems.find(item => item.type === type) ?? null;
+
+const promptTypeRequiresExam = (catalogItems: PromptCatalogItem[], type: string): boolean =>
+  getCatalogItemForType(catalogItems, type)?.requiresExam ?? false;
+
+const normalizePromptExamForCatalogType = (
+  catalogItems: PromptCatalogItem[],
+  type: string,
+  exam?: string | null,
+): string => normalizePromptExam(promptTypeRequiresExam(catalogItems, type), exam);
+
+const getInitialPromptFormData = (
+  prompt: Prompt | null,
+  initialType: string | null | undefined,
+  catalogItems: PromptCatalogItem[],
+): PromptPayload => {
+  const type = prompt?.type || initialType || catalogItems[0]?.type || '';
 
   return {
     id: prompt?.id,
-    exam: normalizePromptExamForType(type, prompt?.exam || DEFAULT_PROMPT_EXAM),
+    exam: normalizePromptExamForCatalogType(catalogItems, type, prompt?.exam),
     type,
     text: prompt?.text || '',
     userTemplate: prompt?.userTemplate || '',
-    enforcedSchema: prompt?.enforcedSchema || '',
+    enforcedSchema: serializePromptSchema(prompt?.enforcedSchema),
   };
 };
 
-const getDefaultOpenSections = (payload: PromptPayload): Record<SectionKey, boolean> => {
-  const promptType = getPromptTypeOption(payload.type);
-  const shouldShowTemplateEditor = promptType.variables.length > 0 || Boolean(payload.userTemplate?.trim());
+const getDefaultOpenSections = (
+  payload: PromptPayload,
+  promptType = getPromptTypeOption(payload.type),
+  defaultUserTemplate = '',
+): Record<SectionKey, boolean> => {
+  const shouldShowTemplateEditor =
+    promptType.variables.length > 0 ||
+    Boolean(payload.userTemplate?.trim()) ||
+    Boolean(defaultUserTemplate.trim());
 
   return {
     setup: true,
@@ -54,17 +76,43 @@ const getDefaultOpenSections = (payload: PromptPayload): Record<SectionKey, bool
   };
 };
 
-const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPrompts, onClose }) => {
-  const [formData, setFormData] = useState<PromptPayload>(() => getInitialPromptFormData(prompt));
+const toPromptFile = (file: Awaited<ReturnType<typeof testsService.uploadFile>>): PromptFile => ({
+  id: file.id,
+  questionId: null,
+  identifier: file.identifier,
+  name: file.name,
+  path: file.path,
+  type: file.type,
+  size: file.size,
+  url: file.url,
+  tenantId: null,
+  created: file.created,
+  updated: file.updated,
+  deletedAt: file.deletedAt || null,
+});
+
+const PromptEditorPage: React.FC<PromptEditorPageProps> = ({
+  prompt,
+  initialType,
+  catalogItems,
+  existingPrompts,
+  onClose,
+}) => {
+  const [persistedPrompt, setPersistedPrompt] = useState<Prompt | null>(prompt);
+  const [formData, setFormData] = useState<PromptPayload>(() =>
+    getInitialPromptFormData(prompt, initialType, catalogItems),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState(prompt?.files || []);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<PromptFile[]>(prompt?.files || []);
   const [isUploading, setIsUploading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [openReferences, setOpenReferences] = useState<Record<ReferencePanelKey, boolean>>({
     systemPrompt: false,
     userTemplate: false,
     variableGuide: false,
+    schema: false,
   });
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     setup: true,
@@ -74,33 +122,44 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
   });
   const userTemplateRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const selectedPromptType = getPromptTypeOption(formData.type);
-  const normalizedExam = normalizePromptExamForType(formData.type, formData.exam);
-  const systemPromptPlaceholder = getSystemPromptPlaceholder(formData.type, normalizedExam);
-  const userTemplatePlaceholder = getUserTemplatePlaceholder(formData.type);
-  const isStudyPlanFlow = selectedPromptType.value === 'study_plan' || selectedPromptType.value.startsWith('study_plan_');
+  const activePrompt = persistedPrompt ?? prompt;
+  const promptTypeOptions = getPromptTypeOptions(catalogItems);
+  const selectedCatalogItem = getCatalogItemForType(catalogItems, formData.type);
+  const selectedPromptType = getPromptTypeOption(formData.type, catalogItems);
+  const normalizedExam = normalizePromptExamForCatalogType(catalogItems, formData.type, formData.exam);
+  const defaultSystemPrompt = selectedCatalogItem?.defaultText ?? '';
+  const defaultUserTemplate = selectedCatalogItem?.defaultUserTemplate ?? '';
+  const defaultSchemaReference = serializePromptSchema(selectedCatalogItem?.defaultEnforcedSchema);
   const supportsVariableTemplate = selectedPromptType.variables.length > 0;
-  const showUserTemplateEditor = supportsVariableTemplate || Boolean(formData.userTemplate?.trim());
-  const systemPromptLabel = isStudyPlanFlow ? 'Persona' : 'System Instruction';
-  const systemPromptHint = selectedPromptType.value === 'study_plan'
-    ? 'Shared system prompt for study-plan generation flows.'
-    : selectedPromptType.value.startsWith('study_plan_')
-      ? 'Optional override. If left blank, the shared study-plan base prompt will be used.'
-      : 'Primary system instruction for this prompt type.';
+  const showUserTemplateEditor =
+    supportsVariableTemplate ||
+    Boolean(formData.userTemplate?.trim()) ||
+    Boolean(defaultUserTemplate.trim());
+  const shouldShowSchemaEditor =
+    Boolean(formData.enforcedSchema?.trim()) ||
+    Boolean(defaultSchemaReference.trim());
+  const systemPromptLabel = 'System Instruction';
+  const systemPromptHint = selectedPromptType.description || 'Primary system instruction for this prompt type.';
 
   useEffect(() => {
-    const nextFormData = getInitialPromptFormData(prompt);
+    const nextFormData = getInitialPromptFormData(prompt, initialType, catalogItems);
+    const nextPromptType = getPromptTypeOption(nextFormData.type, catalogItems);
+    const nextDefaultUserTemplate = getCatalogItemForType(catalogItems, nextFormData.type)?.defaultUserTemplate ?? '';
+
+    setPersistedPrompt(prompt);
     setFormData(nextFormData);
     setErrorMsg('');
+    setSuccessMsg('');
     setHasChanges(false);
     setAttachedFiles(prompt?.files || []);
     setOpenReferences({
       systemPrompt: false,
       userTemplate: false,
       variableGuide: false,
+      schema: false,
     });
-    setOpenSections(getDefaultOpenSections(nextFormData));
-  }, [prompt]);
+    setOpenSections(getDefaultOpenSections(nextFormData, nextPromptType, nextDefaultUserTemplate));
+  }, [prompt, initialType, catalogItems]);
 
   const toggleReference = (key: ReferencePanelKey) => {
     setOpenReferences(prev => ({
@@ -200,11 +259,9 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-              <div className='flex flex-col align-middle h-100'>
+              <div className="flex flex-col">
                 <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-                {description && (
-                  <p className="mt-1 text-sm text-slate-500">{description}</p>
-                )}
+                {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
               </div>
               {!isOpen && (
                 <div className="max-w-sm truncate rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
@@ -229,26 +286,38 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
     if (errorMsg) {
       setErrorMsg('');
     }
+    if (successMsg) {
+      setSuccessMsg('');
+    }
   };
 
   const handleTypeChange = (nextType: string) => {
+    const normalizedType = nextType;
+
     setFormData(prev => {
       const nextFormData = {
         ...prev,
-        type: nextType,
-        exam: normalizePromptExamForType(nextType, prev.exam),
+        type: normalizedType,
+        exam: normalizePromptExamForCatalogType(catalogItems, normalizedType, prev.exam),
       };
+
+      const nextPromptType = getPromptTypeOption(normalizedType, catalogItems);
+      const nextDefaultTemplate = getCatalogItemForType(catalogItems, normalizedType)?.defaultUserTemplate ?? '';
 
       setOpenSections(prevSections => ({
         ...prevSections,
-        ...getDefaultOpenSections(nextFormData),
+        ...getDefaultOpenSections(nextFormData, nextPromptType, nextDefaultTemplate),
         context: prevSections.context,
       }));
 
       return nextFormData;
     });
+
     if (errorMsg) {
       setErrorMsg('');
+    }
+    if (successMsg) {
+      setSuccessMsg('');
     }
   };
 
@@ -265,7 +334,10 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
     }));
 
     requestAnimationFrame(() => {
-      if (!textarea) return;
+      if (!textarea) {
+        return;
+      }
+
       const cursorPosition = selectionStart + token.length;
       textarea.focus();
       textarea.setSelectionRange(cursorPosition, cursorPosition);
@@ -273,31 +345,74 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
   };
 
   const handleSave = async () => {
+    const trimmedType = formData.type.trim();
+
+    if (!trimmedType) {
+      setErrorMsg('Provide a prompt type.');
+      return;
+    }
+
     if (!formData.text.trim() && !(formData.userTemplate || '').trim()) {
       setErrorMsg('Provide a system instruction, a variable template, or both.');
       return;
     }
 
-    const isDuplicate = existingPrompts.some(p =>
-      p.type === formData.type &&
-      normalizePromptExamForType(p.type, p.exam) === normalizedExam &&
-      p.id !== prompt?.id
+    if ((formData.enforcedSchema || '').trim()) {
+      try {
+        JSON.parse(formData.enforcedSchema || '');
+      } catch {
+        setErrorMsg('Response schema must be valid JSON.');
+        return;
+      }
+    }
+
+    const normalizedType = trimmedType;
+    const normalizedTargetExam = normalizePromptExamForCatalogType(catalogItems, normalizedType, formData.exam);
+    const currentPromptId = activePrompt?.id;
+    const isDuplicate = existingPrompts.some(existingPrompt =>
+      existingPrompt.type === normalizedType &&
+      normalizePromptExamForCatalogType(catalogItems, existingPrompt.type, existingPrompt.exam) === normalizedTargetExam &&
+      existingPrompt.id !== currentPromptId,
     );
 
     if (isDuplicate) {
-      const targetScope = selectedPromptType.requiresExam ? normalizedExam : 'the global scope';
+      const targetScope = selectedPromptType.requiresExam ? normalizedTargetExam : 'the global scope';
       setErrorMsg(`A prompt for ${selectedPromptType.label} in ${targetScope} already exists.`);
       return;
     }
 
+    const wasExistingPrompt = Boolean(currentPromptId);
+
     setIsLoading(true);
     setErrorMsg('');
+    setSuccessMsg('');
     try {
-      await testsService.upsertPrompt({
+      const upsertedPrompt = await testsService.upsertPrompt({
         ...formData,
-        exam: normalizedExam,
+        type: normalizedType,
+        exam: normalizedTargetExam,
+        enforcedSchema: formData.enforcedSchema?.trim() || undefined,
       });
-      onClose(true);
+      const storedPrompt = await testsService.getPrompt(upsertedPrompt.id);
+
+      if (prompt?.id) {
+        onClose(true);
+        return;
+      }
+
+      setPersistedPrompt(storedPrompt);
+      setFormData(getInitialPromptFormData(storedPrompt, storedPrompt.type, catalogItems));
+      setAttachedFiles(storedPrompt.files || []);
+      setHasChanges(true);
+      setOpenSections(prev => ({
+        ...prev,
+        context: true,
+      }));
+      setSuccessMsg(
+        wasExistingPrompt
+          ? 'Prompt updated. Context files remain available below.'
+          : 'Prompt created. You can now link context files below.',
+      );
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Failed to save prompt configuration.');
@@ -306,34 +421,52 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !prompt?.id) return;
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !activePrompt?.id) {
+      return;
+    }
 
     setIsUploading(true);
+    setErrorMsg('');
+    setSuccessMsg('');
     try {
       const uploadedFile = await testsService.uploadFile(file);
-      await testsService.assignPromptContext(prompt.id.split('/').pop() || '', uploadedFile.id);
-      setAttachedFiles(prev => [...prev, { id: uploadedFile.id, name: file.name }]);
+      await testsService.assignPromptContext(activePrompt.id, uploadedFile.id);
+
+      setAttachedFiles(prev => {
+        const nextFile = toPromptFile(uploadedFile);
+        if (prev.some(existingFile => existingFile.id === nextFile.id)) {
+          return prev;
+        }
+        return [...prev, nextFile];
+      });
       setHasChanges(true);
+      setSuccessMsg('Context file linked.');
     } catch (err: any) {
       console.error(err);
-      alert('Failed to upload file and attach context');
+      setErrorMsg(err.message || 'Failed to upload file and attach context.');
     } finally {
       setIsUploading(false);
-      if (e.target) e.target.value = '';
+      event.target.value = '';
     }
   };
 
   const handleRemoveFile = async (fileId: string) => {
-    if (!prompt?.id) return;
+    if (!activePrompt?.id) {
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
     try {
-      await testsService.removePromptContext(prompt.id.split('/').pop() || '', fileId.split('/').pop() || '');
-      setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+      await testsService.removePromptContext(activePrompt.id, fileId);
+      setAttachedFiles(prev => prev.filter(file => file.id !== fileId));
       setHasChanges(true);
+      setSuccessMsg('Context file unlinked.');
     } catch (err: any) {
       console.error(err);
-      alert('Failed to remove context file');
+      setErrorMsg(err.message || 'Failed to remove context file.');
     }
   };
 
@@ -343,7 +476,8 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
     .join('\n\n');
   const systemPreview = formData.text.trim() || 'Using the built-in default instruction.';
   const templatePreview = (formData.userTemplate || '').trim() || 'Using the built-in default template.';
-  const contextPreview = prompt?.id
+  const schemaPreview = (formData.enforcedSchema || '').trim() || 'Using the built-in default response schema.';
+  const contextPreview = activePrompt?.id
     ? attachedFiles.length > 0
       ? `${attachedFiles.length} ${attachedFiles.length === 1 ? 'file' : 'files'} linked`
       : 'No files linked yet.'
@@ -364,10 +498,10 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
                 Back To Prompts
               </button>
               <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
-                {prompt ? 'Edit Prompt' : 'Create Prompt'}
+                {activePrompt ? 'Edit Prompt' : 'Create Prompt'}
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                Configure this prompt in order from scope to instruction to runtime template. References stay tucked away until you need them.
+                Build the prompt from scope to instruction to runtime template, then attach context files after the prompt exists.
               </p>
             </div>
 
@@ -392,6 +526,13 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
         </div>
       )}
 
+      {successMsg && (
+        <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <CheckCircle2 size={16} className="shrink-0" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
       <div className="space-y-4">
         {renderSection(
           'setup',
@@ -406,7 +547,7 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
                 {selectedPromptType.requiresExam ? (
                   <select
                     value={normalizedExam}
-                    onChange={e => handleChange('exam', e.target.value)}
+                    onChange={event => handleChange('exam', event.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="STEP 1">Step 1</option>
@@ -422,100 +563,152 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
 
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Target Feature Type</label>
-                <select
+                <input
+                  list="prompt-type-options"
                   value={formData.type}
-                  onChange={e => handleTypeChange(e.target.value)}
+                  onChange={event => handleTypeChange(event.target.value)}
+                  placeholder="Select or enter a prompt type"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {PROMPT_TYPE_OPTIONS.map(option => (
+                />
+                <datalist id="prompt-type-options">
+                  {promptTypeOptions.map(option => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </datalist>
+                <p className="mt-2 text-xs text-slate-500">
+                  Choose a catalog-backed type or enter a custom backend prompt type string.
+                </p>
               </div>
             </div>
 
-          </div>,
-        )}
-
-        {showUserTemplateEditor && renderSection(
-          'userTemplate',
-          '02',
-          'Template Editor',
-          'Define the runtime message after the high-level instruction is set.',
-          getReferencePreview(templatePreview),
-          <div className="space-y-4">
-            {supportsVariableTemplate ? (
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800">Runtime Variables</div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Insert tokens inline and only open the guide when you need the full descriptions.
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    {selectedPromptType.variables.length} available
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-800">{selectedPromptType.label}</div>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{selectedPromptType.description}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {selectedPromptType.requiresExam ? 'Exam Required' : 'Global'}
+                </span>
+                {selectedCatalogItem && (
+                  <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                    Catalog Backed
                   </span>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedPromptType.variables.map(variable => (
-                    <button
-                      key={variable.token}
-                      type="button"
-                      onClick={() => handleInsertVariable(variable.token)}
-                      className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
-                    >
-                      {variable.token}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-3">
-                  {renderReferenceToggle(
-                    'variableGuide',
-                    'Variable Guide',
-                    variableGuideText,
-                    `${selectedPromptType.variables.length} runtime variables`,
-                  )}
-                </div>
+                )}
+                {!selectedCatalogItem && formData.type.trim() && (
+                  <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                    Custom Type
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                This prompt type does not expose predefined template variables.
-              </div>
-            )}
-
-            <textarea
-              ref={userTemplateRef}
-              value={formData.userTemplate || ''}
-              onChange={e => handleChange('userTemplate', e.target.value)}
-              rows={supportsVariableTemplate ? 12 : 9}
-              placeholder={userTemplatePlaceholder}
-              className="w-full rounded-[24px] border border-slate-200 bg-white p-4 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
-            />
-
-            {renderReferenceToggle('userTemplate', 'Default Template Reference', userTemplatePlaceholder)}
+            </div>
           </div>,
         )}
+
+        {showUserTemplateEditor &&
+          renderSection(
+            'userTemplate',
+            '02',
+            'Template Editor',
+            'Define the runtime message after the high-level instruction is set.',
+            getReferencePreview(templatePreview),
+            <div className="space-y-4">
+              {supportsVariableTemplate ? (
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Runtime Variables</div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Insert tokens inline and only open the guide when you need the full descriptions.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      {selectedPromptType.variables.length} available
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedPromptType.variables.map(variable => (
+                      <button
+                        key={variable.token}
+                        type="button"
+                        onClick={() => handleInsertVariable(variable.token)}
+                        className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+                      >
+                        {variable.token}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-3">
+                    {renderReferenceToggle(
+                      'variableGuide',
+                      'Variable Guide',
+                      variableGuideText,
+                      `${selectedPromptType.variables.length} runtime variables`,
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  This prompt type does not expose predefined template variables.
+                </div>
+              )}
+
+              <textarea
+                ref={userTemplateRef}
+                value={formData.userTemplate || ''}
+                onChange={event => handleChange('userTemplate', event.target.value)}
+                rows={supportsVariableTemplate ? 12 : 9}
+                placeholder={defaultUserTemplate}
+                className="w-full resize-y rounded-[24px] border border-slate-200 bg-white p-4 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+
+              {renderReferenceToggle('userTemplate', 'Default Template Reference', defaultUserTemplate)}
+            </div>,
+          )}
 
         {renderSection(
           'systemPrompt',
-          supportsVariableTemplate ? '03' : '02',
+          showUserTemplateEditor ? '03' : '02',
           systemPromptLabel,
           systemPromptHint,
           getReferencePreview(systemPreview),
           <div className="space-y-4">
             <textarea
               value={formData.text}
-              onChange={e => handleChange('text', e.target.value)}
+              onChange={event => handleChange('text', event.target.value)}
               rows={10}
-              placeholder={systemPromptPlaceholder}
-              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+              placeholder={defaultSystemPrompt}
+              className="w-full resize-y rounded-[24px] border border-slate-200 bg-slate-50 p-4 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
-            {renderReferenceToggle('systemPrompt', `Default ${systemPromptLabel}`, systemPromptPlaceholder)}
+            {renderReferenceToggle('systemPrompt', `Default ${systemPromptLabel}`, defaultSystemPrompt)}
+
+            {shouldShowSchemaEditor && (
+              <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">Response Schema</div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Stored as a string on upsert and returned as JSON on read endpoints. Provide valid JSON when overriding it.
+                  </p>
+                </div>
+
+                <textarea
+                  value={formData.enforcedSchema || ''}
+                  onChange={event => handleChange('enforcedSchema', event.target.value)}
+                  rows={10}
+                  placeholder={defaultSchemaReference}
+                  className="w-full resize-y rounded-[20px] border border-slate-200 bg-slate-50 p-4 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+
+                {renderReferenceToggle(
+                  'schema',
+                  'Default Response Schema',
+                  defaultSchemaReference,
+                  getReferencePreview(schemaPreview),
+                )}
+              </div>
+            )}
           </div>,
         )}
 
@@ -523,17 +716,17 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
           'context',
           showUserTemplateEditor ? '04' : '03',
           'Context Files',
-          prompt?.id
+          activePrompt?.id
             ? 'Link optional source material after the prompt itself is in place.'
             : 'This section unlocks after the prompt is saved for the first time.',
           contextPreview,
-          prompt?.id ? (
+          activePrompt?.id ? (
             <div className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-slate-800">RAG Context</div>
                   <p className="mt-1 text-xs text-slate-500">
-                    Keep documents separate from the prompt body so the instruction stays clean.
+                    The assign endpoint expects the full uploaded file id, while removals use the file identifier from the path automatically.
                   </p>
                 </div>
 
@@ -566,17 +759,17 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {attachedFiles.map(f => (
+                  {attachedFiles.map(file => (
                     <li
-                      key={f.id}
+                      key={file.id}
                       className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-slate-300"
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
                         <FilePlus size={16} className="shrink-0 text-slate-400" />
-                        <span className="truncate text-sm font-medium text-slate-700">{f.name || 'document_context.txt'}</span>
+                        <span className="truncate text-sm font-medium text-slate-700">{file.name || 'document_context.txt'}</span>
                       </div>
                       <button
-                        onClick={() => handleRemoveFile(f.id)}
+                        onClick={() => handleRemoveFile(file.id)}
                         className="rounded-md p-1.5 text-slate-400 opacity-0 transition-colors hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                         title="Unlink File"
                       >
@@ -599,9 +792,7 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
       </div>
 
       <div className="flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <p className="text-sm text-slate-500">
-          Save after reviewing the sections from top to bottom.
-        </p>
+        <p className="text-sm text-slate-500">Save after reviewing the sections from top to bottom.</p>
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={() => onClose(hasChanges)}
@@ -616,7 +807,7 @@ const PromptEditorPage: React.FC<PromptEditorPageProps> = ({ prompt, existingPro
             className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
           >
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {prompt ? 'Update Prompt' : 'Create Prompt'}
+            {activePrompt ? 'Update Prompt' : 'Create Prompt'}
           </button>
         </div>
       </div>

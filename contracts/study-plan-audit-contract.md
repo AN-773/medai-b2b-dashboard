@@ -71,6 +71,7 @@ type ChunkSource =
   | "similarity_fallback"
   | "random_fallback"
   | "internal_reused"
+  | "internal_generated"
   | string;
 
 type UploadAuditRun = {
@@ -582,7 +583,7 @@ type GetItemLineageResponse = {
 ### Notes
 
 - The backend selects one producing run for the item, preferring generated lineage over reused lineage when both exist.
-- `chunks` can be empty. This is valid, especially when the chosen run used `chunk_source = "internal_reused"`.
+- `chunks` can be empty. This is valid, especially when the chosen run used `chunk_source = "internal_reused"` or `chunk_source = "internal_generated"`.
 - `chunks[].upload` is omitted when the chunk has no upload row.
 - The path param is an item identifier, while `item.id` in the payload remains the internal item ID.
 

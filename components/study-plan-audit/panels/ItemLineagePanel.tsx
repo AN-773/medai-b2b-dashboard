@@ -148,7 +148,7 @@ const ItemLineagePanel: React.FC<Props> = ({
             {data.chunks.length === 0 ? (
               <EmptyBlock
                 title="No chunks attached"
-                hint={`Often true when chunk_source = "internal_reused".`}
+                hint={`Often true when chunk_source = "internal_reused" or "internal_generated".`}
               />
             ) : (
               <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
