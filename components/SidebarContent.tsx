@@ -8,7 +8,6 @@ import {
   Users, 
   BookOpen, 
   LineChart,
-  Cpu,
   ClipboardList, 
   Database,
   Wand2,

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,15 +8,13 @@ import {
   Users,
   BookOpen,
   LineChart,
-  Cpu,
   ClipboardList,
-  Bell,
   Settings,
-  Search,
   ChevronRight,
   Database,
   Wand2,
-  LogOut,
+  Menu,
+  X,
   GraduationCap,
   Workflow
 } from 'lucide-react';
@@ -51,6 +49,19 @@ const DashboardLayout: React.FC = () => {
   const { logout, isSuperadmin } = useAuth();
   const [isAuditMapOpen, setIsAuditMapOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   // Map routes to View types for active state
   const getActiveView = (): View => {
@@ -150,6 +161,8 @@ const DashboardLayout: React.FC = () => {
           { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
         ]),
   ];
+  const activeViewLabel =
+    navItems.find((n) => n.id === activeView)?.label || 'Mission Control';
 
   return (
     <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
@@ -168,8 +181,23 @@ const DashboardLayout: React.FC = () => {
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setIsMobileMenuOpen(false)}
+            aria-hidden="true"
           ></div>
-          <div className="relative w-64 h-full bg-[#0F1110] shadow-2xl animate-in slide-in-from-left duration-300">
+          <div
+            id="mobile-sidebar"
+            className="relative w-72 max-w-[85vw] h-full bg-[#0F1110] shadow-2xl animate-in slide-in-from-left duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+          >
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-[#00AA55]"
+              aria-label="Close navigation menu"
+            >
+              <X size={20} />
+            </button>
             <SidebarContent
               activeView={activeView}
               onNavigate={handleNavigate}
@@ -181,16 +209,35 @@ const DashboardLayout: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col relative w-full">
+        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-[#F3F6F3]/95 px-4 py-3 backdrop-blur xl:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#00AA55]"
+            aria-label="Open navigation menu"
+            aria-controls="mobile-sidebar"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <Menu size={22} />
+          </button>
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              MSAi Ecosystem
+            </div>
+            <div className="truncate text-sm font-black text-slate-900">
+              {activeViewLabel}
+            </div>
+          </div>
+        </div>
         <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
-          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+          <div className="hidden xl:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
             MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
             {activeView.split('_').join(' ')}
           </div>
           <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-10 gap-6">
             <div>
               <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-none">
-                {navItems.find((n) => n.id === activeView)?.label ||
-                  'Mission Control'}
+                {activeViewLabel}
               </h2>
              
             </div>
