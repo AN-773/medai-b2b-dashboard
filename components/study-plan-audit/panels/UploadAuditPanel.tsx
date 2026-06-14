@@ -181,6 +181,11 @@ const ExtractionRuns: React.FC<{
                 )}
                 <span>started <TimeAgo iso={r.started_at} /></span>
               </div>
+              {r.error_message && (
+                <div className="mt-2 whitespace-pre-wrap break-words rounded-md bg-rose-50 px-2 py-1 text-[11px] leading-snug text-rose-700 ring-1 ring-rose-200">
+                  {r.error_message}
+                </div>
+              )}
             </div>
           );
         })}

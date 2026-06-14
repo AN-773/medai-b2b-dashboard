@@ -762,7 +762,14 @@ const SessionsTab: React.FC<{
     }
     if (s) {
       base = base.filter((sess) =>
-        [sess.identifier, sess.id, sess.mode, sess.status, sess.error_code ?? '']
+        [
+          sess.identifier,
+          sess.id,
+          sess.mode,
+          sess.status,
+          sess.error_code ?? '',
+          sess.error_message ?? '',
+        ]
           .map((v) => v.toLowerCase())
           .some((v) => v.includes(s)),
       );
@@ -842,6 +849,14 @@ const SessionsTab: React.FC<{
                       {sess.error_code && (
                         <span className="font-mono text-[10px] text-rose-600">
                           {sess.error_code}
+                        </span>
+                      )}
+                      {sess.error_message && (
+                        <span
+                          className="max-w-[18rem] whitespace-normal break-words text-[11px] leading-snug text-rose-700"
+                          title={sess.error_message}
+                        >
+                          {sess.error_message}
                         </span>
                       )}
                     </div>
