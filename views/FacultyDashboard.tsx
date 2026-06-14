@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
-  ArrowRightLeft,
+  ArrowUpRight,
   BarChart3,
   Brain,
   Calendar,
+  CheckCircle2,
   Clock,
   Clock as ClockIcon,
   Download,
@@ -346,6 +347,9 @@ const FacultyDashboard: React.FC = () => {
   const selectedCohortName = selectedCohort?.title || 'No cohort selected';
   const selectedCohortMeta = selectedCohort?.term || `${cohortReport?.learnerCount || 0} learners`;
   const weakestCourse = courseMastery[0] || null;
+  const actionableAlerts = alerts.filter((alert) => alert.id !== 'alert-clear');
+  const criticalAlertsCount = alerts.filter((alert) => alert.priority === 'HIGH').length;
+  const alertCards = actionableAlerts.slice(0, 2);
 
   const handleExportReport = () => {
     if (!selectedCohort || !cohortReport || typeof window === 'undefined') return;
@@ -383,6 +387,14 @@ const FacultyDashboard: React.FC = () => {
     navigate(
       `/mastery/cohorts/${encodeURIComponent(getIdSuffix(selectedCohort.id))}`,
     );
+  };
+
+  const handleOpenInterventions = () => {
+    handleLaunchAnalytics();
+  };
+
+  const handleSendResources = () => {
+    navigate('/curriculum');
   };
 
   const HeaderNavigation = () => (
@@ -588,54 +600,101 @@ const FacultyDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm h-full">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h4 className="font-black text-slate-900 uppercase tracking-tight">
               Priority Alerts
             </h4>
-            <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-widest">
-              {alerts.filter((alert) => alert.priority === 'HIGH').length} Critical
+            <span
+              className={`rounded-xl px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
+                criticalAlertsCount > 0
+                  ? 'bg-rose-100 text-rose-700'
+                  : 'bg-emerald-100 text-emerald-700'
+              }`}
+            >
+              {criticalAlertsCount} Critical
             </span>
           </div>
-          <div className="space-y-3">
-            {alerts.slice(0, 5).map((alert) => (
-              <div
-                key={alert.id}
-                className={`p-5 rounded-2xl border-l-4 transition-all hover:translate-x-1 ${
-                  alert.priority === 'HIGH'
-                    ? 'border-l-rose-500 bg-rose-50'
-                    : alert.priority === 'MEDIUM'
-                      ? 'border-l-amber-500 bg-amber-50'
-                      : 'border-l-blue-500 bg-blue-50'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-bold text-slate-900 mb-1 text-sm">
-                      {alert.title}
+
+          {alertCards.length > 0 ? (
+            <div className="space-y-4">
+              {alertCards.map((alert, index) => (
+                <div
+                  key={alert.id}
+                  className="overflow-hidden rounded-[1.5rem] border border-[#E7DFC6] bg-[#F4F0E2] shadow-sm"
+                >
+                  <div className="flex gap-0">
+                    <div className="w-1.5 shrink-0 bg-[#F59E0B]" aria-hidden="true" />
+                    <div className="flex-1 px-5 py-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-black text-slate-900">
+                            {alert.title}
+                          </div>
+                          <div className="mt-1 max-w-xl text-sm font-semibold text-slate-600">
+                            {alert.description}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-[10px] font-black uppercase tracking-[0.2em] text-[#8A9BB8]">
+                          {index === 0 ? 'Just now' : '2 hours ago'}
+                        </div>
+                      </div>
+
+                      {alert.suggestedAction && (
+                        <button
+                          type="button"
+                          onClick={handleOpenInterventions}
+                          className="mt-5 flex w-full items-center justify-between border-t border-[#E0D7BC] pt-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-[#4F46E5] transition hover:text-[#4338CA]"
+                        >
+                          <span>{alert.suggestedAction}</span>
+                          <ArrowUpRight size={14} />
+                        </button>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-600 font-medium">
-                      {alert.description}
-                    </div>
-                  </div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {alert.timeAgo}
                   </div>
                 </div>
-                {alert.suggestedAction && (
-                  <div className="mt-3 pt-3 border-t border-black/5">
-                    <button className="text-[10px] font-black uppercase tracking-widest text-[#1BD183] hover:text-[#1BD183]/80 flex items-center gap-1">
-                      {alert.suggestedAction} <ArrowRightLeft size={10} />
-                    </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-[208px] flex-col justify-between rounded-[1.5rem] border border-emerald-100 bg-[linear-gradient(135deg,#F4FBF6_0%,#EDF7F1_100%)] px-6 py-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
+                    <CheckCircle2 size={20} />
                   </div>
-                )}
+                  <div>
+                    <div className="text-sm font-black text-slate-900">
+                      No Priority Alerts
+                    </div>
+                    <div className="mt-1 max-w-md text-sm font-semibold leading-relaxed text-slate-600">
+                      This cohort has no critical readiness or pacing flags right now. Monitoring stays active as new mastery data arrives.
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                  Stable
+                </div>
               </div>
-            ))}
-          </div>
+
+              <div className="mt-6 flex items-center justify-between border-t border-emerald-200/80 pt-4">
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Continue monitoring cohort signals
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLaunchAnalytics}
+                  className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#4F46E5] transition hover:text-[#4338CA]"
+                >
+                  Open Deep Analytics
+                  <ArrowUpRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
           <div>
             <div className="flex items-center justify-between mb-6">
               <h4 className="font-black text-slate-900 uppercase tracking-tight">
@@ -643,53 +702,64 @@ const FacultyDashboard: React.FC = () => {
               </h4>
               <RefreshCw size={18} className="text-slate-400" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <button className="p-5 bg-[#1BD183]/10 text-[#1BD183] rounded-2xl hover:bg-[#1BD183]/20 transition-colors text-left group">
-                <div className="font-black text-sm mb-1 group-hover:translate-x-1 transition-transform">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={handleOpenInterventions}
+                className="rounded-[1.35rem] bg-[#E9EDFB] px-5 py-5 text-left transition hover:bg-[#DEE5FB]"
+              >
+                <div className="text-sm font-black text-[#4338CA]">
                   Schedule Review
                 </div>
-                <div className="text-[10px] font-medium opacity-70">
+                <div className="mt-1 text-xs font-semibold text-[#6366F1]">
                   Meet with at-risk students
                 </div>
               </button>
-              <button className="p-5 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition-colors text-left group">
-                <div className="font-black text-sm mb-1 group-hover:translate-x-1 transition-transform">
+
+              <button
+                type="button"
+                onClick={handleSendResources}
+                className="rounded-[1.35rem] bg-[#E4F2EC] px-5 py-5 text-left transition hover:bg-[#D9ECE4]"
+              >
+                <div className="text-sm font-black text-[#047857]">
                   Send Resources
                 </div>
-                <div className="text-[10px] font-medium opacity-70">
+                <div className="mt-1 text-xs font-semibold text-[#0F8A64]">
                   Share study materials
                 </div>
               </button>
+
               <button
+                type="button"
                 onClick={handleLaunchAnalytics}
-                className="p-5 bg-purple-50 text-purple-700 rounded-2xl hover:bg-purple-100 transition-colors text-left group col-span-2"
+                className="rounded-[1.35rem] bg-[#F0EAF6] px-5 py-5 text-left transition hover:bg-[#E9E0F2] md:col-span-2"
               >
-                <div className="font-black text-sm mb-1 group-hover:translate-x-1 transition-transform flex items-center gap-2">
-                  <BarChart3 size={16} /> Launch Deep Analytics
+                <div className="flex items-center gap-2 text-sm font-black text-[#7C3AED]">
+                  <BarChart3 size={16} />
+                  Launch Deep Analytics
                 </div>
-                <div className="text-[10px] font-medium opacity-70">
+                <div className="mt-1 text-xs font-semibold text-[#8B5CF6]">
                   Open full student mastery dashboard
                 </div>
               </button>
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <div className="flex items-start gap-4 p-4 bg-slate-900 rounded-2xl text-white shadow-lg">
-              <Brain className="text-[#1BD183] mt-1 shrink-0" size={24} />
+          <div className="mt-8 border-t border-slate-100 pt-6">
+            <div className="flex items-start gap-4 rounded-[1.35rem] bg-[#352F8E] px-5 py-5 text-white shadow-lg shadow-[#352F8E]/15">
+              <Brain className="mt-0.5 shrink-0 text-[#A7B2FF]" size={22} />
               <div>
-                <div className="font-black text-sm uppercase tracking-widest text-slate-400 mb-1">
-                  Course Insight
+                <div className="mb-1 text-sm font-black uppercase tracking-[0.18em] text-[#A7B2FF]">
+                  SINA Insight
                 </div>
-                <div className="text-sm font-medium leading-relaxed">
+                <div className="text-sm font-semibold leading-relaxed text-white">
                   {weakestCourse ? (
                     <>
                       Cohort would benefit from a focused{' '}
-                      <strong className="text-white">
-                        {weakestCourse.system} review
-                      </strong>
-                      . Estimated impact:{' '}
-                      <span className="text-emerald-400 font-bold">
+                      <strong>{weakestCourse.system} workshop</strong>. Estimated
+                      impact:{' '}
+                      <span className="font-black text-[#39E6A7]">
                         +{Math.max(4, Math.round((80 - weakestCourse.mastery) / 3))}% readiness
                       </span>
                       .
@@ -702,7 +772,7 @@ const FacultyDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </div> */}
+      </div>
     </div>
   );
 
