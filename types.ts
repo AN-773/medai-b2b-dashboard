@@ -267,6 +267,15 @@ export interface PromptCatalogResponse {
   total: number;
 }
 
+export type AppVersionPlatform = 'android' | 'ios' | 'web';
+
+export interface AppVersionSetting {
+  latestVersion: string;
+  forceUpdate: boolean;
+}
+
+export type AppVersionSettingsResponse = Record<AppVersionPlatform, AppVersionSetting>;
+
 export interface BackendItem {
   id: string;
   identifier?: string;

@@ -31,6 +31,7 @@ import {
   PromptCatalogResponse,
   PromptPayload,
   PromptUpsertResult,
+  AppVersionSettingsResponse,
 } from '../types';
 import { apiClient } from './apiClient';
 
@@ -636,6 +637,16 @@ export const testsService = {
 
   getPromptCatalog: async (): Promise<PromptCatalogResponse> => {
     return apiClient.get<PromptCatalogResponse>('TESTS', '/superadmin/prompts/catalog');
+  },
+
+  getAppVersionSettings: async (): Promise<AppVersionSettingsResponse> => {
+    return apiClient.get<AppVersionSettingsResponse>('TESTS', '/app-version');
+  },
+
+  updateAppVersionSettings: async (
+    settings: AppVersionSettingsResponse,
+  ): Promise<AppVersionSettingsResponse> => {
+    return apiClient.put<AppVersionSettingsResponse>('TESTS', '/superadmin/app-version', settings);
   },
 
   getPrompt: async (id: string): Promise<Prompt> => {
