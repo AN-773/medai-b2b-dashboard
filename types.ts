@@ -9,6 +9,7 @@ export type View =
   | 'QB_HEALTH'
   | 'MASTERY'
   | 'CURRICULUM'
+  | 'CURRICULA'
   | 'DISCIPLINES'
   | 'STUDENTS'
   | 'COHORTS'

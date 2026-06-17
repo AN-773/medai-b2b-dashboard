@@ -52,9 +52,12 @@ export const testsService = {
     page = 1,
     limit = 200,
     subjectIds?: string[],
+    curriculumId?: string,
   ): Promise<PaginatedApiResponse<OrganSystem>> => {
     let url = `/organ-systems?page=${page}&limit=${limit}`;
     if (subjectIds?.length) url += `&subjectIds=${subjectIds.join(',')}`;
+    // curriculumId filter is the absolute curriculum URI (the `id` from a curriculum read)
+    if (curriculumId) url += `&curriculumId=${encodeURIComponent(curriculumId)}`;
     return apiClient.get<PaginatedApiResponse<OrganSystem>>('TESTS', url);
   },
 
@@ -94,6 +97,7 @@ export const testsService = {
     cognitiveSkillId?: string,
     examType?: string,
     subjectIds?: string[],
+    curriculumId?: string,
   ): Promise<PaginatedApiResponse<LearningObjective>> => {
     let url = `/learning-objectives?limit=${limit}&page=${page}`;
     if (syndromeId) {
@@ -110,6 +114,10 @@ export const testsService = {
     }
     if (subjectIds?.length) {
       url += `&subjectIds=${subjectIds.join(',')}`;
+    }
+    // curriculumId filter is the absolute curriculum URI (the `id` from a curriculum read)
+    if (curriculumId) {
+      url += `&curriculumId=${encodeURIComponent(curriculumId)}`;
     }
     const res = await apiClient.get<PaginatedApiResponse<LearningObjective>>(
       'TESTS',
@@ -380,11 +388,17 @@ export const testsService = {
   upsertOrganSystem: async (
     name: string,
     id?: string,
+    curriculumId?: string,
   ): Promise<OrganSystem> => {
     const payload = {
       organSystem: {
         title: name,
         ...(id ? { id } : {}),
+        // curriculumId is a field ON the OrganSystem entity — the backend reads it
+        // from organSystem.curriculumId. A top-level curriculumId is silently
+        // dropped (OrganSystemUpsertRequest only deserializes `organSystem`).
+        // Optional today; required when CURRICULUM_REQUIRE_ORGAN_SYSTEM=true server-side.
+        ...(curriculumId ? { curriculumId } : {}),
       },
     };
 
@@ -423,9 +437,16 @@ export const testsService = {
     id?: string,
     examType?: string,
     subjectId?: string,
+    curriculumId?: string,
   ): Promise<LearningObjective> => {
     let payload = {
-      learningObjective: { title: name },
+      learningObjective: {
+        title: name,
+        // curriculumId is a field ON the LearningObjective entity — the backend
+        // reads it from learningObjective.curriculumId. A top-level curriculumId
+        // is silently dropped. Always optional; omitted stays null server-side.
+        ...(curriculumId ? { curriculumId } : {}),
+      },
       syndromeId,
       cognitiveSkillId,
       disciplines,

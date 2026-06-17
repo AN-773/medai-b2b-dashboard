@@ -144,14 +144,22 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ activeView, onNavigate,
                 Disciplines
               </button>
 
-              <button 
+              <button
                 onClick={() => onNavigate('CURRICULUM')}
                 className={getSubMenuButtonClass('CURRICULUM')}
               >
                 <div className={getSubMenuDotClass('CURRICULUM')}></div>
                 Curriculum Workbench
               </button>
-              
+
+              <button
+                onClick={() => onNavigate('CURRICULA')}
+                className={getSubMenuButtonClass('CURRICULA')}
+              >
+                <div className={getSubMenuDotClass('CURRICULA')}></div>
+                Curriculum Builder
+              </button>
+
               <button 
                 onClick={() => onNavigate('MASTERY')}
                 className={getSubMenuButtonClass('MASTERY')}

@@ -112,6 +112,8 @@ export interface OrganSystem {
   updatedAt: string;
   topics?: Topic[];
   questions?: Question[];
+  /** Absolute curriculum URI this organ system is linked to (nullable). */
+  curriculumId?: string | null;
 }
 
 export interface Discipline {
@@ -201,6 +203,120 @@ export interface LearningObjective {
   exam?: "STEP 1" | "STEP 2" | "STEP 3";
   subjectId?: string;
   subject?: Subject;
+  /** Absolute curriculum URI this learning objective is linked to (nullable). */
+  curriculumId?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Curriculum (see contracts/curriculum-api-contract.md)
+// ---------------------------------------------------------------------------
+
+export type CurriculumStatus = 'draft' | 'published';
+
+/** Read shape returned by GET /curricula and GET /curricula/{identifier}. */
+export interface Curriculum {
+  id: string; // absolute URI
+  identifier: string; // slug
+  title: string;
+  tenantId: string | null;
+  status: CurriculumStatus;
+  currentVersion: number; // 0 until first publish
+  createdAt: string;
+  updatedAt: string;
+  // Embedded only on the single-item view, or on list when ?relations=true:
+  organSystems?: OrganSystem[];
+  learningObjectives?: LearningObjective[];
+}
+
+export interface CurriculumVersion {
+  id: string;
+  curriculumId: string; // absolute curriculum URI
+  version: number; // 1-based
+  status: CurriculumStatus; // versions endpoints only return "published"
+  summary: string;
+  /** Present on publish and version-detail reads. Omitted from version list rows. */
+  snapshot?: CurriculumVersionSnapshot;
+  createdAt: string;
+  createdBy: string;
+  publishedAt: string | null;
+  publishedBy: string;
+}
+
+/** Frozen jsonb snapshot captured at publish time. */
+export interface CurriculumVersionSnapshot {
+  curriculumId: string;
+  capturedAt: string;
+  organSystems: CurriculumVersionOrganSystemSnapshot[];
+}
+
+export interface CurriculumVersionOrganSystemSnapshot {
+  id: string;
+  title: string;
+  identifier: string;
+  tenantId?: string;
+  curriculumId?: string;
+  createdAt: string;
+  updatedAt: string;
+  topics: CurriculumVersionTopicSnapshot[];
+}
+
+export interface CurriculumVersionTopicSnapshot {
+  id: string;
+  title: string;
+  identifier: string;
+  organSystemId?: string;
+  tenantId?: string;
+  createdAt: string;
+  updatedAt: string;
+  syndromes: CurriculumVersionSyndromeSnapshot[];
+}
+
+export interface CurriculumVersionSyndromeSnapshot {
+  id: string;
+  title: string;
+  identifier: string;
+  topicId?: string;
+  tenantId?: string;
+  createdAt: string;
+  updatedAt: string;
+  learningObjectives: CurriculumVersionLearningObjectiveSnapshot[];
+}
+
+export interface CurriculumVersionLearningObjectiveSnapshot {
+  id: string;
+  title: string;
+  identifier: string;
+  exam: string;
+  source: string;
+  subjectId?: string;
+  studyPlanId?: string;
+  curriculumId?: string;
+  tenantId?: string;
+  syndromeId?: string;
+  cognitiveSkillId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CurriculumListResponse {
+  items: Curriculum[];
+  total: number;
+  page: number;
+}
+
+export interface PublishCurriculumResponse {
+  curriculum: Curriculum;
+  version: CurriculumVersion;
+}
+
+export interface CurriculumVersionListResponse {
+  items: CurriculumVersion[];
+  total: number;
+}
+
+export interface CurriculumVersionDetailResponse {
+  version: CurriculumVersion;
+  snapshot: CurriculumVersionSnapshot;
 }
 
 export interface LearningObjectiveImport {
