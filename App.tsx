@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   GraduationCap,
-  Workflow
+  Workflow,
+  Library
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
@@ -27,6 +28,7 @@ import MasteryLearnerView from './views/mastery/MasteryLearnerView';
 import AIAgentCenter from './views/AIAgentCenter';
 import ExamBlueprintView from './views/ExamBlueprintView';
 import CurriculumHealthView from './views/CurriculumHealthView';
+import CurriculumWorkbenchView from './views/CurriculumWorkbenchView';
 import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
@@ -73,6 +75,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
     if (path.startsWith('/qb-health')) return 'QB_HEALTH';
     if (path.startsWith('/mastery')) return 'MASTERY';
+    if (path.startsWith('/curricula')) return 'CURRICULA';
     if (path.startsWith('/curriculum')) return 'CURRICULUM';
     if (path.startsWith('/disciplines')) return 'DISCIPLINES';
     if (path.startsWith('/students')) return 'STUDENTS';
@@ -101,6 +104,7 @@ const DashboardLayout: React.FC = () => {
       QB_HEALTH: '/qb-health',
       MASTERY: '/mastery',
       CURRICULUM: '/curriculum',
+      CURRICULA: '/curricula',
       DISCIPLINES: '/disciplines',
       STUDENTS: '/students',
       COHORTS: '/cohorts',
@@ -157,6 +161,7 @@ const DashboardLayout: React.FC = () => {
           { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
           { id: 'MASTERY', label: 'Student Mastery', icon: Users },
           { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
+          { id: 'CURRICULA', label: 'Curriculum Builder', icon: Library },
           { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
           { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
         ]),
@@ -275,6 +280,7 @@ const DashboardLayout: React.FC = () => {
                   />
                 }
               />
+              <Route path="/curricula" element={<CurriculumWorkbenchView />} />
               <Route path="/assessment" element={<AssessmentPlaceholder />} />
               <Route path="/agents" element={<AIAgentCenter />} />
               <Route path="/blueprint" element={<ExamBlueprintView />} />

@@ -49,6 +49,7 @@ export interface AuditRunBase {
   stage: string;
   status: AuditRunStatus;
   error_code: string | null;
+  error_message?: string | null;
   prompt_type: string;
   model: string;
   input_token_count: number;
@@ -107,6 +108,7 @@ export interface SessionAuditChunk {
 export interface SessionAuditRejectionReason {
   index: number;
   reason: string;
+  message?: string | null;
 }
 
 export interface SessionAuditRun extends AuditRunBase {
@@ -268,6 +270,7 @@ export interface StudyPlanAuditSessionRow {
   items_persisted: number;
   status: SessionFinalStatus;
   error_code: string | null;
+  error_message?: string | null;
   started_at: string;
   ended_at: string | null;
 }
@@ -341,6 +344,7 @@ export interface GetSessionAuditResponse {
     block_id: string | null;
     status: SessionFinalStatus;
     error_code: string | null;
+    error_message?: string | null;
   };
 }
 

@@ -132,11 +132,18 @@ const Header: React.FC<{ data: GetSessionAuditResponse }> = ({ data }) => {
     <Section title="Session totals">
       <KVGrid cols={4}>
         <KV label="Status">
-          <div className="flex items-center gap-2">
-            <StatusPill value={data.totals.status} />
-            {data.totals.error_code && (
-              <span className="font-mono text-[10.5px] text-rose-600">
-                {data.totals.error_code}
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill value={data.totals.status} />
+              {data.totals.error_code && (
+                <span className="font-mono text-[10.5px] text-rose-600">
+                  {data.totals.error_code}
+                </span>
+              )}
+            </div>
+            {data.totals.error_message && (
+              <span className="whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-700">
+                {data.totals.error_message}
               </span>
             )}
           </div>
@@ -522,6 +529,15 @@ const RunRow: React.FC<{
                 <span className="text-slate-400">—</span>
               )}
             </KV>
+            <KV label="Error message">
+              {run.error_message ? (
+                <span className="whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-700">
+                  {run.error_message}
+                </span>
+              ) : (
+                <span className="text-slate-400">—</span>
+              )}
+            </KV>
             <KV label="Started">
               <TimeAgo iso={run.started_at} />
             </KV>
@@ -587,9 +603,16 @@ const RunRow: React.FC<{
                   {run.rejection_reasons.map((rr) => (
                     <li
                       key={`${rr.index}-${rr.reason}`}
-                      className="rounded-md bg-rose-50 px-2 py-1 font-mono text-[11px] text-rose-700 ring-1 ring-rose-200"
+                      className="rounded-md bg-rose-50 px-2 py-1 text-[11px] text-rose-700 ring-1 ring-rose-200"
                     >
-                      <strong>#{rr.index}</strong> {rr.reason}
+                      <div className="font-mono">
+                        <strong>#{rr.index}</strong> {rr.reason}
+                      </div>
+                      {rr.message && (
+                        <div className="mt-1 whitespace-pre-wrap break-words leading-snug">
+                          {rr.message}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -236,6 +236,15 @@ const RunDetails: React.FC<{
           <KV label="Duration" mono>
             {formatDurationMs(duration)}
           </KV>
+          <KV label="Error message">
+            {run.error_message ? (
+              <span className="whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-700">
+                {run.error_message}
+              </span>
+            ) : (
+              <span className="text-slate-400">—</span>
+            )}
+          </KV>
           <KV label="Started">
             <TimeAgo iso={run.started_at} />
           </KV>

@@ -9,6 +9,7 @@ export type View =
   | 'QB_HEALTH'
   | 'MASTERY'
   | 'CURRICULUM'
+  | 'CURRICULA'
   | 'DISCIPLINES'
   | 'STUDENTS'
   | 'COHORTS'
@@ -266,6 +267,15 @@ export interface PromptCatalogResponse {
   items: PromptCatalogItem[];
   total: number;
 }
+
+export type AppVersionPlatform = 'android' | 'ios' | 'web';
+
+export interface AppVersionSetting {
+  latestVersion: string;
+  forceUpdate: boolean;
+}
+
+export type AppVersionSettingsResponse = Record<AppVersionPlatform, AppVersionSetting>;
 
 export interface BackendItem {
   id: string;
