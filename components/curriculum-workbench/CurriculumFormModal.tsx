@@ -1,32 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Library, Loader2 } from 'lucide-react';
+import { X, Library, Loader2, Eye, EyeOff } from 'lucide-react';
 
 interface CurriculumFormModalProps {
   isOpen: boolean;
-  mode: 'create' | 'rename';
+  mode: 'create' | 'edit';
   initialTitle?: string;
+  initialVisible?: boolean;
   onClose: () => void;
-  onSubmit: (title: string) => Promise<unknown>;
+  onSubmit: (title: string, visible: boolean) => Promise<unknown>;
 }
 
 const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
   isOpen,
   mode,
   initialTitle = '',
+  initialVisible = false,
   onClose,
   onSubmit,
 }) => {
   const [title, setTitle] = useState(initialTitle);
+  const [visible, setVisible] = useState(initialVisible);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialTitle);
+      setVisible(initialVisible);
       setError(null);
     }
-  }, [isOpen, initialTitle]);
+  }, [isOpen, initialTitle, initialVisible]);
 
   if (!isOpen) return null;
 
@@ -43,7 +47,7 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
-      await onSubmit(title.trim());
+      await onSubmit(title.trim(), visible);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -68,12 +72,12 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900">
-                {isCreate ? 'New Curriculum' : 'Rename Curriculum'}
+                {isCreate ? 'New Curriculum' : 'Edit Curriculum'}
               </h2>
               <p className="text-sm text-slate-500 font-medium">
                 {isCreate
                   ? 'A slug is generated from the title and is permanent.'
-                  : 'The slug stays the same; only the display title changes.'}
+                  : 'Update the display title and visibility. The slug stays the same.'}
               </p>
             </div>
           </div>
@@ -109,6 +113,36 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
             />
           </div>
 
+          <div className="space-y-2">
+            <span className="block text-sm font-bold text-slate-700">Visibility</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setVisible(true)}
+                disabled={isSubmitting}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  visible
+                    ? 'bg-[#1BD183]/10 border-[#1BD183] text-[#0f8f59]'
+                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <Eye size={15} /> Visible
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisible(false)}
+                disabled={isSubmitting}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  !visible
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <EyeOff size={15} /> Hidden
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-end gap-3 pt-4">
             <button
               type="button"
@@ -131,7 +165,7 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
               ) : isCreate ? (
                 'Create Curriculum'
               ) : (
-                'Save Title'
+                'Save Changes'
               )}
             </button>
           </div>

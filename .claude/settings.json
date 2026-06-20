@@ -1,7 +1,7 @@
 {
   "permissions": {
     "deny": [
-      "git rm"
+      "Git rm"
     ],
     "ask": []
   }

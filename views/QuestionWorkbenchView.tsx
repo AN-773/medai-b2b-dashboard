@@ -300,38 +300,6 @@ const QuestionWorkbenchView: React.FC = () => {
     }
   };
 
-  const handleChangeStatus = async (identifier: string, newStatus: string) => {
-    try {
-      showToast('Updating status...', 'success');
-      // Use upsertItem to change status via Items API
-      const targetItem = itemsList.find(i => i.identifier === identifier);
-      if (!targetItem) return;
-
-      const savedItem = await testsService.upsertItem({
-        item: { identifier: targetItem.identifier, type: targetItem.type, status: newStatus as any },
-      });
-
-      // Update local state
-      setEditingItem((prev) =>
-        prev ? { ...prev, status: savedItem.status } : null,
-      );
-
-      // Update list
-      setItemsList((prev) =>
-        prev.map((item) =>
-          item.identifier === identifier
-            ? { ...item, status: savedItem.status }
-            : item,
-        ),
-      );
-
-      showToast('Status updated successfully');
-    } catch (error) {
-      console.error('Failed to update status:', error);
-      showToast('Failed to update status', 'error');
-    }
-  };
-
   const handleDeleteItem = async (identifier: string) => {
     try {
       showToast('Deleting item...', 'success');
@@ -349,7 +317,6 @@ const QuestionWorkbenchView: React.FC = () => {
       <QuestionEditor
         onBack={handleBackToDashboard}
         onSave={handleSaveItem}
-        onChangeStatus={handleChangeStatus}
         initialQuestion={editingItem}
       />
     );
