@@ -161,7 +161,7 @@ const DashboardLayout: React.FC = () => {
           { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
           { id: 'MASTERY', label: 'Student Mastery', icon: Users },
           { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
-          { id: 'CURRICULA', label: 'Curriculum Builder', icon: Library },
+          { id: 'CURRICULA', label: 'Curriculum Workbench', icon: Library },
           { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
           { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
         ]),

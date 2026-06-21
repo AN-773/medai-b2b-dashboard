@@ -27,7 +27,7 @@ export const curriculumService = {
     const params = new URLSearchParams();
     params.append('page', String(page));
     if (limit) params.append('limit', String(limit));
-    if (relations) params.append('relations', 'true');
+    params.append('relations', 'false');
     if (q) params.append('q', q);
     if (scope) params.append('scope', scope);
     return apiClient.get<CurriculumListResponse>(
@@ -43,6 +43,7 @@ export const curriculumService = {
   ): Promise<Curriculum> => {
     const params = new URLSearchParams();
     if (scope) params.append('scope', scope);
+    params.append('relations', 'false'); // always include relations for detail view
     const query = params.toString();
     return apiClient.get<Curriculum>(
       'TESTS',
