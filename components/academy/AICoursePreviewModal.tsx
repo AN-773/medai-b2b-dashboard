@@ -15,12 +15,12 @@ import { testsService } from '@/services/testsService';
 import {
   CourseContentDraft,
   CourseSourceFile,
-  TeacherCourse,
+  TeacherCourseWithSources,
 } from '@/types/AcademyStudioTypes';
 
 interface AICoursePreviewModalProps {
   isOpen: boolean;
-  course: TeacherCourse | null;
+  course: TeacherCourseWithSources | null;
   onClose: () => void;
   onSave: (
     sourceFile: CourseSourceFile,

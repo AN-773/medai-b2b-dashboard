@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -11,6 +12,7 @@ import {
   ArrowUpRight,
   Check,
   Layers3,
+  Loader2,
   Pencil,
   Plus,
   Search,
@@ -68,11 +70,14 @@ const formatModeLabel = (
   );
 
   if (!selection) return 'Full course mode';
-  return `${selection.learningObjectiveIds.length}/${course.learningObjectives.length} objectives selected`;
+  return `${selection.learningObjectiveIds.length}/${getCourseObjectiveCount(course)} objectives selected`;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
+
+const getCourseObjectiveCount = (course: TeacherCourse) =>
+  course.learningObjectivesTotal ?? course.learningObjectives.length;
 
 const getCohortDateRangeError = (startDate: string, endDate: string) => {
   if ((startDate && !endDate) || (!startDate && endDate)) {
@@ -98,7 +103,7 @@ const getEffectiveObjectiveCount = (
 
   return selection
     ? selection.learningObjectiveIds.length
-    : course.learningObjectives.length;
+    : getCourseObjectiveCount(course);
 };
 
 const getCohortPublishReadiness = (
@@ -253,6 +258,12 @@ const CohortsView: React.FC = () => {
   const [cohortForm, setCohortForm] = useState(emptyCohortForm);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingCourseObjectivesId, setLoadingCourseObjectivesId] = useState<
+    string | null
+  >(null);
+  const [courseObjectiveErrors, setCourseObjectiveErrors] = useState<
+    Record<string, string>
+  >({});
   const cohortRequestPendingRef = useRef(false);
   const [isCohortRequestPending, setIsCohortRequestPending] = useState(false);
   const deferredStudentSearch = useDeferredValue(studentSearch.trim());
@@ -522,6 +533,14 @@ const CohortsView: React.FC = () => {
 
   const selectedAssignedCourse =
     assignedCourses.find((course) => course.id === selectedCourseId) || null;
+  const selectedAssignedCourseObjectiveError = selectedAssignedCourse
+    ? courseObjectiveErrors[selectedAssignedCourse.id] || null
+    : null;
+  const selectedAssignedCourseNeedsObjectives = Boolean(
+    isWorkspaceOpen &&
+      selectedAssignedCourse &&
+      !selectedAssignedCourse.learningObjectivesLoaded,
+  );
   const selectedCourseSelection = selectedCohort?.courseSelections.find(
     (selection) => selection.courseId === selectedAssignedCourse?.id,
   );
@@ -579,6 +598,69 @@ const CohortsView: React.FC = () => {
     studentTotal === 0 ? 0 : (studentPage - 1) * STUDENT_PAGE_SIZE + 1;
   const visibleStudentRangeEnd =
     studentTotal === 0 ? 0 : visibleStudentRangeStart + students.length - 1;
+
+  const loadCourseObjectives = useCallback(async (course: TeacherCourse) => {
+    if (course.learningObjectivesLoaded) {
+      return course;
+    }
+
+    setLoadingCourseObjectivesId(course.id);
+    setCourseObjectiveErrors((current) => {
+      if (!current[course.id]) return current;
+      const next = { ...current };
+      delete next[course.id];
+      return next;
+    });
+
+    try {
+      const hydratedCourse =
+        await academyStudioBackend.loadCourseWithLearningObjectives(course);
+      setCourses((current) =>
+        current.map((candidate) =>
+          candidate.id === hydratedCourse.id
+            ? {
+                ...candidate,
+                learningObjectives: hydratedCourse.learningObjectives,
+                learningObjectivesLoaded: true,
+                learningObjectivesTotal: hydratedCourse.learningObjectivesTotal,
+              }
+            : candidate,
+        ),
+      );
+      return hydratedCourse;
+    } catch (error) {
+      console.error(
+        `Failed to load learning objectives for course "${course.title}".`,
+        error,
+      );
+      setCourseObjectiveErrors((current) => ({
+        ...current,
+        [course.id]: getErrorMessage(
+          error,
+          'Unable to load this course\'s learning objectives.',
+        ),
+      }));
+      throw error;
+    } finally {
+      setLoadingCourseObjectivesId((current) =>
+        current === course.id ? null : current,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAssignedCourseNeedsObjectives || !selectedAssignedCourse) {
+      return;
+    }
+
+    void loadCourseObjectives(selectedAssignedCourse).catch(() => {});
+  }, [
+    loadCourseObjectives,
+    selectedAssignedCourse?.backendIdentifier,
+    selectedAssignedCourse?.id,
+    selectedAssignedCourse?.learningObjectivesLoaded,
+    selectedAssignedCourseNeedsObjectives,
+  ]);
 
   const runLockedCohortRequest = async <T,>(
     action: () => Promise<T>,
@@ -801,7 +883,17 @@ const CohortsView: React.FC = () => {
 
   const handleEnableCustomMode = async () => {
     if (!selectedAssignedCourse) return;
-    if (selectedAssignedCourse.learningObjectives.length === 0) {
+
+    let activeCourse = selectedAssignedCourse;
+    if (!activeCourse.learningObjectivesLoaded) {
+      try {
+        activeCourse = await loadCourseObjectives(activeCourse);
+      } catch {
+        return;
+      }
+    }
+
+    if (activeCourse.learningObjectives.length === 0) {
       setMessage(
         'This course has no learning objectives yet. Open the Courses page first.',
       );
@@ -810,8 +902,8 @@ const CohortsView: React.FC = () => {
 
     try {
       const updated = await updateCourseSelection(
-        selectedAssignedCourse.id,
-        selectedAssignedCourse.learningObjectives.map((objective) => objective.id),
+        activeCourse.id,
+        activeCourse.learningObjectives.map((objective) => objective.id),
       );
       if (!updated) return;
       setMessage('Curated mode enabled for the selected cohort course.');
@@ -1289,7 +1381,7 @@ const CohortsView: React.FC = () => {
                               {course.code || 'No code'}
                             </span>
                             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                              {course.learningObjectives.length} objectives
+                              {getCourseObjectiveCount(course)} objectives
                             </span>
                             {/* <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {course.contentDrafts.length} AI drafts
@@ -1422,7 +1514,37 @@ const CohortsView: React.FC = () => {
                   </div>
 
                   <div className="mt-6 space-y-3">
-                    {selectedAssignedCourse.learningObjectives.length === 0 ? (
+                    {selectedAssignedCourseNeedsObjectives ? (
+                      selectedAssignedCourseObjectiveError ? (
+                        <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-6 text-sm text-rose-700">
+                          <p className="font-semibold">
+                            {selectedAssignedCourseObjectiveError}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void loadCourseObjectives(selectedAssignedCourse)
+                            }
+                            disabled={
+                              loadingCourseObjectivesId ===
+                              selectedAssignedCourse.id
+                            }
+                            className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {loadingCourseObjectivesId ===
+                            selectedAssignedCourse.id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : null}
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-12 text-sm font-semibold text-slate-500">
+                          <Loader2 size={16} className="mr-2 animate-spin" />
+                          Loading course objectives...
+                        </div>
+                      )
+                    ) : selectedAssignedCourse.learningObjectives.length === 0 ? (
                       <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm font-semibold text-slate-500">
                         This course has no objectives yet. Add them from the
                         Courses page first.

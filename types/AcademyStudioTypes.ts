@@ -36,13 +36,25 @@ export interface TeacherCourse {
   id: string;
   backendIdentifier?: string;
   title: string;
+  teacherId?: string;
+  tenantId?: string | null;
+  curriculumId?: string | null;
+  // UI-only course shell metadata stored locally by the dashboard.
   code: string;
   summary: string;
+  learningObjectivesTotal?: number;
+  pendingLearningObjectiveSuggestionsTotal?: number;
+  learningObjectivesLoaded?: boolean;
   learningObjectives: TeacherLearningObjective[];
-  sourceFiles: CourseSourceFile[];
   contentDrafts: CourseContentDraft[];
   createdAt: string;
   updatedAt: string;
+}
+
+// Legacy prototype-only extension used by the old local Cohort Studio flow.
+export interface TeacherCourseWithSources extends TeacherCourse {
+  sourceFiles: CourseSourceFile[];
+  modules?: CourseContentDraft[];
 }
 
 export interface CohortCourseSelection {
@@ -97,6 +109,6 @@ export interface ImportedStudentRow {
 
 export interface AcademyStudioState {
   students: TeacherStudent[];
-  courses: TeacherCourse[];
+  courses: TeacherCourseWithSources[];
   cohorts: TeacherCohort[];
 }

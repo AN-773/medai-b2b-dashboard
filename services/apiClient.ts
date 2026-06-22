@@ -107,6 +107,14 @@ class ApiClient {
     });
   }
 
+  async patch<T>(service: ServiceType, endpoint: string, body: any, options?: RequestOptions): Promise<T> {
+    return this.request<T>(service, endpoint, {
+      ...options,
+      method: 'PATCH',
+      data: body,
+    });
+  }
+
   async delete<T>(service: ServiceType, endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(service, endpoint, { ...options, method: 'DELETE' });
   }

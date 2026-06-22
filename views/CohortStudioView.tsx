@@ -22,8 +22,8 @@ import AICoursePreviewModal from '@/components/academy/AICoursePreviewModal';
 import { academyStudioService } from '@/services/academyStudioService';
 import {
   TeacherCohort,
-  TeacherCourse,
   TeacherLearningObjective,
+  TeacherCourseWithSources,
   TeacherStudent,
 } from '@/types/AcademyStudioTypes';
 import { BloomsLevel, OrganSystem } from '@/types';
@@ -173,7 +173,7 @@ const StepFooter: React.FC<StepFooterProps> = ({
 
 const formatSelectionLabel = (
   cohort: TeacherCohort | null,
-  course: TeacherCourse | null,
+  course: TeacherCourseWithSources | null,
 ) => {
   if (!cohort || !course) return 'No course selected yet';
 
@@ -189,7 +189,7 @@ const CohortStudioView: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<SetupStep>(1);
   const [students, setStudents] = useState<TeacherStudent[]>([]);
-  const [courses, setCourses] = useState<TeacherCourse[]>([]);
+  const [courses, setCourses] = useState<TeacherCourseWithSources[]>([]);
   const [cohorts, setCohorts] = useState<TeacherCohort[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
@@ -339,7 +339,7 @@ const CohortStudioView: React.FC = () => {
     setSelectedCohortId(cohort.id);
   };
 
-  const saveCourseRecord = (course: TeacherCourse) => {
+  const saveCourseRecord = (course: TeacherCourseWithSources) => {
     academyStudioService.saveCourse(course);
     loadStudio();
     setSelectedCourseId(course.id);
@@ -604,8 +604,8 @@ const CohortStudioView: React.FC = () => {
   };
 
   const handleSaveAiDraft = (
-    sourceFile: TeacherCourse['sourceFiles'][number],
-    modules: TeacherCourse['modules'],
+    sourceFile: TeacherCourseWithSources['sourceFiles'][number],
+    modules: TeacherCourseWithSources['modules'],
   ) => {
     if (!selectedCourse) return;
 

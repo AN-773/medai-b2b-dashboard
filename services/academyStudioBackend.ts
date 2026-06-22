@@ -4,14 +4,14 @@ import type { PaginatedApiResponse } from '@/types/TestsServiceTypes';
 import type {
   CohortStudyPlanJob,
   CourseContentDraft,
-  CourseSourceFile,
   TeacherCohort,
   TeacherCourse,
   TeacherLearningObjective,
   TeacherStudent,
 } from '@/types/AcademyStudioTypes';
 
-const METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v1';
+const METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v2';
+const LEGACY_METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v1';
 const DEFAULT_PAGE_LIMIT = 200;
 
 interface LearnerProfile {
@@ -28,7 +28,6 @@ interface LearnerProfile {
 interface CourseMetadata {
   code?: string;
   summary?: string;
-  sourceFiles?: CourseSourceFile[];
   contentDrafts?: CourseContentDraft[];
 }
 
@@ -88,6 +87,15 @@ interface ApiCourse {
   id: string;
   identifier?: string;
   title: string;
+  teacherId?: string;
+  tenantId?: string | null;
+  curriculumId?: string | null;
+  learningObjectivesTotal?: number;
+  pendingLearningObjectiveSuggestionsTotal?: number;
+  teacher?: {
+    id: string;
+    name?: string;
+  } | null;
   learningObjectives?: ApiLearningObjective[];
   createdAt?: string;
   updatedAt?: string;
@@ -155,13 +163,33 @@ const nowIso = () => new Date().toISOString();
 const safeWindow = () =>
   typeof window === 'undefined' ? null : window;
 
-const readMetadata = (): AcademyBackendMetadata => {
-  const browserWindow = safeWindow();
-  if (!browserWindow) return emptyMetadata();
+const normalizeStoredCourseMetadata = (
+  value: unknown,
+): Record<string, CourseMetadata> => {
+  if (!value || typeof value !== 'object') return {};
 
-  const raw = browserWindow.localStorage.getItem(METADATA_STORAGE_KEY);
-  if (!raw) return emptyMetadata();
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([courseId, raw]) => {
+      const metadata =
+        raw && typeof raw === 'object' ? (raw as Partial<CourseMetadata>) : {};
 
+      return [
+        courseId,
+        {
+          ...(typeof metadata.code === 'string' ? { code: metadata.code } : {}),
+          ...(typeof metadata.summary === 'string'
+            ? { summary: metadata.summary }
+            : {}),
+          ...(Array.isArray(metadata.contentDrafts)
+            ? { contentDrafts: metadata.contentDrafts }
+            : {}),
+        },
+      ] as const;
+    }),
+  );
+};
+
+const parseMetadata = (raw: string): AcademyBackendMetadata | null => {
   try {
     const parsed = JSON.parse(raw) as Partial<AcademyBackendMetadata>;
     return {
@@ -169,10 +197,7 @@ const readMetadata = (): AcademyBackendMetadata => {
         parsed.learnerProfiles && typeof parsed.learnerProfiles === 'object'
           ? parsed.learnerProfiles
           : {},
-      courseMetadata:
-        parsed.courseMetadata && typeof parsed.courseMetadata === 'object'
-          ? parsed.courseMetadata
-          : {},
+      courseMetadata: normalizeStoredCourseMetadata(parsed.courseMetadata),
       cohortMetadata:
         parsed.cohortMetadata && typeof parsed.cohortMetadata === 'object'
           ? parsed.cohortMetadata
@@ -180,17 +205,43 @@ const readMetadata = (): AcademyBackendMetadata => {
     };
   } catch (error) {
     console.error('Failed to parse academy backend metadata:', error);
-    return emptyMetadata();
+    return null;
   }
+};
+
+const readMetadata = (): AcademyBackendMetadata => {
+  const browserWindow = safeWindow();
+  if (!browserWindow) return emptyMetadata();
+
+  const raw = browserWindow.localStorage.getItem(METADATA_STORAGE_KEY);
+  if (raw) {
+    return parseMetadata(raw) || emptyMetadata();
+  }
+
+  const legacyRaw = browserWindow.localStorage.getItem(LEGACY_METADATA_STORAGE_KEY);
+  if (!legacyRaw) return emptyMetadata();
+
+  const migrated = parseMetadata(legacyRaw) || emptyMetadata();
+  writeMetadata(migrated);
+  try {
+    browserWindow.localStorage.removeItem(LEGACY_METADATA_STORAGE_KEY);
+  } catch {
+    // Ignore migration cleanup failures; the v2 key is the source of truth.
+  }
+  return migrated;
 };
 
 const writeMetadata = (metadata: AcademyBackendMetadata) => {
   const browserWindow = safeWindow();
   if (!browserWindow) return;
-  browserWindow.localStorage.setItem(
-    METADATA_STORAGE_KEY,
-    JSON.stringify(metadata),
-  );
+  try {
+    browserWindow.localStorage.setItem(
+      METADATA_STORAGE_KEY,
+      JSON.stringify(metadata),
+    );
+  } catch (error) {
+    console.error('Failed to persist academy backend metadata:', error);
+  }
 };
 
 const updateMetadata = (
@@ -253,22 +304,42 @@ const normalizeCourse = (
   metadata: AcademyBackendMetadata,
 ): TeacherCourse => {
   const courseMetadata = metadata.courseMetadata[course.id] || {};
+  const learningObjectives = (course.learningObjectives || []).map(
+    normalizeLearningObjective,
+  );
 
   return {
     id: course.id,
     backendIdentifier: course.identifier,
     title: course.title || 'Untitled Course',
+    teacherId: course.teacherId || course.teacher?.id,
+    tenantId: course.tenantId ?? null,
+    curriculumId: course.curriculumId ?? null,
     code: courseMetadata.code || course.identifier || '',
     summary: courseMetadata.summary || '',
-    learningObjectives: (course.learningObjectives || []).map(
-      normalizeLearningObjective,
-    ),
-    sourceFiles: courseMetadata.sourceFiles || [],
+    learningObjectivesTotal:
+      typeof course.learningObjectivesTotal === 'number'
+        ? course.learningObjectivesTotal
+        : learningObjectives.length,
+    pendingLearningObjectiveSuggestionsTotal:
+      course.pendingLearningObjectiveSuggestionsTotal || 0,
+    learningObjectivesLoaded: Array.isArray(course.learningObjectives),
+    learningObjectives,
     contentDrafts: courseMetadata.contentDrafts || [],
     createdAt: course.createdAt || nowIso(),
     updatedAt: course.updatedAt || nowIso(),
   };
 };
+
+const applyLoadedCourseLearningObjectives = (
+  course: TeacherCourse,
+  learningObjectives: ApiLearningObjective[],
+): TeacherCourse => ({
+  ...course,
+  learningObjectives: learningObjectives.map(normalizeLearningObjective),
+  learningObjectivesLoaded: true,
+  learningObjectivesTotal: learningObjectives.length,
+});
 
 const normalizeStudent = (
   studentId: string,
@@ -469,6 +540,14 @@ const fetchAllPages = async <T>(endpoint: string): Promise<T[]> => {
 
   return items;
 };
+
+const getCourseIdentifier = (course: Pick<ApiCourse, 'id' | 'identifier'>) =>
+  course.identifier || getIdSuffix(course.id);
+
+const fetchCourseLearningObjectives = (course: Pick<ApiCourse, 'id' | 'identifier'>) =>
+  fetchAllPages<ApiLearningObjective>(
+    `/courses/${getCourseIdentifier(course)}/learning-objectives`,
+  );
 
 const fetchAllIamUsers = async (): Promise<ApiIamUser[]> => {
   const items: ApiIamUser[] = [];
@@ -817,10 +896,11 @@ const upsertCourse = async (
         TeacherCourse,
         | 'id'
         | 'backendIdentifier'
+        | 'teacherId'
+        | 'curriculumId'
         | 'code'
         | 'summary'
         | 'learningObjectives'
-        | 'sourceFiles'
         | 'contentDrafts'
       >
     >,
@@ -832,7 +912,10 @@ const upsertCourse = async (
       course: {
         ...(course.id ? { id: course.id } : {}),
         title: course.title.trim(),
+        ...(course.teacherId ? { teacherId: course.teacherId } : {}),
+        ...(course.curriculumId ? { curriculumId: course.curriculumId } : {}),
       },
+      ...(course.teacherId ? { teacherId: course.teacherId } : {}),
       ...(course.learningObjectives
         ? {
             learningObjectiveIds: course.learningObjectives.map(
@@ -846,11 +929,21 @@ const upsertCourse = async (
   saveCourseMetadata(response.id, {
     code: course.code || '',
     summary: course.summary || '',
-    sourceFiles: course.sourceFiles || [],
     contentDrafts: course.contentDrafts || [],
   });
 
-  return normalizeCourse(response, readMetadata());
+  const normalizedCourse = normalizeCourse(response, readMetadata());
+
+  if (!course.learningObjectives) {
+    return normalizedCourse;
+  }
+
+  return {
+    ...normalizedCourse,
+    learningObjectives: course.learningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal: course.learningObjectives.length,
+  };
 };
 
 const upsertCohort = async (
@@ -914,6 +1007,17 @@ export const academyStudioBackend = {
   loadStudentRegistryPage,
   loadStudentRegistrySnapshot,
 
+  loadCourseWithLearningObjectives: async (
+    course: TeacherCourse,
+  ): Promise<TeacherCourse> =>
+    applyLoadedCourseLearningObjectives(
+      course,
+      await fetchCourseLearningObjectives({
+        id: course.id,
+        identifier: course.backendIdentifier,
+      }),
+    ),
+
   saveCourse: upsertCourse,
 
   deleteCourse: async (course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>) => {
@@ -929,10 +1033,11 @@ export const academyStudioBackend = {
       TeacherCourse,
       | 'id'
       | 'backendIdentifier'
+      | 'teacherId'
+      | 'curriculumId'
       | 'title'
       | 'code'
       | 'summary'
-      | 'sourceFiles'
       | 'contentDrafts'
     >,
     learningObjectives: TeacherLearningObjective[],
@@ -941,23 +1046,6 @@ export const academyStudioBackend = {
       ...course,
       learningObjectives,
     }),
-
-  saveCourseContentDraftMetadata: (
-    courseId: string,
-    sourceFile: CourseSourceFile,
-    contentDrafts: CourseContentDraft[],
-  ) => {
-    const currentMetadata = readMetadata().courseMetadata[courseId] || {};
-    const existingSourceFiles = currentMetadata.sourceFiles || [];
-
-    saveCourseMetadata(courseId, {
-      sourceFiles: [
-        sourceFile,
-        ...existingSourceFiles.filter((existing) => existing.id !== sourceFile.id),
-      ],
-      contentDrafts,
-    });
-  },
 
   saveCohort: upsertCohort,
 
