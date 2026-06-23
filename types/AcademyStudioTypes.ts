@@ -10,6 +10,16 @@ export interface TeacherStudent {
   createdAt: string;
 }
 
+export interface ItemTypeTotals {
+  total: number;
+  byType: {
+    mcq: number;
+    saq: number;
+    flashcard: number;
+    lecture: number;
+  };
+}
+
 export interface TeacherLearningObjective {
   id: string;
   title: string;
@@ -17,6 +27,8 @@ export interface TeacherLearningObjective {
   cognitiveSkill?: string;
   source: 'manual' | 'ai';
   createdAt: string;
+  /** Counts of linked content items, supplied by the backend per objective. */
+  itemTotals?: ItemTypeTotals;
 }
 
 export interface CourseSourceFile {

@@ -48,8 +48,6 @@ export type SuggestionBloomLevel =
   | 'Understand'
   | 'Apply'
   | 'Analyze'
-  | 'Evaluate'
-  | 'Create';
 
 /** Allowed Bloom levels for the suggestion editor (backend-validated). */
 export const SUGGESTION_BLOOM_LEVELS: SuggestionBloomLevel[] = [
@@ -57,8 +55,6 @@ export const SUGGESTION_BLOOM_LEVELS: SuggestionBloomLevel[] = [
   'Understand',
   'Apply',
   'Analyze',
-  'Evaluate',
-  'Create',
 ];
 
 export interface SuggestionEvidenceChunk {

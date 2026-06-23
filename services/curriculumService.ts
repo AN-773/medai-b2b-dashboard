@@ -59,12 +59,14 @@ export const curriculumService = {
     title: string,
     id?: string,
     visible?: boolean,
+    summary?: string,
   ): Promise<Curriculum> => {
     return apiClient.post<Curriculum>('TESTS', '/curricula', {
       curriculum: {
         title,
         ...(id ? { id } : {}),
         ...(typeof visible === 'boolean' ? { visible } : {}),
+        ...(summary !== undefined ? { summary } : {}),
       },
     });
   },

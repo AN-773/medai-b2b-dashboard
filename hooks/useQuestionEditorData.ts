@@ -335,7 +335,16 @@ export const useQuestionEditorData = (): UseQuestionEditorDataReturn => {
     if (fullObjective.exam === 'STEP 1' || fullObjective.exam === 'STEP 2') {
       setSelectedExam(fullObjective.exam);
     }
-    
+
+    // Ensure the resolved objective is always a selectable option so the
+    // dropdowns visibly show it as selected — even for objectives with no
+    // syndrome hierarchy to fetch siblings from (e.g. course-scoped LOs).
+    setObjectives((prev) =>
+      prev.some((o) => o.id === fullObjective.id)
+        ? prev
+        : [fullObjective, ...prev],
+    );
+
     setSelectedObjectiveId(fullObjective.id);
 
     return fullObjective;

@@ -31,8 +31,6 @@ import { bloomStyle, getErrorMessage } from './shared';
 
 type AuthoringMode = 'manual' | 'ai';
 
-const BLOOM_LEVELS = ['Remember', 'Understand', 'Apply', 'Analyze'] as const;
-
 interface CreateCourseObjectiveModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -604,17 +602,17 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
                 {!generated && !isGenerating && (
                   <>
                     <div>
-                      <FieldLabel required>Bloom level</FieldLabel>
+                      <FieldLabel required>Cognitive skill (Bloom's)</FieldLabel>
                       <NativeSelect
                         value={selectedBloom}
                         onChange={setSelectedBloom}
                       >
                         <option value="" disabled>
-                          Select a Bloom level
+                          Select a cognitive skill
                         </option>
-                        {BLOOM_LEVELS.map((level) => (
-                          <option key={level} value={level}>
-                            {level}
+                        {cognitiveSkills?.map((skill) => (
+                          <option key={skill.id} value={skill.title}>
+                            {skill.title}
                           </option>
                         ))}
                       </NativeSelect>

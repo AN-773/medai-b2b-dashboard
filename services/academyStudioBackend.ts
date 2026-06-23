@@ -68,6 +68,16 @@ interface ApiIamUser {
   created?: string;
 }
 
+interface ApiItemTotals {
+  total?: number;
+  byType?: {
+    mcq?: number;
+    saq?: number;
+    flashcard?: number;
+    lecture?: number;
+  } | null;
+}
+
 interface ApiLearningObjective {
   id: string;
   title: string;
@@ -79,6 +89,7 @@ interface ApiLearningObjective {
     } | null;
   } | null;
   cognitiveSkill?: ApiReferenceEntity | null;
+  itemTotals?: ApiItemTotals | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -287,6 +298,22 @@ const buildLearnerCode = (name: string, id: string) => {
   return normalizedName || normalizedId || 'LEARNR';
 };
 
+const normalizeItemTotals = (
+  totals: ApiItemTotals | null | undefined,
+): TeacherLearningObjective['itemTotals'] => {
+  if (!totals) return undefined;
+  const byType = totals.byType || {};
+  return {
+    total: totals.total ?? 0,
+    byType: {
+      mcq: byType.mcq ?? 0,
+      saq: byType.saq ?? 0,
+      flashcard: byType.flashcard ?? 0,
+      lecture: byType.lecture ?? 0,
+    },
+  };
+};
+
 const normalizeLearningObjective = (
   learningObjective: ApiLearningObjective,
 ): TeacherLearningObjective => ({
@@ -297,6 +324,7 @@ const normalizeLearningObjective = (
   cognitiveSkill: learningObjective.cognitiveSkill?.title || undefined,
   source: learningObjective.source === 'ai' ? 'ai' : 'manual',
   createdAt: learningObjective.createdAt || nowIso(),
+  itemTotals: normalizeItemTotals(learningObjective.itemTotals),
 });
 
 const normalizeCourse = (

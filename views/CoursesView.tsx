@@ -5,6 +5,7 @@ import {
   BookOpen,
   CheckCircle2,
   Layers,
+  Library,
   Loader2,
   Sparkles,
   Target,
@@ -19,13 +20,26 @@ import {
   TeacherCohort,
   TeacherLearningObjective,
 } from '@/types/AcademyStudioTypes';
-import type { Curriculum } from '@/types/TestsServiceTypes';
+import type {
+  BackendApiItem,
+  Curriculum,
+  ItemUpsertRequest,
+} from '@/types/TestsServiceTypes';
+import { testsService } from '@/services/testsService';
 import { useCourseFactory } from '@/hooks/useCourseFactory';
 import { useAuth } from '@/contexts/AuthContext';
 import CourseLibrarySidebar from '@/components/academy/course-workbench/CourseLibrarySidebar';
 import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOverviewPanel';
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
+import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
 import CourseFactoryPanel from '@/components/academy/course-workbench/CourseFactoryPanel';
+import ObjectiveItemsDrawer, {
+  ItemModality,
+} from '@/components/academy/course-workbench/ObjectiveItemsDrawer';
+import QuestionEditor from '@/components/QuestionEditor';
+import SAQEditor from '@/components/SAQEditor';
+import FlashcardEditor from '@/components/FlashcardEditor';
+import LectureCreationWizard from '@/components/LectureCreationWizard';
 import {
   getCourseObjectiveCount,
   getCoursePendingSuggestionCount,
@@ -33,7 +47,13 @@ import {
   STAGE_STYLES,
 } from '@/components/academy/course-workbench/shared';
 
-type WorkbenchTab = 'overview' | 'objectives' | 'factory';
+type WorkbenchTab = 'overview' | 'objectives' | 'content' | 'factory';
+
+const isWorkbenchTab = (value: string | null): value is WorkbenchTab =>
+  value === 'overview' ||
+  value === 'objectives' ||
+  value === 'content' ||
+  value === 'factory';
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -51,7 +71,10 @@ const CoursesView: React.FC = () => {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingCurricula, setIsLoadingCurricula] = useState(true);
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>('overview');
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>(() => {
+    const tabParam = searchParams.get('tab');
+    return isWorkbenchTab(tabParam) ? tabParam : 'overview';
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [curriculumError, setCurriculumError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -133,6 +156,33 @@ const CoursesView: React.FC = () => {
     });
   }, [curricula, isLoadingCurricula]);
 
+  // Deep-link restore: infer the curriculum from a ?courseId so a direct link
+  // — or returning from the content workbench — re-scopes to the right track
+  // instead of dropping the teacher on the empty "select a curriculum" state.
+  useEffect(() => {
+    if (isLoadingCurricula) return;
+    const queryCourseId = searchParams.get('courseId');
+    if (!queryCourseId) return;
+
+    const alreadyScoped =
+      selectedCurriculumId &&
+      courses.some(
+        (course) =>
+          course.id === queryCourseId &&
+          course.curriculumId === selectedCurriculumId,
+      );
+    if (alreadyScoped) return;
+
+    const course = courses.find((entry) => entry.id === queryCourseId);
+    if (
+      course?.curriculumId &&
+      course.curriculumId !== selectedCurriculumId &&
+      curricula.some((curriculum) => curriculum.id === course.curriculumId)
+    ) {
+      setSelectedCurriculumId(course.curriculumId);
+    }
+  }, [courses, curricula, isLoadingCurricula, searchParams, selectedCurriculumId]);
+
   const selectedCurriculum =
     curricula.find((curriculum) => curriculum.id === selectedCurriculumId) || null;
 
@@ -194,14 +244,21 @@ const CoursesView: React.FC = () => {
   const selectedCourseIdentifier = selectedCourse
     ? courseIdentifierOf(selectedCourse)
     : null;
-  const selectedCourseObjectiveError = selectedCourse
-    ? courseObjectiveErrors[selectedCourse.id] || null
-    : null;
   const selectedCourseNeedsObjectives = Boolean(
-    activeTab === 'objectives' &&
+    (activeTab === 'objectives' || activeTab === 'content') &&
       selectedCourse &&
       !selectedCourse.learningObjectivesLoaded,
   );
+
+  // In-page content authoring — the editors render as an overlay so the
+  // teacher never leaves the course page.
+  const [manageObjective, setManageObjective] =
+    useState<TeacherLearningObjective | null>(null);
+  const [authoring, setAuthoring] = useState<{
+    modality: ItemModality;
+    item: BackendApiItem | null;
+  } | null>(null);
+  const [contentRefreshKey, setContentRefreshKey] = useState(0);
 
   const factory = useCourseFactory(selectedCourseIdentifier, () => {
     if (selectedCourseId) void loadData(selectedCourseId);
@@ -350,17 +407,117 @@ const CoursesView: React.FC = () => {
     setLoadError(getErrorMessage(error, fallback));
   };
 
+  // --- In-page content authoring -------------------------------------------
+  const makeItemSkeleton = (
+    modality: ItemModality,
+    learningObjectiveId: string,
+  ): BackendApiItem => ({
+    id: '',
+    identifier: '',
+    type: modality,
+    status: 'draft',
+    learningObjectiveId: learningObjectiveId || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    mcq: modality === 'mcq' ? { stem: '', choices: [] } : null,
+    saq: null,
+    lecture: null,
+    flashcard: null,
+    tags: [],
+  });
+
+  const handleCreateItem = (modality: ItemModality, objectiveId: string) => {
+    setAuthoring({ modality, item: makeItemSkeleton(modality, objectiveId) });
+  };
+
+  const handleOpenItem = async (item: BackendApiItem) => {
+    const modality = item.type as ItemModality;
+    // Open immediately with the list payload, then swap in the full record so
+    // editors that need nested data (e.g. MCQ choices) get it.
+    setAuthoring({ modality, item });
+    try {
+      const full = await testsService.getItem(item.identifier || item.id);
+      setAuthoring((current) =>
+        current && current.item?.id === item.id
+          ? { modality, item: full }
+          : current,
+      );
+    } catch (error) {
+      console.error('Failed to load full item for editing:', error);
+    }
+  };
+
+  // Silently re-hydrate the selected course's objectives so per-objective item
+  // totals (itemTotals) reflect a just-authored item, without flashing the
+  // objectives loading gate behind the drawer.
+  const refreshSelectedCourseObjectiveTotals = async () => {
+    if (!selectedCourse) return;
+    try {
+      const hydrated =
+        await academyStudioBackend.loadCourseWithLearningObjectives(selectedCourse);
+      setCourses((current) =>
+        current.map((candidate) =>
+          candidate.id === hydrated.id
+            ? {
+                ...candidate,
+                learningObjectives: hydrated.learningObjectives,
+                learningObjectivesLoaded: true,
+                learningObjectivesTotal: hydrated.learningObjectivesTotal,
+              }
+            : candidate,
+        ),
+      );
+    } catch (error) {
+      console.error('Failed to refresh objective item totals:', error);
+    }
+  };
+
+  const handleSaveItem = async (request: ItemUpsertRequest) => {
+    try {
+      await testsService.upsertItem(request);
+      setAuthoring(null);
+      setContentRefreshKey((key) => key + 1);
+      flashMessage('Item saved.');
+      void refreshSelectedCourseObjectiveTotals();
+    } catch (error) {
+      reportError(error, 'Unable to save this item.');
+    }
+  };
+
+  // Restore the active tab when navigating back (e.g. returning from the
+  // content workbench via a `?tab=content` redirect).
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (isWorkbenchTab(tabParam) && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const selectTab = (tab: WorkbenchTab) => {
+    setActiveTab(tab);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('tab', tab);
+      return next;
+    });
+  };
+
   // --- Course CRUD ----------------------------------------------------------
   const handleSelectCourse = (courseId: string) => {
     pendingCourseIdRef.current = courseId;
     setSelectedCourseId(courseId);
+    setActiveTab('overview');
     setSearchParams({ courseId });
   };
 
   const handleCurriculumChange = (curriculumId: string | null) => {
     setSelectedCurriculumId(curriculumId);
+    setSelectedCourseId(null);
+    pendingCourseIdRef.current = null;
     setSearchQuery('');
     setActiveTab('overview');
+    setSearchParams({});
   };
 
   const handleCreateCourse = async (input: {
@@ -468,6 +625,33 @@ const CoursesView: React.FC = () => {
   };
 
   // --- Render ---------------------------------------------------------------
+  // Shared loading/error placeholder for tabs that depend on the course's
+  // learning objectives being hydrated (Objectives + Content).
+  const renderObjectivesGate = (course: TeacherCourse) => {
+    const objectiveError = courseObjectiveErrors[course.id] || null;
+    return objectiveError ? (
+      <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-700">
+        <p className="font-semibold">{objectiveError}</p>
+        <button
+          type="button"
+          onClick={() => void loadCourseObjectives(course)}
+          disabled={loadingCourseObjectivesId === course.id}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loadingCourseObjectivesId === course.id ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : null}
+          Retry
+        </button>
+      </div>
+    ) : (
+      <div className="flex min-h-[240px] items-center justify-center rounded-[1.5rem] border border-slate-200 bg-slate-50 px-6 text-sm font-semibold text-slate-500">
+        <Loader2 size={16} className="mr-2 animate-spin" />
+        Loading course objectives...
+      </div>
+    );
+  };
+
   const tabs: { id: WorkbenchTab; label: string; icon: typeof Target; badge?: number }[] = [
     { id: 'overview', label: 'Overview', icon: Target },
     {
@@ -476,6 +660,7 @@ const CoursesView: React.FC = () => {
       icon: BookOpen,
       badge: selectedCourseObjectiveCount,
     },
+    { id: 'content', label: 'Content', icon: Library },
     {
       id: 'factory',
       label: 'AI Factory',
@@ -485,7 +670,7 @@ const CoursesView: React.FC = () => {
   ];
 
   return (
-    <div className="teacher-readable flex h-[calc(100vh-140px)] overflow-hidden rounded-[1rem] border border-slate-200 bg-white font-sans text-slate-900">
+    <div className="teacher-readable relative flex h-[calc(100vh-140px)] overflow-hidden rounded-[1rem] border border-slate-200 bg-white font-sans text-slate-900">
       <CourseLibrarySidebar
         curricula={curricula}
         selectedCurriculum={selectedCurriculum}
@@ -576,7 +761,7 @@ const CoursesView: React.FC = () => {
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => selectTab(tab.id)}
                       className={`relative inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${
                         isActive
                           ? 'border-[#1BD183] text-slate-900'
@@ -615,29 +800,7 @@ const CoursesView: React.FC = () => {
               )}
               {activeTab === 'objectives' && (
                 selectedCourseNeedsObjectives ? (
-                  selectedCourseObjectiveError ? (
-                    <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-700">
-                      <p className="font-semibold">
-                        {selectedCourseObjectiveError}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void loadCourseObjectives(selectedCourse)}
-                        disabled={loadingCourseObjectivesId === selectedCourse.id}
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {loadingCourseObjectivesId === selectedCourse.id ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : null}
-                        Retry
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex min-h-[240px] items-center justify-center rounded-[1.5rem] border border-slate-200 bg-slate-50 px-6 text-sm font-semibold text-slate-500">
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Loading course objectives...
-                    </div>
-                  )
+                  renderObjectivesGate(selectedCourse)
                 ) : (
                   <CourseObjectivesPanel
                     course={selectedCourse}
@@ -645,6 +808,18 @@ const CoursesView: React.FC = () => {
                     onAttach={handleAttachObjective}
                     onCreate={handleCreateObjective}
                     onRemove={handleRemoveObjective}
+                    onManageItems={setManageObjective}
+                  />
+                )
+              )}
+              {activeTab === 'content' && (
+                selectedCourseNeedsObjectives ? (
+                  renderObjectivesGate(selectedCourse)
+                ) : (
+                  <CourseContentPanel
+                    course={selectedCourse}
+                    onManageObjective={setManageObjective}
+                    onManageObjectives={() => selectTab('objectives')}
                   />
                 )
               )}
@@ -653,6 +828,52 @@ const CoursesView: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Per-objective content drawer (author / inspect items in place) */}
+      {manageObjective && (
+        <ObjectiveItemsDrawer
+          objectiveId={manageObjective.id}
+          objectiveTitle={manageObjective.title}
+          refreshSignal={contentRefreshKey}
+          onCreate={handleCreateItem}
+          onOpenItem={(item) => void handleOpenItem(item)}
+          onClose={() => setManageObjective(null)}
+        />
+      )}
+
+      {/* In-page item editor overlay — keeps authoring inside the course page */}
+      {authoring && (
+        <div className="absolute inset-0 z-[70] overflow-y-auto bg-slate-50 p-4 custom-scrollbar sm:p-6">
+          {authoring.modality === 'mcq' && (
+            <QuestionEditor
+              initialQuestion={authoring.item}
+              onBack={() => setAuthoring(null)}
+              onSave={handleSaveItem}
+            />
+          )}
+          {authoring.modality === 'saq' && (
+            <SAQEditor
+              initialQuestion={authoring.item}
+              onBack={() => setAuthoring(null)}
+              onSave={handleSaveItem}
+            />
+          )}
+          {authoring.modality === 'flashcard' && (
+            <FlashcardEditor
+              initialQuestion={authoring.item}
+              onBack={() => setAuthoring(null)}
+              onSave={handleSaveItem}
+            />
+          )}
+          {authoring.modality === 'lecture' && (
+            <LectureCreationWizard
+              initialItem={authoring.item}
+              onBack={() => setAuthoring(null)}
+              onComplete={handleSaveItem}
+            />
+          )}
+        </div>
+      )}
 
       {/* Floating toasts — overlay so they never shift the layout */}
       {(message || loadError) && (

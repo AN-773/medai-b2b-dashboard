@@ -347,13 +347,14 @@ const CurriculumWorkbenchView: React.FC = () => {
         isOpen={formModal !== null}
         mode={formModal ?? 'create'}
         initialTitle={formModal === 'edit' ? selectedCurriculum?.title ?? '' : ''}
+        initialSummary={formModal === 'edit' ? selectedCurriculum?.summary ?? '' : ''}
         initialVisible={formModal === 'edit' ? selectedCurriculum?.visible ?? false : false}
         onClose={() => setFormModal(null)}
-        onSubmit={async (title, visible) => {
+        onSubmit={async (title, visible, summary) => {
           if (formModal === 'edit' && selectedCurriculum) {
-            await renameCurriculum(selectedCurriculum.id, title, visible);
+            await renameCurriculum(selectedCurriculum.id, title, visible, summary);
           } else {
-            await createCurriculum(title, visible);
+            await createCurriculum(title, visible, summary);
           }
         }}
       />

@@ -7,11 +7,11 @@ It is derived from the live handlers in `application/controllers.go`, the write 
 ## Scope
 
 - Curricula are tenant-scoped. Reads only return curricula belonging to the caller's tenant; writes stamp the caller's tenant on create.
-- Route params named `identifier` refer to the curriculum slug segment, for example `cardiology`, not the full absolute URL.
-- `id` fields in responses are absolute resource URIs. Use the trailing slug for `identifier` path params.
+- Route params named `identifier` refer to the trailing curriculum identifier segment, for example `2a7f9c3k8m1q4r6t0v2x5y7zb9d`, not the full absolute URL.
+- `id` fields in responses are absolute resource URIs. Use the trailing identifier segment for `identifier` path params.i
 - Timestamps are RFC3339 / ISO-8601 strings. Nullable fields are returned as `null`.
 - `POST` and `DELETE` are routed through dispatch controllers. On success they return the body documented below; on validation or permission failure the HTTP status code is authoritative and the response body may be `null`.
-- `identifier` is server-managed on create and generated from `title`.
+- `identifier` is server-managed on create and generated as a random lower-case KSUID. It is opaque and is not derived from `title`.
 
 ## Authorization
 
@@ -40,6 +40,7 @@ Curriculum links on existing resources:
 | `POST` | `/learning-objectives` | accepts optional `curriculumId` |
 | `GET` | `/learning-objectives?curriculumId=...` | filters by curriculum |
 | `POST` | `/courses` | accepts optional `curriculumId` |
+| `POST` | `/blocks` | accepts optional `curriculumId`; inferred from selected organ systems when omitted |
 
 ## Types
 
@@ -48,7 +49,6 @@ type Curriculum = {
   id: string;
   identifier: string;
   title: string;
-  visible: boolean;
   tenantId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -68,25 +68,25 @@ type CurriculumListResponse = {
 
 ### `GET /curricula`
 
-List curricula for the caller's tenant. Invisible curricula are hidden unless an
-administrator requests management scope.
+List curricula for the caller's tenant.
 
-- Query params: `page`, `limit`, `relations`, `q`, `scope=management`, and parsed filters.
+- Query params: `page`, `limit`, `relations`, `q`, and parsed filters.
 - `200` -> `CurriculumListResponse`.
 
 ### `POST /curricula`
 
-Create with no `id`, or update with an existing resource-path `id`.
+Create with no `id`, or update with an existing absolute `id`.
 
 ```json
-{ "curriculum": { "title": "Cardiology", "visible": false } }
+{ "curriculum": { "title": "Cardiology" } }
 ```
 
 ```json
-{ "curriculum": { "id": "/curricula/cardiology", "title": "Adult Cardiology", "visible": true } }
+{ "curriculum": { "id": "https://host/base/curricula/2a7f9c3k8m1q4r6t0v2x5y7zb9d", "title": "Adult Cardiology" } }
 ```
 
 - `201` -> the created or updated curriculum.
+- On create, clients must read the returned `identifier` or `id` and use that value for subsequent `/curricula/{identifier}` requests.
 - `400` -> missing or invalid body.
 - `403` -> caller has no resolvable tenant.
 
@@ -94,7 +94,6 @@ Create with no `id`, or update with an existing resource-path `id`.
 
 View one curriculum with its live members embedded.
 
-- Query params: `scope=management` lets administrators view invisible curricula.
 - `200` -> `Curriculum`.
 - `404` -> not found or not visible to the tenant.
 
@@ -130,7 +129,16 @@ View one curriculum with its live members embedded.
 - `POST /courses` validates a provided `curriculumId`.
 - Course list and view endpoints always read live course rows.
 
+### Blocks
+
+`Block` has a nullable `curriculumId` field.
+
+- `POST /blocks` validates a provided `curriculumId`.
+- If `curriculumId` is omitted, the first non-empty curriculum from selected `organSystems` is used.
+- If `curriculumId` is provided, selected organ systems with a different non-empty curriculum are rejected.
+- When `curriculumId` is present, block question/item selection uses curriculum before `examType`.
+
 ## Behavioral Notes
 
 - All curriculum and linked-resource reads use live tables.
-- IDs in query filters are absolute curriculum URIs, not slugs.
+- IDs in query filters are absolute curriculum URIs, not identifier path segments.

@@ -169,6 +169,7 @@ export interface LearningObjective {
 export enum ItemType {
   MCQ = 'MCQ',
   SAQ = 'SAQ',
+  FLASHCARD = 'FLASHCARD',
   LECTURE = 'LECTURE'
 }
 

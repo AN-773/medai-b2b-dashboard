@@ -6,20 +6,27 @@ interface CurriculumFormModalProps {
   isOpen: boolean;
   mode: 'create' | 'edit';
   initialTitle?: string;
+  initialSummary?: string;
   initialVisible?: boolean;
   onClose: () => void;
-  onSubmit: (title: string, visible: boolean) => Promise<unknown>;
+  onSubmit: (
+    title: string,
+    visible: boolean,
+    summary: string,
+  ) => Promise<unknown>;
 }
 
 const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
   isOpen,
   mode,
   initialTitle = '',
+  initialSummary = '',
   initialVisible = false,
   onClose,
   onSubmit,
 }) => {
   const [title, setTitle] = useState(initialTitle);
+  const [summary, setSummary] = useState(initialSummary);
   const [visible, setVisible] = useState(initialVisible);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +34,11 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setTitle(initialTitle);
+      setSummary(initialSummary);
       setVisible(initialVisible);
       setError(null);
     }
-  }, [isOpen, initialTitle, initialVisible]);
+  }, [isOpen, initialTitle, initialSummary, initialVisible]);
 
   if (!isOpen) return null;
 
@@ -47,7 +55,7 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
-      await onSubmit(title.trim(), visible);
+      await onSubmit(title.trim(), visible, summary.trim());
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -110,6 +118,21 @@ const CurriculumFormModal: React.FC<CurriculumFormModalProps> = ({
               disabled={isSubmitting}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
               autoFocus
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="curriculum-summary" className="block text-sm font-bold text-slate-700">
+              Summary
+            </label>
+            <textarea
+              id="curriculum-summary"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="A short description of what this curriculum covers."
+              disabled={isSubmitting}
+              rows={3}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50 resize-none"
             />
           </div>
 

@@ -216,6 +216,7 @@ export interface Curriculum {
   id: string; // resource path, e.g. /curricula/cardiology
   identifier: string; // slug
   title: string;
+  summary?: string;
   visible: boolean;
   tenantId: string | null;
   createdAt: string;
@@ -461,7 +462,7 @@ export interface DashboardStatsResponse {
 }
 
 
-export type ApiItemType = "mcq" | "saq" | "lecture";
+export type ApiItemType = "mcq" | "saq" | "lecture" | "flashcard";
 export type ApiItemStatus = "draft" | "pending" | "live";
 
 export interface BackendApiItem {
@@ -476,12 +477,13 @@ export interface BackendApiItem {
   mcq: MCQItem | null;
   saq: SAQItem | null;
   lecture: LectureItem | null;
+  flashcard: FlashcardItem | null;
   tags: Tag[];
 }
 
 export interface MCQItem {
   stem: string;
-  choices: Choice[]; 
+  choices: Choice[];
 }
 
 export interface SAQItem {
@@ -493,6 +495,11 @@ export interface LectureItem {
   content: string;
   title: string;
   summary: string;
+}
+
+export interface FlashcardItem {
+  front: string;
+  back: string;
 }
 
 export interface ItemListResponse {
@@ -516,6 +523,7 @@ export interface ItemUpsertRequest {
     mcq?: { stem: string };
     saq?: { question: string; answer: string };
     lecture?: { title: string; content: string; summary: string };
+    flashcard?: { front: string; back: string };
   };
   learningObjectiveId?: string;
   tags?: string[];
