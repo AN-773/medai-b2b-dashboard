@@ -10,6 +10,16 @@ export interface TeacherStudent {
   createdAt: string;
 }
 
+export interface ItemTypeTotals {
+  total: number;
+  byType: {
+    mcq: number;
+    saq: number;
+    flashcard: number;
+    lecture: number;
+  };
+}
+
 export interface TeacherLearningObjective {
   id: string;
   title: string;
@@ -17,6 +27,8 @@ export interface TeacherLearningObjective {
   cognitiveSkill?: string;
   source: 'manual' | 'ai';
   createdAt: string;
+  /** Counts of linked content items, supplied by the backend per objective. */
+  itemTotals?: ItemTypeTotals;
 }
 
 export interface CourseSourceFile {
@@ -36,13 +48,23 @@ export interface TeacherCourse {
   id: string;
   backendIdentifier?: string;
   title: string;
-  code: string;
+  teacherId?: string;
+  tenantId?: string | null;
+  curriculumId?: string | null;
   summary: string;
+  learningObjectivesTotal?: number;
+  pendingLearningObjectiveSuggestionsTotal?: number;
+  learningObjectivesLoaded?: boolean;
   learningObjectives: TeacherLearningObjective[];
-  sourceFiles: CourseSourceFile[];
   contentDrafts: CourseContentDraft[];
   createdAt: string;
   updatedAt: string;
+}
+
+// Legacy prototype-only extension used by the old local Cohort Studio flow.
+export interface TeacherCourseWithSources extends TeacherCourse {
+  sourceFiles: CourseSourceFile[];
+  modules?: CourseContentDraft[];
 }
 
 export interface CohortCourseSelection {
@@ -97,6 +119,6 @@ export interface ImportedStudentRow {
 
 export interface AcademyStudioState {
   students: TeacherStudent[];
-  courses: TeacherCourse[];
+  courses: TeacherCourseWithSources[];
   cohorts: TeacherCohort[];
 }

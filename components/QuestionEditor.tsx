@@ -34,7 +34,6 @@ import ConfirmationModal from './ConfirmationModal';
 interface QuestionEditorProps {
   onBack: () => void;
   onSave: (request: ItemUpsertRequest) => void | Promise<void>;
-  onChangeStatus?: (identifier: string, status: string) => void;
   initialQuestion?: BackendApiItem | null;
 }
 
@@ -70,7 +69,7 @@ const RenderMarkdown = ({ content }: { content: string }) => {
 
 
 
-const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChangeStatus, initialQuestion }) => {
+const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, initialQuestion }) => {
   const [sidebarWidth, setSidebarWidth] = useState(480); 
 
   const [additionalContext, setAdditionalContext] = useState('');
@@ -83,6 +82,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState<'draft' | 'pending' | 'live'>('draft');
   
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [followUpPrompt, setFollowUpPrompt] = useState('');
@@ -284,6 +284,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
   useEffect(() => {
     if (initialQuestion) {
       console.log("QuestionEditor Initialized with:", initialQuestion);
+      setSelectedStatus(initialQuestion.status);
 
       // Read from BackendApiItem shape
       setQuestionText(initialQuestion.mcq?.stem || '');
@@ -331,6 +332,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       }
     } else {
         console.log("No initialQuestion provided");
+        setSelectedStatus('draft');
     }
   }, [initialQuestion, fillFiltersFromObjective]);
 
@@ -429,7 +431,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
     }
   };
 
-  const handleSave = async (targetStatus: 'draft' | 'live') => {
+  const handleSave = async () => {
     if (isSaving) {
       return;
     }
@@ -441,7 +443,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
       item: {
         ...(initialQuestion?.id ? { id: initialQuestion.id } : {}),
         type: 'mcq',
-        status: targetStatus,
+        status: selectedStatus,
         metadata: references.length > 0 ? { references } : undefined,
         mcq: { stem: questionText },
       },
@@ -527,10 +529,10 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
               <Eye size={16} /> <span className="hidden sm:inline">Preview</span>
             </button>
           </div>
-          {initialQuestion?.identifier && onChangeStatus && (
+          {initialQuestion?.identifier && (
             <select
-              value={initialQuestion.status.toLowerCase()}
-              onChange={(e) => onChangeStatus(initialQuestion.identifier, e.target.value)}
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as 'draft' | 'pending' | 'live')}
               className="shrink-0 bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[#1BD183]"
             >
               <option value="draft">Draft</option>
@@ -540,7 +542,7 @@ const QuestionEditor: React.FC<QuestionEditorProps> = ({ onBack, onSave, onChang
           )}
 
           <button
-            onClick={() => handleSave('draft')}
+            onClick={handleSave}
             disabled={isSaving}
             className="shrink-0 flex items-center gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >

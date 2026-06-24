@@ -385,8 +385,19 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         let failed = 0;
         for (const id of itemsToProcess) {
           try {
-            const targetItem = items.find(i => i.id === id);
-            await testsService.upsertItem({ item: { identifier: targetItem?.identifier || id, type: targetItem?.type || 'mcq', status: newStatus } });
+            const targetItem = items.find((item) => item.id === id);
+            if (!targetItem) {
+              failed++;
+              setBulkProgress(prev => ({
+                ...prev,
+                completedItems: completed,
+                failedItems: failed,
+              }));
+              continue;
+            }
+            await testsService.upsertItem({
+              item: { id: targetItem.id, type: targetItem.type, status: newStatus },
+            });
             completed++;
           } catch {
             failed++;

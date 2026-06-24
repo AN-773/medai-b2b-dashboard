@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { testsService } from '../services/testsService';
 import {
+  ApiItemType,
   BackendApiItem,
   ItemUpsertRequest,
 } from '../types/TestsServiceTypes';
@@ -18,6 +19,7 @@ import QuestionEditor from '../components/QuestionEditor';
 import LectureCreationWizard from '../components/LectureCreationWizard';
 import LectureEditor from '../components/LectureEditor';
 import SAQEditor from '../components/SAQEditor';
+import FlashcardEditor from '../components/FlashcardEditor';
 import LecturePlayerView from '../components/LecturePlayerView';
 import ItemIntegrityView from '../components/ItemIntegrityView';
 import AILabView from '../components/AILabView';
@@ -33,6 +35,7 @@ import {
   FlaskConical,
   ShieldCheck,
   ChevronRight,
+  Layers,
 } from 'lucide-react';
 
 type WorkbenchViewMode =
@@ -42,7 +45,21 @@ type WorkbenchViewMode =
   | 'LECTURE_EDITOR'
   | 'LECTURE_DETAIL'
   | 'LECTURE_PLAYER'
-  | 'SAQ_EDITOR';
+  | 'SAQ_EDITOR'
+  | 'FLASHCARD_EDITOR';
+
+// Authoring modalities surfaced in the workbench type switcher
+const ITEM_MODALITIES: {
+  type: ItemType;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}[] = [
+  { type: ItemType.MCQ, label: 'MCQ', desc: 'Single best answer', icon: ClipboardCheck },
+  { type: ItemType.SAQ, label: 'SAQ', desc: 'Short answer', icon: FileText },
+  { type: ItemType.FLASHCARD, label: 'Flashcard', desc: 'Active recall', icon: Layers },
+  { type: ItemType.LECTURE, label: 'Lecture', desc: 'Instructional', icon: MonitorPlay },
+];
 type WorkbenchTab = 'DASHBOARD' | 'INTEGRITY' | 'LAB';
 
 // Adapter: convert BackendApiItem to legacy BackendItem for downstream components
@@ -153,35 +170,42 @@ const QuestionWorkbenchView: React.FC = () => {
         return;
       }
 
-      if (questionId === 'new') {
-        // Create a minimal BackendApiItem skeleton for new MCQ
-        const contextItem: BackendApiItem = {
-          id: '',
-          identifier: '',
-          type: 'mcq',
-          status: 'draft',
-          learningObjectiveId: searchParams.get('learningObjectiveId') || null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          mcq: { stem: '', choices: [] },
-          saq: null,
-          lecture: null,
-          tags: [],
-        };
+      // Skeleton for a brand-new item, pre-linked to a learning objective when
+      // one is supplied (e.g. authoring from a course's content panel).
+      const makeNewItem = (type: ApiItemType): BackendApiItem => ({
+        id: '',
+        identifier: '',
+        type,
+        status: 'draft',
+        learningObjectiveId: searchParams.get('learningObjectiveId') || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mcq: type === 'mcq' ? { stem: '', choices: [] } : null,
+        saq: null,
+        lecture: null,
+        flashcard: null,
+        tags: [],
+      });
 
-        setEditingItem(contextItem);
+      if (questionId === 'new') {
+        setEditingItem(makeNewItem('mcq'));
         setViewMode('QUESTION_EDITOR');
         return;
       }
 
       if (questionId === 'new_lecture') {
-        setSelectedItem(null);
+        setSelectedItem(makeNewItem('lecture'));
         setViewMode('LECTURE_WIZARD');
         return;
       }
       if (questionId === 'new_saq') {
-        setSelectedItem(null);
+        setSelectedItem(makeNewItem('saq'));
         setViewMode('SAQ_EDITOR');
+        return;
+      }
+      if (questionId === 'new_flashcard') {
+        setSelectedItem(makeNewItem('flashcard'));
+        setViewMode('FLASHCARD_EDITOR');
         return;
       }
 
@@ -195,6 +219,9 @@ const QuestionWorkbenchView: React.FC = () => {
             } else if (res.type === 'saq') {
               setSelectedItem(res);
               setViewMode('SAQ_EDITOR');
+            } else if (res.type === 'flashcard') {
+              setSelectedItem(res);
+              setViewMode('FLASHCARD_EDITOR');
             } else {
               // Pass BackendApiItem directly to QuestionEditor
               setEditingItem(res);
@@ -218,7 +245,12 @@ const QuestionWorkbenchView: React.FC = () => {
     return itemsList.map((item) => ({
       id: item.id,
       identifier: item.identifier,
-      text: item.mcq?.stem || item.saq?.question || item.lecture?.title || '',
+      text:
+        item.mcq?.stem ||
+        item.saq?.question ||
+        item.flashcard?.front ||
+        item.lecture?.title ||
+        '',
       type: QuestionType.SingleBestAnswer,
       bloomsLevel: BloomsLevel.Understand,
       options: (item.mcq?.choices || []).map((c) => ({
@@ -255,6 +287,8 @@ const QuestionWorkbenchView: React.FC = () => {
       params.set('questionId', 'new_lecture');
     } else if (activeItemType === ItemType.SAQ) {
       params.set('questionId', 'new_saq');
+    } else if (activeItemType === ItemType.FLASHCARD) {
+      params.set('questionId', 'new_flashcard');
     } else {
       params.set('questionId', 'new');
     }
@@ -274,6 +308,18 @@ const QuestionWorkbenchView: React.FC = () => {
 
     setSearchParams({});
     setEditingItem(null);
+  };
+
+  const handleSelectType = (type: ItemType) => {
+    if (type === activeItemType) return;
+    setActiveItemType(type);
+    setActiveTab('DASHBOARD');
+    setViewMode('DASHBOARD');
+    setEditingItem(null);
+    setSelectedItem(null);
+    if (searchParams.toString()) {
+      setSearchParams({});
+    }
   };
 
   // Accepts ItemUpsertRequest directly from editors
@@ -300,38 +346,6 @@ const QuestionWorkbenchView: React.FC = () => {
     }
   };
 
-  const handleChangeStatus = async (identifier: string, newStatus: string) => {
-    try {
-      showToast('Updating status...', 'success');
-      // Use upsertItem to change status via Items API
-      const targetItem = itemsList.find(i => i.identifier === identifier);
-      if (!targetItem) return;
-
-      const savedItem = await testsService.upsertItem({
-        item: { identifier: targetItem.identifier, type: targetItem.type, status: newStatus as any },
-      });
-
-      // Update local state
-      setEditingItem((prev) =>
-        prev ? { ...prev, status: savedItem.status } : null,
-      );
-
-      // Update list
-      setItemsList((prev) =>
-        prev.map((item) =>
-          item.identifier === identifier
-            ? { ...item, status: savedItem.status }
-            : item,
-        ),
-      );
-
-      showToast('Status updated successfully');
-    } catch (error) {
-      console.error('Failed to update status:', error);
-      showToast('Failed to update status', 'error');
-    }
-  };
-
   const handleDeleteItem = async (identifier: string) => {
     try {
       showToast('Deleting item...', 'success');
@@ -349,7 +363,6 @@ const QuestionWorkbenchView: React.FC = () => {
       <QuestionEditor
         onBack={handleBackToDashboard}
         onSave={handleSaveItem}
-        onChangeStatus={handleChangeStatus}
         initialQuestion={editingItem}
       />
     );
@@ -364,6 +377,14 @@ const QuestionWorkbenchView: React.FC = () => {
   if (viewMode === 'SAQ_EDITOR')
     return (
       <SAQEditor
+        initialQuestion={selectedItem}
+        onBack={handleBackToDashboard}
+        onSave={handleSaveItem}
+      />
+    );
+  if (viewMode === 'FLASHCARD_EDITOR')
+    return (
+      <FlashcardEditor
         initialQuestion={selectedItem}
         onBack={handleBackToDashboard}
         onSave={handleSaveItem}
@@ -412,36 +433,61 @@ const QuestionWorkbenchView: React.FC = () => {
         </div>
       )}
 
-      {/* Global Type Selector */}
-      {/* <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
-        <div className="flex items-center justify-between xl:justify-start gap-2 p-1.5 bg-white rounded-[2.5rem] w-full xl:w-fit overflow-x-auto no-scrollbar">
-          {[ItemType.MCQ, ItemType.SAQ, ItemType.LECTURE].map((type) => (
-            <button
-              key={type}
-              onClick={() => {
-                setActiveItemType(type as ItemType);
-                setViewMode('DASHBOARD');
-              }}
-              className={`flex-1 xl:flex-none flex items-center justify-center gap-2 xl:gap-3 px-4 xl:px-8 py-3 xl:py-3.5 rounded-[2rem] text-[10px] xl:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeItemType === type ? 'bg-primary-gradient text-white ' : 'text-slate-500 hover:bg-slate-300/50'}`}
-            >
-              {type === ItemType.MCQ ? (
-                <ClipboardCheck size={14} className="xl:w-4 xl:h-4" />
-              ) : type === ItemType.SAQ ? (
-                <FileText size={14} className="xl:w-4 xl:h-4" />
-              ) : (
-                <MonitorPlay size={14} className="xl:w-4 xl:h-4" />
-              )}
-              {type}s
-            </button>
-          ))}
+      {/* Authoring Modality Switcher */}
+      <div className="flex flex-col xl:flex-row xl:items-stretch gap-3 xl:gap-4">
+        <div className="flex-1 bg-white border border-slate-200 rounded-[2rem] shadow-sm p-2 xl:p-2.5">
+          <div className="flex items-center gap-1 mb-1 px-3 pt-1">
+            <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">
+              Authoring Modality
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {ITEM_MODALITIES.map((modality) => {
+              const isActive = activeItemType === modality.type;
+              const Icon = modality.icon;
+              return (
+                <button
+                  key={modality.type}
+                  onClick={() => handleSelectType(modality.type)}
+                  className={`group flex items-center gap-3 px-3 xl:px-4 py-3 xl:py-3.5 rounded-[1.5rem] text-left transition-all ${
+                    isActive
+                      ? 'bg-primary-gradient text-white shadow-lg shadow-emerald-100'
+                      : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  <span
+                    className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-400 group-hover:text-[#1BD183]'
+                    }`}
+                  >
+                    <Icon size={17} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[11px] font-black uppercase tracking-widest truncate">
+                      {modality.label}
+                    </span>
+                    <span
+                      className={`block text-[9px] font-bold uppercase tracking-wider truncate ${
+                        isActive ? 'text-white/70' : 'text-slate-400'
+                      }`}
+                    >
+                      {modality.desc}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <button
           onClick={() => navigate('/bank-explorer')}
-          className="w-full xl:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm "
+          className="xl:w-48 flex items-center justify-center gap-2 px-6 py-4 bg-[#191A19] border border-slate-800 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm transition-colors"
         >
-          <Database size={14} /> Global Repository
+          <Database size={15} /> Global Repository
         </button>
-      </div> */}
+      </div>
 
       {/* Workbench Sub-Navigation */}
       {/* <div className="flex items-center gap-2 w-full xl:w-auto">
@@ -526,6 +572,7 @@ const QuestionWorkbenchView: React.FC = () => {
                 mcq: { stem: newItem.stem, choices: [] },
                 saq: null,
                 lecture: null,
+                flashcard: null,
                 tags: [],
               };
               setItemsList((prev) => [apiItem, ...prev]);

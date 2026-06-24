@@ -139,9 +139,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       className="w-80 bg-white flex-shrink-0 flex flex-col border-r border-slate-100 h-full"
     >
       <div className="p-8 pb-4">
-        <h2 className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
-          <LayoutGrid size={14} /> MSAi® Curriculum
-        </h2>
 
         {/* Step Mode Toggle */}
         <div className="flex items-center bg-slate-100 rounded-xl p-1 mb-5">

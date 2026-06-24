@@ -143,9 +143,6 @@ const WorkbenchSidebar: React.FC<WorkbenchSidebarProps> = ({
       className="w-80 bg-white flex-shrink-0 flex flex-col border-r border-slate-100 h-full"
     >
       <div className="p-8 pb-4">
-        <h2 className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
-          <Library size={14} /> MSAi® Curriculum
-        </h2>
 
         {/* Curriculum dropdown (replaces the old Step 1 / Step 2 toggle) */}
         <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
@@ -165,7 +162,7 @@ const WorkbenchSidebar: React.FC<WorkbenchSidebarProps> = ({
                 return (
                   <option key={c.id} value={slug}>
                     {c.title}
-                    {c.status === 'published' ? ` · v${c.currentVersion}` : ' · draft'}
+                    {c.visible ? '' : ' · hidden'}
                   </option>
                 );
               })}

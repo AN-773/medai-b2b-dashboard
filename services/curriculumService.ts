@@ -1,9 +1,6 @@
 import {
   Curriculum,
   CurriculumListResponse,
-  CurriculumVersionListResponse,
-  CurriculumVersionDetailResponse,
-  PublishCurriculumResponse,
 } from '../types/TestsServiceTypes';
 import { apiClient } from './apiClient';
 import { resourceIdentifier } from '../utils/resourceId';
@@ -25,12 +22,14 @@ export const curriculumService = {
     limit?: number,
     relations = false,
     q?: string,
+    scope?: 'management',
   ): Promise<CurriculumListResponse> => {
     const params = new URLSearchParams();
     params.append('page', String(page));
     if (limit) params.append('limit', String(limit));
-    if (relations) params.append('relations', 'true');
+    params.append('relations', 'false');
     if (q) params.append('q', q);
+    if (scope) params.append('scope', scope);
     return apiClient.get<CurriculumListResponse>(
       'TESTS',
       `/curricula?${params.toString()}`,
@@ -38,19 +37,36 @@ export const curriculumService = {
   },
 
   /** GET /curricula/{identifier} — single curriculum with embedded members. */
-  getCurriculum: async (identifier: string): Promise<Curriculum> => {
-    return apiClient.get<Curriculum>('TESTS', `/curricula/${toSlug(identifier)}`);
+  getCurriculum: async (
+    identifier: string,
+    scope?: 'management',
+  ): Promise<Curriculum> => {
+    const params = new URLSearchParams();
+    if (scope) params.append('scope', scope);
+    params.append('relations', 'false'); // always include relations for detail view
+    const query = params.toString();
+    return apiClient.get<Curriculum>(
+      'TESTS',
+      `/curricula/${toSlug(identifier)}${query ? `?${query}` : ''}`,
+    );
   },
 
   /**
-   * POST /curricula — create (no id) or update (with absolute id).
-   * `identifier`, `status`, and `currentVersion` are server-managed.
+   * POST /curricula — create (no id) or update (with resource-path id).
+   * `identifier` is server-managed and generated from `title`.
    */
-  upsertCurriculum: async (title: string, id?: string): Promise<Curriculum> => {
+  upsertCurriculum: async (
+    title: string,
+    id?: string,
+    visible?: boolean,
+    summary?: string,
+  ): Promise<Curriculum> => {
     return apiClient.post<Curriculum>('TESTS', '/curricula', {
       curriculum: {
         title,
         ...(id ? { id } : {}),
+        ...(typeof visible === 'boolean' ? { visible } : {}),
+        ...(summary !== undefined ? { summary } : {}),
       },
     });
   },
@@ -58,38 +74,5 @@ export const curriculumService = {
   /** DELETE /curricula/{identifier}. */
   deleteCurriculum: async (identifier: string): Promise<void> => {
     return apiClient.delete<void>('TESTS', `/curricula/${toSlug(identifier)}`);
-  },
-
-  /** POST /curricula/{identifier}/publish — Administrator only. */
-  publishCurriculum: async (
-    identifier: string,
-    summary?: string,
-  ): Promise<PublishCurriculumResponse> => {
-    return apiClient.post<PublishCurriculumResponse>(
-      'TESTS',
-      `/curricula/${toSlug(identifier)}/publish`,
-      summary ? { summary } : {},
-    );
-  },
-
-  /** GET /curricula/{identifier}/versions — published versions, newest first. */
-  getCurriculumVersions: async (
-    identifier: string,
-  ): Promise<CurriculumVersionListResponse> => {
-    return apiClient.get<CurriculumVersionListResponse>(
-      'TESTS',
-      `/curricula/${toSlug(identifier)}/versions`,
-    );
-  },
-
-  /** GET /curricula/{identifier}/versions/{version} — frozen snapshot. */
-  getCurriculumVersion: async (
-    identifier: string,
-    version: number,
-  ): Promise<CurriculumVersionDetailResponse> => {
-    return apiClient.get<CurriculumVersionDetailResponse>(
-      'TESTS',
-      `/curricula/${toSlug(identifier)}/versions/${version}`,
-    );
   },
 };

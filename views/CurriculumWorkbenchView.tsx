@@ -1,27 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Library,
   Loader2,
   Pencil,
   Trash2,
-  Rocket,
-  History,
-  Layers,
   AlertTriangle,
   Activity,
   ChevronRight,
   Network,
   X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useCurriculumWorkbench } from '../hooks/useCurriculumWorkbench';
 import { useCurriculumContent } from '../hooks/useCurriculumContent';
 import WorkbenchSidebar from '../components/curriculum-workbench/WorkbenchSidebar';
 import CurriculumFormModal from '../components/curriculum-workbench/CurriculumFormModal';
-import PublishModal from '../components/curriculum-workbench/PublishModal';
 import AttachOrganSystemModal from '../components/curriculum-workbench/AttachOrganSystemModal';
-import VersionHistory from '../components/curriculum-workbench/VersionHistory';
-import StatusBadge from '../components/curriculum-workbench/StatusBadge';
 import ConfirmationModal from '../components/ConfirmationModal';
 import TopicGrid from '../components/curriculum/TopicGrid';
 import SubTopicGrid from '../components/curriculum/SubTopicGrid';
@@ -39,42 +35,21 @@ const CurriculumWorkbenchView: React.FC = () => {
     selectedCurriculum,
     isLoadingDetail,
     selectCurriculum,
-    versions,
-    isLoadingVersions,
-    selectedVersionNumber,
-    selectedVersionDetail,
-    isLoadingVersionDetail,
-    selectVersion,
     isMutating,
     actionError,
     clearActionError,
     createCurriculum,
     renameCurriculum,
     deleteCurriculum,
-    publishCurriculum,
     canManage,
   } = useCurriculumWorkbench();
 
   const content = useCurriculumContent(selectedCurriculum?.id ?? null);
 
-  const [formModal, setFormModal] = useState<'create' | 'rename' | null>(null);
-  const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [formModal, setFormModal] = useState<'create' | 'edit' | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isAttachOpen, setIsAttachOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'content' | 'versions'>('content');
   const [viewLinkedItems, setViewLinkedItems] = useState<LearningObjective | null>(null);
-
-  // Deep-linking to a version snapshot implies the versions view.
-  useEffect(() => {
-    if (selectedVersionNumber) setViewMode('versions');
-  }, [selectedVersionNumber]);
-
-  // Reset to content view when switching curricula.
-  useEffect(() => {
-    setViewMode('content');
-  }, [selectedIdentifier]);
-
-  const effectiveMode = selectedVersionNumber ? 'versions' : viewMode;
 
   const handleCreateLinkedItem = (obj: LearningObjective, redirectTo?: string) => {
     const context: Record<string, unknown> = {
@@ -237,8 +212,8 @@ const CurriculumWorkbenchView: React.FC = () => {
             Select a curriculum
           </p>
           <p className="text-xs font-medium mt-2 text-center max-w-sm">
-            Pick a curriculum from the dropdown to manage its organ systems, drill into topics and
-            learning objectives, and publish versioned snapshots.
+            Pick a curriculum from the dropdown to manage its organ systems and drill into topics and
+            learning objectives.
           </p>
         </div>
       );
@@ -270,56 +245,30 @@ const CurriculumWorkbenchView: React.FC = () => {
               <h2 className="text-2xl font-black text-slate-900 truncate">
                 {selectedCurriculum.title}
               </h2>
-              <StatusBadge
-                status={selectedCurriculum.status}
-                currentVersion={selectedCurriculum.currentVersion}
-                size="md"
-              />
               <span className="font-mono text-[11px] bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md text-slate-500">
                 {identifierOf(selectedCurriculum)}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${
+                  selectedCurriculum.visible
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                }`}
+              >
+                {selectedCurriculum.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                {selectedCurriculum.visible ? 'Visible' : 'Hidden'}
               </span>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="flex items-center bg-slate-100 rounded-xl p-1">
-                <button
-                  onClick={() => {
-                    if (selectedVersionNumber) selectVersion(null);
-                    setViewMode('content');
-                  }}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${
-                    effectiveMode === 'content'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  <Layers size={14} /> Content
-                </button>
-                <button
-                  onClick={() => setViewMode('versions')}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${
-                    effectiveMode === 'versions'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  <History size={14} /> Versions
-                  {versions.length > 0 && (
-                    <span className="ml-0.5 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">
-                      {versions.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-
               {canManage && (
                 <>
                   <button
-                    onClick={() => setFormModal('rename')}
+                    onClick={() => setFormModal('edit')}
                     disabled={isMutating}
                     className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all disabled:opacity-50"
                   >
-                    <Pencil size={14} /> Rename
+                    <Pencil size={14} /> Edit
                   </button>
                   <button
                     onClick={() => setIsDeleteOpen(true)}
@@ -327,14 +276,6 @@ const CurriculumWorkbenchView: React.FC = () => {
                     className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-rose-600 bg-rose-50 hover:bg-rose-100 transition-all disabled:opacity-50"
                   >
                     <Trash2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => setIsPublishOpen(true)}
-                    disabled={isMutating}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r from-[#1BD183] to-[#15a968] shadow-lg shadow-[#1BD183]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50"
-                  >
-                    {isMutating ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                    Publish
                   </button>
                 </>
               )}
@@ -353,39 +294,26 @@ const CurriculumWorkbenchView: React.FC = () => {
         )}
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          {effectiveMode === 'versions' ? (
-            <VersionHistory
-              versions={versions}
-              isLoadingVersions={isLoadingVersions}
-              selectedVersionNumber={selectedVersionNumber}
-              selectedVersionDetail={selectedVersionDetail}
-              isLoadingVersionDetail={isLoadingVersionDetail}
-              onSelectVersion={selectVersion}
-            />
-          ) : (
-            <>
-              {renderBreadcrumbs()}
-              {/* Content search */}
-              {content.activeSystemId && (
-                <div className="mb-6 max-w-md">
-                  <input
-                    type="text"
-                    value={content.contentSearch}
-                    onChange={(e) => content.setContentSearch(e.target.value)}
-                    placeholder={
-                      !content.activeTopicId
-                        ? 'Filter topics…'
-                        : !content.activeSubTopic
-                        ? 'Filter subtopics…'
-                        : 'Search objectives…'
-                    }
-                    className="w-full bg-white border border-slate-200 text-xs font-bold text-slate-700 px-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all placeholder:text-slate-400"
-                  />
-                </div>
-              )}
-              {renderHierarchy()}
-            </>
+          {renderBreadcrumbs()}
+          {/* Content search */}
+          {content.activeSystemId && (
+            <div className="mb-6 max-w-md">
+              <input
+                type="text"
+                value={content.contentSearch}
+                onChange={(e) => content.setContentSearch(e.target.value)}
+                placeholder={
+                  !content.activeTopicId
+                    ? 'Filter topics…'
+                    : !content.activeSubTopic
+                    ? 'Filter subtopics…'
+                    : 'Search objectives…'
+                }
+                className="w-full bg-white border border-slate-200 text-xs font-bold text-slate-700 px-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all placeholder:text-slate-400"
+              />
+            </div>
           )}
+          {renderHierarchy()}
         </div>
       </>
     );
@@ -414,31 +342,19 @@ const CurriculumWorkbenchView: React.FC = () => {
         {renderMain()}
       </div>
 
-      {/* Curriculum create / rename */}
+      {/* Curriculum create / edit */}
       <CurriculumFormModal
         isOpen={formModal !== null}
         mode={formModal ?? 'create'}
-        initialTitle={formModal === 'rename' ? selectedCurriculum?.title ?? '' : ''}
+        initialTitle={formModal === 'edit' ? selectedCurriculum?.title ?? '' : ''}
+        initialSummary={formModal === 'edit' ? selectedCurriculum?.summary ?? '' : ''}
+        initialVisible={formModal === 'edit' ? selectedCurriculum?.visible ?? false : false}
         onClose={() => setFormModal(null)}
-        onSubmit={async (title) => {
-          if (formModal === 'rename' && selectedCurriculum) {
-            await renameCurriculum(selectedCurriculum.id, title);
+        onSubmit={async (title, visible, summary) => {
+          if (formModal === 'edit' && selectedCurriculum) {
+            await renameCurriculum(selectedCurriculum.id, title, visible, summary);
           } else {
-            await createCurriculum(title);
-          }
-        }}
-      />
-
-      {/* Publish */}
-      <PublishModal
-        isOpen={isPublishOpen}
-        curriculum={selectedCurriculum}
-        organSystemCount={content.organSystems.length}
-        learningObjectiveCount={selectedCurriculum?.learningObjectives?.length ?? 0}
-        onClose={() => setIsPublishOpen(false)}
-        onSubmit={async (summary) => {
-          if (selectedCurriculum) {
-            await publishCurriculum(identifierOf(selectedCurriculum), summary);
+            await createCurriculum(title, visible, summary);
           }
         }}
       />
@@ -456,7 +372,7 @@ const CurriculumWorkbenchView: React.FC = () => {
       <ConfirmationModal
         isOpen={isDeleteOpen}
         title="Delete Curriculum"
-        message={`Delete "${selectedCurriculum?.title ?? ''}"? This removes the curriculum and its draft. Published version snapshots remain immutable but the curriculum will no longer be listed. Organ systems are not deleted. This cannot be undone.`}
+        message={`Delete "${selectedCurriculum?.title ?? ''}"? This removes the curriculum and it will no longer be listed. Organ systems are not deleted. If the curriculum still has linked resources, deletion will be blocked. This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
         onCancel={() => setIsDeleteOpen(false)}

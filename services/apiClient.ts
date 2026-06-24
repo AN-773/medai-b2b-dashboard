@@ -19,6 +19,10 @@ interface RequestOptions extends AxiosRequestConfig {
   authenticated?: boolean;
 }
 
+type ApiRequestError = Error & {
+  status?: number;
+};
+
 class ApiClient {
   private async request<T>(
     service: ServiceType,
@@ -68,9 +72,11 @@ class ApiClient {
             | undefined;
           const backendMessage =
             responseData?.message?.trim() || responseData?.error?.trim();
-          throw new Error(
+          const requestError: ApiRequestError = new Error(
             backendMessage || `API Error: ${error.response.status} ${error.response.statusText}`,
           );
+          requestError.status = error.response.status;
+          throw requestError;
         } else if (error.request) {
            // The request was made but no response was received
            throw new Error('API Error: No response received');
@@ -97,6 +103,14 @@ class ApiClient {
     return this.request<T>(service, endpoint, {
       ...options,
       method: 'PUT',
+      data: body,
+    });
+  }
+
+  async patch<T>(service: ServiceType, endpoint: string, body: any, options?: RequestOptions): Promise<T> {
+    return this.request<T>(service, endpoint, {
+      ...options,
+      method: 'PATCH',
       data: body,
     });
   }

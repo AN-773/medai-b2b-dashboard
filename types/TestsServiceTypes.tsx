@@ -211,16 +211,14 @@ export interface LearningObjective {
 // Curriculum (see contracts/curriculum-api-contract.md)
 // ---------------------------------------------------------------------------
 
-export type CurriculumStatus = 'draft' | 'published';
-
 /** Read shape returned by GET /curricula and GET /curricula/{identifier}. */
 export interface Curriculum {
-  id: string; // absolute URI
+  id: string; // resource path, e.g. /curricula/cardiology
   identifier: string; // slug
   title: string;
+  summary?: string;
+  visible: boolean;
   tenantId: string | null;
-  status: CurriculumStatus;
-  currentVersion: number; // 0 until first publish
   createdAt: string;
   updatedAt: string;
   // Embedded only on the single-item view, or on list when ?relations=true:
@@ -228,95 +226,10 @@ export interface Curriculum {
   learningObjectives?: LearningObjective[];
 }
 
-export interface CurriculumVersion {
-  id: string;
-  curriculumId: string; // absolute curriculum URI
-  version: number; // 1-based
-  status: CurriculumStatus; // versions endpoints only return "published"
-  summary: string;
-  /** Present on publish and version-detail reads. Omitted from version list rows. */
-  snapshot?: CurriculumVersionSnapshot;
-  createdAt: string;
-  createdBy: string;
-  publishedAt: string | null;
-  publishedBy: string;
-}
-
-/** Frozen jsonb snapshot captured at publish time. */
-export interface CurriculumVersionSnapshot {
-  curriculumId: string;
-  capturedAt: string;
-  organSystems: CurriculumVersionOrganSystemSnapshot[];
-}
-
-export interface CurriculumVersionOrganSystemSnapshot {
-  id: string;
-  title: string;
-  identifier: string;
-  tenantId?: string;
-  curriculumId?: string;
-  createdAt: string;
-  updatedAt: string;
-  topics: CurriculumVersionTopicSnapshot[];
-}
-
-export interface CurriculumVersionTopicSnapshot {
-  id: string;
-  title: string;
-  identifier: string;
-  organSystemId?: string;
-  tenantId?: string;
-  createdAt: string;
-  updatedAt: string;
-  syndromes: CurriculumVersionSyndromeSnapshot[];
-}
-
-export interface CurriculumVersionSyndromeSnapshot {
-  id: string;
-  title: string;
-  identifier: string;
-  topicId?: string;
-  tenantId?: string;
-  createdAt: string;
-  updatedAt: string;
-  learningObjectives: CurriculumVersionLearningObjectiveSnapshot[];
-}
-
-export interface CurriculumVersionLearningObjectiveSnapshot {
-  id: string;
-  title: string;
-  identifier: string;
-  exam: string;
-  source: string;
-  subjectId?: string;
-  studyPlanId?: string;
-  curriculumId?: string;
-  tenantId?: string;
-  syndromeId?: string;
-  cognitiveSkillId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface CurriculumListResponse {
   items: Curriculum[];
   total: number;
   page: number;
-}
-
-export interface PublishCurriculumResponse {
-  curriculum: Curriculum;
-  version: CurriculumVersion;
-}
-
-export interface CurriculumVersionListResponse {
-  items: CurriculumVersion[];
-  total: number;
-}
-
-export interface CurriculumVersionDetailResponse {
-  version: CurriculumVersion;
-  snapshot: CurriculumVersionSnapshot;
 }
 
 export interface LearningObjectiveImport {
@@ -549,7 +462,7 @@ export interface DashboardStatsResponse {
 }
 
 
-export type ApiItemType = "mcq" | "saq" | "lecture";
+export type ApiItemType = "mcq" | "saq" | "lecture" | "flashcard";
 export type ApiItemStatus = "draft" | "pending" | "live";
 
 export interface BackendApiItem {
@@ -564,12 +477,13 @@ export interface BackendApiItem {
   mcq: MCQItem | null;
   saq: SAQItem | null;
   lecture: LectureItem | null;
+  flashcard: FlashcardItem | null;
   tags: Tag[];
 }
 
 export interface MCQItem {
   stem: string;
-  choices: Choice[]; 
+  choices: Choice[];
 }
 
 export interface SAQItem {
@@ -581,6 +495,11 @@ export interface LectureItem {
   content: string;
   title: string;
   summary: string;
+}
+
+export interface FlashcardItem {
+  front: string;
+  back: string;
 }
 
 export interface ItemListResponse {
@@ -596,6 +515,7 @@ export interface MultimediaUpsertRequest {
 
 export interface ItemUpsertRequest {
   item: {
+    id?: string;
     identifier?: string;
     status: ApiItemStatus;
     type: ApiItemType;
@@ -603,6 +523,7 @@ export interface ItemUpsertRequest {
     mcq?: { stem: string };
     saq?: { question: string; answer: string };
     lecture?: { title: string; content: string; summary: string };
+    flashcard?: { front: string; back: string };
   };
   learningObjectiveId?: string;
   tags?: string[];

@@ -166,7 +166,7 @@ const LectureCreationWizard: React.FC<LectureCreationWizardProps> = ({ onBack, o
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight text-center sm:text-left">
-            {initialItem ? 'Edit' : 'New'} Instructional Asset
+            {initialItem?.id ? 'Edit' : 'New'} Instructional Asset
           </h2>
           <p className="text-sm text-slate-500 font-medium text-center sm:text-left">Step {step}: {steps[step - 1].label}</p>
         </div>
