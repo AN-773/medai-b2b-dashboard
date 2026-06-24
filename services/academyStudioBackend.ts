@@ -26,8 +26,6 @@ interface LearnerProfile {
 }
 
 interface CourseMetadata {
-  code?: string;
-  summary?: string;
   contentDrafts?: CourseContentDraft[];
 }
 
@@ -98,6 +96,7 @@ interface ApiCourse {
   id: string;
   identifier?: string;
   title: string;
+  summary?: string | null;
   teacherId?: string;
   tenantId?: string | null;
   curriculumId?: string | null;
@@ -187,10 +186,6 @@ const normalizeStoredCourseMetadata = (
       return [
         courseId,
         {
-          ...(typeof metadata.code === 'string' ? { code: metadata.code } : {}),
-          ...(typeof metadata.summary === 'string'
-            ? { summary: metadata.summary }
-            : {}),
           ...(Array.isArray(metadata.contentDrafts)
             ? { contentDrafts: metadata.contentDrafts }
             : {}),
@@ -340,11 +335,10 @@ const normalizeCourse = (
     id: course.id,
     backendIdentifier: course.identifier,
     title: course.title || 'Untitled Course',
+    summary: course.summary?.trim() || '',
     teacherId: course.teacherId || course.teacher?.id,
     tenantId: course.tenantId ?? null,
     curriculumId: course.curriculumId ?? null,
-    code: courseMetadata.code || course.identifier || '',
-    summary: courseMetadata.summary || '',
     learningObjectivesTotal:
       typeof course.learningObjectivesTotal === 'number'
         ? course.learningObjectivesTotal
@@ -926,7 +920,6 @@ const upsertCourse = async (
         | 'backendIdentifier'
         | 'teacherId'
         | 'curriculumId'
-        | 'code'
         | 'summary'
         | 'learningObjectives'
         | 'contentDrafts'
@@ -940,6 +933,9 @@ const upsertCourse = async (
       course: {
         ...(course.id ? { id: course.id } : {}),
         title: course.title.trim(),
+        ...(course.summary !== undefined
+          ? { summary: course.summary.trim() }
+          : {}),
         ...(course.teacherId ? { teacherId: course.teacherId } : {}),
         ...(course.curriculumId ? { curriculumId: course.curriculumId } : {}),
       },
@@ -954,11 +950,11 @@ const upsertCourse = async (
     },
   );
 
-  saveCourseMetadata(response.id, {
-    code: course.code || '',
-    summary: course.summary || '',
-    contentDrafts: course.contentDrafts || [],
-  });
+  if (course.contentDrafts !== undefined) {
+    saveCourseMetadata(response.id, {
+      contentDrafts: course.contentDrafts,
+    });
+  }
 
   const normalizedCourse = normalizeCourse(response, readMetadata());
 
@@ -1064,7 +1060,6 @@ export const academyStudioBackend = {
       | 'teacherId'
       | 'curriculumId'
       | 'title'
-      | 'code'
       | 'summary'
       | 'contentDrafts'
     >,

@@ -611,12 +611,18 @@ export const testsService = {
     discipline: string,
     additionalContext?: string,
     chatHistory?: ChatMessage[],
+    scope?: {
+      curriculumId?: string;
+      courseId?: string;
+    },
   ): Promise<GeneratedObjective> => {
     const raw = await apiClient.post<any>('TESTS', '/lo-gen', {
       organSystem,
       topic,
       syndrome,
       exam,
+      ...(scope?.curriculumId ? { curriculumId: scope.curriculumId } : {}),
+      ...(scope?.courseId ? { courseId: scope.courseId } : {}),
       bloomLevel,
       discipline,
       additionalContext,

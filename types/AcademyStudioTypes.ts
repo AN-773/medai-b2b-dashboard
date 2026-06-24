@@ -51,8 +51,6 @@ export interface TeacherCourse {
   teacherId?: string;
   tenantId?: string | null;
   curriculumId?: string | null;
-  // UI-only course shell metadata stored locally by the dashboard.
-  code: string;
   summary: string;
   learningObjectivesTotal?: number;
   pendingLearningObjectiveSuggestionsTotal?: number;

@@ -64,7 +64,6 @@ const emptyCohortForm = {
 
 const emptyCourseForm = {
   title: '',
-  code: '',
   summary: '',
 };
 
@@ -285,7 +284,6 @@ const CohortStudioView: React.FC = () => {
 
     setCourseDraft({
       title: selectedCourse.title,
-      code: selectedCourse.code,
       summary: selectedCourse.summary,
     });
     setObjectiveForm(emptyObjectiveForm);
@@ -319,7 +317,7 @@ const CohortStudioView: React.FC = () => {
     if (!query) return courses;
 
     return courses.filter((course) =>
-      [course.title, course.code, course.summary]
+      [course.title, course.summary]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
     );
@@ -456,7 +454,6 @@ const CohortStudioView: React.FC = () => {
     academyStudioService.saveCourse({
       id: nextId,
       title: newCourseForm.title.trim(),
-      code: newCourseForm.code.trim(),
       summary: newCourseForm.summary.trim(),
       learningObjectives: [],
       sourceFiles: [],
@@ -513,7 +510,6 @@ const CohortStudioView: React.FC = () => {
     saveCourseRecord({
       ...selectedCourse,
       title: courseDraft.title.trim(),
-      code: courseDraft.code.trim(),
       summary: courseDraft.summary.trim(),
     });
     setWorkspaceMessage(
@@ -1194,17 +1190,6 @@ const CohortStudioView: React.FC = () => {
                     placeholder="Course title"
                     className={inputClass}
                   />
-                  <input
-                    value={newCourseForm.code}
-                    onChange={(event) =>
-                      setNewCourseForm((current) => ({
-                        ...current,
-                        code: event.target.value,
-                      }))
-                    }
-                    placeholder="Course code"
-                    className={inputClass}
-                  />
                   <textarea
                     value={newCourseForm.summary}
                     onChange={(event) =>
@@ -1319,9 +1304,6 @@ const CohortStudioView: React.FC = () => {
                             <p className="font-black text-slate-900">
                               {course.title}
                             </p>
-                            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                              {course.code || 'No code'}
-                            </p>
                             <p className="mt-2 text-sm font-medium text-slate-500">
                               {course.summary || 'No summary yet'}
                             </p>
@@ -1414,17 +1396,6 @@ const CohortStudioView: React.FC = () => {
                       }))
                     }
                     placeholder="Course title"
-                    className={inputClass}
-                  />
-                  <input
-                    value={courseDraft.code}
-                    onChange={(event) =>
-                      setCourseDraft((current) => ({
-                        ...current,
-                        code: event.target.value,
-                      }))
-                    }
-                    placeholder="Course code"
                     className={inputClass}
                   />
                   <textarea

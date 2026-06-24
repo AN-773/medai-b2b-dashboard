@@ -7,7 +7,6 @@ import {
   Layers,
   Library,
   Loader2,
-  Sparkles,
   Target,
   Trash2,
   X,
@@ -27,15 +26,13 @@ import type {
 } from '@/types/TestsServiceTypes';
 import { testsService } from '@/services/testsService';
 import { useCourseFactory } from '@/hooks/useCourseFactory';
+import { useItemFactory } from '@/hooks/useItemFactory';
 import { useAuth } from '@/contexts/AuthContext';
 import CourseLibrarySidebar from '@/components/academy/course-workbench/CourseLibrarySidebar';
 import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOverviewPanel';
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
 import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
-import CourseFactoryPanel from '@/components/academy/course-workbench/CourseFactoryPanel';
-import ObjectiveItemsDrawer, {
-  ItemModality,
-} from '@/components/academy/course-workbench/ObjectiveItemsDrawer';
+import { ItemModality } from '@/components/academy/course-workbench/ObjectiveItemsList';
 import QuestionEditor from '@/components/QuestionEditor';
 import SAQEditor from '@/components/SAQEditor';
 import FlashcardEditor from '@/components/FlashcardEditor';
@@ -47,13 +44,20 @@ import {
   STAGE_STYLES,
 } from '@/components/academy/course-workbench/shared';
 
-type WorkbenchTab = 'overview' | 'objectives' | 'content' | 'factory';
+type WorkbenchTab = 'overview' | 'objectives' | 'content';
 
-const isWorkbenchTab = (value: string | null): value is WorkbenchTab =>
-  value === 'overview' ||
-  value === 'objectives' ||
-  value === 'content' ||
-  value === 'factory';
+// Maps URL ?tab values (including legacy ones from the old 5-tab layout) onto
+// the current 3-tab model so existing deep-links keep resolving.
+const TAB_ALIASES: Record<string, WorkbenchTab> = {
+  overview: 'overview',
+  objectives: 'objectives',
+  content: 'content',
+  factory: 'objectives',
+  'content-ai': 'content',
+};
+
+const normalizeTab = (value: string | null): WorkbenchTab | null =>
+  (value && TAB_ALIASES[value]) || null;
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -71,10 +75,9 @@ const CoursesView: React.FC = () => {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingCurricula, setIsLoadingCurricula] = useState(true);
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>(() => {
-    const tabParam = searchParams.get('tab');
-    return isWorkbenchTab(tabParam) ? tabParam : 'overview';
-  });
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>(
+    () => normalizeTab(searchParams.get('tab')) ?? 'overview',
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [curriculumError, setCurriculumError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -252,8 +255,6 @@ const CoursesView: React.FC = () => {
 
   // In-page content authoring — the editors render as an overlay so the
   // teacher never leaves the course page.
-  const [manageObjective, setManageObjective] =
-    useState<TeacherLearningObjective | null>(null);
   const [authoring, setAuthoring] = useState<{
     modality: ItemModality;
     item: BackendApiItem | null;
@@ -262,6 +263,11 @@ const CoursesView: React.FC = () => {
 
   const factory = useCourseFactory(selectedCourseIdentifier, () => {
     if (selectedCourseId) void loadData(selectedCourseId);
+  });
+
+  // AI content factory: AI-drafted items reviewed per learning objective.
+  const itemFactory = useItemFactory(selectedCourseIdentifier, () => {
+    void refreshSelectedCourseObjectiveTotals();
   });
 
   const loadCourseObjectives = useCallback(async (course: TeacherCourse) => {
@@ -356,7 +362,7 @@ const CoursesView: React.FC = () => {
     const query = searchQuery.trim().toLowerCase();
     return curriculumCourses.filter((course) => {
       if (!query) return true;
-      return [course.title, course.code, course.summary]
+      return [course.title, course.summary]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query));
     });
@@ -487,9 +493,9 @@ const CoursesView: React.FC = () => {
   // Restore the active tab when navigating back (e.g. returning from the
   // content workbench via a `?tab=content` redirect).
   useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (isWorkbenchTab(tabParam) && tabParam !== activeTab) {
-      setActiveTab(tabParam);
+    const normalized = normalizeTab(searchParams.get('tab'));
+    if (normalized && normalized !== activeTab) {
+      setActiveTab(normalized);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -522,14 +528,12 @@ const CoursesView: React.FC = () => {
 
   const handleCreateCourse = async (input: {
     title: string;
-    code: string;
     summary: string;
   }) => {
     if (!selectedCurriculum) return;
     try {
       const saved = await academyStudioBackend.saveCourse({
         title: input.title.trim(),
-        code: input.code.trim(),
         summary: input.summary.trim(),
         curriculumId: selectedCurriculum.id,
         learningObjectives: [],
@@ -547,7 +551,6 @@ const CoursesView: React.FC = () => {
 
   const handleSaveCourse = async (data: {
     title: string;
-    code: string;
     summary: string;
   }) => {
     if (!selectedCourse || !data.title.trim()) return;
@@ -555,7 +558,6 @@ const CoursesView: React.FC = () => {
       const saved = await academyStudioBackend.saveCourse({
         ...selectedCourse,
         title: data.title.trim(),
-        code: data.code.trim(),
         summary: data.summary.trim(),
       });
       await loadData(saved.id);
@@ -661,12 +663,6 @@ const CoursesView: React.FC = () => {
       badge: selectedCourseObjectiveCount,
     },
     { id: 'content', label: 'Content', icon: Library },
-    {
-      id: 'factory',
-      label: 'AI Factory',
-      icon: Sparkles,
-      badge: selectedCoursePendingSuggestions,
-    },
   ];
 
   return (
@@ -725,11 +721,6 @@ const CoursesView: React.FC = () => {
                     <h2 className="truncate text-2xl font-black tracking-tight text-slate-900">
                       {selectedCourse.title}
                     </h2>
-                    {selectedCourse.code && (
-                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] text-slate-500">
-                        {selectedCourse.code}
-                      </span>
-                    )}
                     <span
                       className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${STAGE_STYLES[getCourseStage(selectedCourse)]}`}
                     >
@@ -771,13 +762,7 @@ const CoursesView: React.FC = () => {
                       <Icon size={15} />
                       {tab.label}
                       {tab.badge ? (
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
-                            tab.id === 'factory'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-slate-100 text-slate-500'
-                          }`}
-                        >
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-500">
                           {tab.badge}
                         </span>
                       ) : null}
@@ -805,10 +790,14 @@ const CoursesView: React.FC = () => {
                   <CourseObjectivesPanel
                     course={selectedCourse}
                     attachedIds={selectedCourseObjectiveIds}
+                    factory={factory}
                     onAttach={handleAttachObjective}
                     onCreate={handleCreateObjective}
                     onRemove={handleRemoveObjective}
-                    onManageItems={setManageObjective}
+                    onBuildContent={(objective) => {
+                      itemFactory.selectObjective(objective.id);
+                      selectTab('content');
+                    }}
                   />
                 )
               )}
@@ -818,28 +807,17 @@ const CoursesView: React.FC = () => {
                 ) : (
                   <CourseContentPanel
                     course={selectedCourse}
-                    onManageObjective={setManageObjective}
-                    onManageObjectives={() => selectTab('objectives')}
+                    itemFactory={itemFactory}
+                    onCreateItem={handleCreateItem}
+                    onOpenItem={(item) => void handleOpenItem(item)}
+                    refreshSignal={contentRefreshKey}
                   />
                 )
               )}
-              {activeTab === 'factory' && <CourseFactoryPanel factory={factory} />}
             </div>
           </>
         )}
       </div>
-
-      {/* Per-objective content drawer (author / inspect items in place) */}
-      {manageObjective && (
-        <ObjectiveItemsDrawer
-          objectiveId={manageObjective.id}
-          objectiveTitle={manageObjective.title}
-          refreshSignal={contentRefreshKey}
-          onCreate={handleCreateItem}
-          onOpenItem={(item) => void handleOpenItem(item)}
-          onClose={() => setManageObjective(null)}
-        />
-      )}
 
       {/* In-page item editor overlay — keeps authoring inside the course page */}
       {authoring && (

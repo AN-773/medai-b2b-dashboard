@@ -565,7 +565,7 @@ const CohortsView: React.FC = () => {
     if (!query) return courses;
 
     return courses.filter((course) =>
-      [course.title, course.code, course.summary]
+      [course.title, course.summary]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
     );
@@ -1377,9 +1377,6 @@ const CohortsView: React.FC = () => {
                             {course.summary || 'No summary yet'}
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                              {course.code || 'No code'}
-                            </span>
                             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {getCourseObjectiveCount(course)} objectives
                             </span>

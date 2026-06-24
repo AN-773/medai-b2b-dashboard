@@ -84,9 +84,6 @@ const normalizeCourse = (
   return {
     id: course.id || makeId('course'),
     title: course.title?.trim() || 'Untitled Course',
-    code:
-      course.code?.trim() ||
-      `CRS-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     summary: course.summary?.trim() || '',
     learningObjectives: Array.isArray(course.learningObjectives)
       ? course.learningObjectives

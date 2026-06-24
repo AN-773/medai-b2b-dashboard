@@ -58,3 +58,4 @@ Tailwind CSS 3 with utility-first approach. Global styles in `index.css` (custom
 - All components are functional TypeScript components using hooks
 - Large editor components (`QuestionEditor`, `LectureCreationWizard`) manage complex local state with `useState`/`useEffect`
 - Query parameters pass context between views (e.g., `?questionId=QID-123`)
+- Do not use `localStorage` or other browser storage as a replacement for backend-backed data unless the user explicitly asks for local-only persistence.

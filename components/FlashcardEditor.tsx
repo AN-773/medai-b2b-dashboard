@@ -159,7 +159,7 @@ const FlashcardEditor: React.FC<FlashcardEditorProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 bg-slate-50/80 backdrop-blur-xl z-40 py-4 border-b border-slate-200">
+      <div className="editor-sticky-header flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <button
             onClick={onBack}

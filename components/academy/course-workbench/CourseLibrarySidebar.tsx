@@ -18,7 +18,6 @@ import {
 
 interface NewCourseInput {
   title: string;
-  code: string;
   summary: string;
 }
 
@@ -42,7 +41,7 @@ interface CourseLibrarySidebarProps {
   learnerCountByCourse: Map<string, number>;
 }
 
-const emptyForm: NewCourseInput = { title: '', code: '', summary: '' };
+const emptyForm: NewCourseInput = { title: '', summary: '' };
 
 const CourseLibrarySidebar: React.FC<CourseLibrarySidebarProps> = ({
   curricula,
@@ -100,7 +99,7 @@ const CourseLibrarySidebar: React.FC<CourseLibrarySidebarProps> = ({
   return (
     <aside className="flex h-full w-[340px] flex-shrink-0 flex-col border-r border-slate-200 bg-white">
       {/* Header */}
-      <div className="border-b border-slate-100 px-5 pt-5 pb-4">
+      <div className="overflow-y-auto border-b border-slate-100 px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#16324F] text-white">
             <Layers size={17} />
@@ -230,13 +229,13 @@ const CourseLibrarySidebar: React.FC<CourseLibrarySidebarProps> = ({
                 </p>
               </div>
             </div>
-            <input
-              value={form.code}
+            <textarea
+              value={form.summary}
               onChange={(event) =>
-                setForm((current) => ({ ...current, code: event.target.value }))
+                setForm((current) => ({ ...current, summary: event.target.value }))
               }
-              placeholder="Course code (optional)"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-[#1BD183]"
+              placeholder="Short summary"
+              className="min-h-[96px] w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-[#1BD183]"
             />
             <button
               type="submit"

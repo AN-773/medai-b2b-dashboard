@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   FileText,
   Loader2,
   Save,
@@ -10,8 +11,10 @@ import {
 } from 'lucide-react';
 import {
   LearningObjectiveSuggestion,
+  SuggestionEvidenceChunk,
   SUGGESTION_BLOOM_LEVELS,
 } from '@/types/CourseStudioTypes';
+import MarkdownContent from '@/components/MarkdownContent';
 import { bloomStyle } from './shared';
 
 interface SuggestionReviewCardProps {
@@ -28,6 +31,64 @@ const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
+const evidenceCanExpand = (content: string) =>
+  content.trim().length > 260 || content.split(/\n+/).length > 4;
+
+interface EvidenceChunkCardProps {
+  chunk: SuggestionEvidenceChunk;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}
+
+const EvidenceChunkCard: React.FC<EvidenceChunkCardProps> = ({
+  chunk,
+  expanded,
+  onToggleExpanded,
+}) => {
+  const canExpand = evidenceCanExpand(chunk.content);
+
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3">
+      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+        <FileText size={12} className="flex-shrink-0" />
+        <span className="truncate">{chunk.sourceFile || 'Source'}</span>
+        {chunk.heading && (
+          <>
+            <span className="text-slate-300">·</span>
+            <span className="truncate text-slate-600">{chunk.heading}</span>
+          </>
+        )}
+        {typeof chunk.chunkIndex === 'number' && (
+          <span className="ml-auto flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-400">
+            #{chunk.chunkIndex}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2">
+        <div className={`relative ${!expanded && canExpand ? 'max-h-32 overflow-hidden' : ''}`}>
+          <MarkdownContent content={chunk.content} />
+          {!expanded && canExpand && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent" />
+          )}
+        </div>
+
+        {canExpand && (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            className="mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:border-slate-300"
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   suggestion,
   isBusy,
@@ -38,6 +99,7 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   const [title, setTitle] = useState(suggestion.title);
   const [bloomLevel, setBloomLevel] = useState(suggestion.bloomLevel);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [expandedChunkIds, setExpandedChunkIds] = useState<Record<string, boolean>>({});
 
   const isPending = suggestion.status === 'pending';
 
@@ -45,6 +107,10 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
     setTitle(suggestion.title);
     setBloomLevel(suggestion.bloomLevel);
   }, [suggestion.id, suggestion.title, suggestion.bloomLevel]);
+
+  useEffect(() => {
+    setExpandedChunkIds({});
+  }, [suggestion.id]);
 
   const isDirty = useMemo(
     () =>
@@ -173,29 +239,17 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
       {showEvidence && chunkCount > 0 && (
         <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
           {suggestion.chunks.map((chunk) => (
-            <div
+            <EvidenceChunkCard
               key={chunk.id}
-              className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3"
-            >
-              <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-                <FileText size={12} className="flex-shrink-0" />
-                <span className="truncate">{chunk.sourceFile || 'Source'}</span>
-                {chunk.heading && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span className="truncate text-slate-600">{chunk.heading}</span>
-                  </>
-                )}
-                {typeof chunk.chunkIndex === 'number' && (
-                  <span className="ml-auto flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-400">
-                    #{chunk.chunkIndex}
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 line-clamp-4 text-xs leading-relaxed text-slate-600">
-                {chunk.content}
-              </p>
-            </div>
+              chunk={chunk}
+              expanded={Boolean(expandedChunkIds[chunk.id])}
+              onToggleExpanded={() =>
+                setExpandedChunkIds((current) => ({
+                  ...current,
+                  [chunk.id]: !current[chunk.id],
+                }))
+              }
+            />
           ))}
         </div>
       )}

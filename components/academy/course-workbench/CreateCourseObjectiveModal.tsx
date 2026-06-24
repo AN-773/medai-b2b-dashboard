@@ -309,6 +309,11 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
         selectedBloom,
         disciplineName,
         additionalContext || undefined,
+        undefined,
+        {
+          curriculumId: course.curriculumId ?? undefined,
+          courseId: course.id,
+        },
       );
       if (result?.title) {
         setGenerated(result);

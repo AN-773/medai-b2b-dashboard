@@ -15,7 +15,7 @@ interface CourseOverviewPanelProps {
   cohortsUsingCourse: TeacherCohort[];
   learnerCount: number;
   pendingSuggestions: number;
-  onSave: (data: { title: string; code: string; summary: string }) => Promise<void>;
+  onSave: (data: { title: string; summary: string }) => Promise<void>;
 }
 
 const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
@@ -27,19 +27,17 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
 }) => {
   const [form, setForm] = useState({
     title: course.title,
-    code: course.code,
     summary: course.summary,
   });
   const [isSaving, setSaving] = useState(false);
 
   useEffect(() => {
-    setForm({ title: course.title, code: course.code, summary: course.summary });
-  }, [course.id, course.title, course.code, course.summary]);
+    setForm({ title: course.title, summary: course.summary });
+  }, [course.id, course.title, course.summary]);
 
   const isDirty = useMemo(
     () =>
       form.title.trim() !== course.title ||
-      form.code.trim() !== course.code ||
       form.summary.trim() !== course.summary,
     [form, course],
   );
@@ -115,17 +113,6 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
                   setForm((current) => ({ ...current, title: event.target.value }))
                 }
                 placeholder="Course title"
-                className={`mt-2 ${inputClass}`}
-              />
-            </div>
-            <div>
-              <SectionLabel>Code</SectionLabel>
-              <input
-                value={form.code}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, code: event.target.value }))
-                }
-                placeholder="Course code"
                 className={`mt-2 ${inputClass}`}
               />
             </div>
