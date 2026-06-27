@@ -65,6 +65,16 @@ export interface TeacherCourse {
   updatedAt: string;
 }
 
+export interface TeacherCourseModule {
+  id: string;
+  identifier: string;
+  title: string;
+  displayOrder: number;
+  tenantId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type TeacherCourseSessionMode =
   | 'mcq'
   | 'saq'
@@ -75,6 +85,10 @@ export type TeacherCourseSessionMode =
 export interface TeacherCourseSession {
   id: string;
   identifier: string;
+  moduleId: string;
+  moduleIdentifier?: string;
+  moduleTitle?: string;
+  moduleDisplayOrder?: number;
   title: string;
   displayOrder: number;
   scheduledDate: string;

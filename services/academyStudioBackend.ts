@@ -9,6 +9,7 @@ import type {
   CourseContentDraft,
   TeacherCohort,
   TeacherCourse,
+  TeacherCourseModule,
   TeacherCourseSession,
   TeacherLearningObjective,
   TeacherStudent,
@@ -120,6 +121,8 @@ interface ApiCourse {
 interface ApiCourseSession {
   id: string;
   identifier?: string;
+  moduleId?: string | null;
+  module?: ApiCourseModule | null;
   title?: string;
   displayOrder?: number;
   scheduledDate?: string | null;
@@ -133,6 +136,22 @@ interface ApiCourseSession {
 
 interface ApiCourseSessionListResponse {
   sessions?: ApiCourseSession[];
+  total?: number;
+  page?: number;
+}
+
+interface ApiCourseModule {
+  id: string;
+  identifier?: string;
+  title?: string;
+  displayOrder?: number;
+  tenantId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface ApiCourseModuleListResponse {
+  modules?: ApiCourseModule[];
   total?: number;
   page?: number;
 }
@@ -407,6 +426,22 @@ const applyLoadedCourseLearningObjectives = (
 
 const sortCourseSessions = (sessions: TeacherCourseSession[]) =>
   [...sessions].sort((left, right) => {
+    const leftModuleOrder =
+      typeof left.moduleDisplayOrder === 'number'
+        ? left.moduleDisplayOrder
+        : Number.MAX_SAFE_INTEGER;
+    const rightModuleOrder =
+      typeof right.moduleDisplayOrder === 'number'
+        ? right.moduleDisplayOrder
+        : Number.MAX_SAFE_INTEGER;
+    if (leftModuleOrder !== rightModuleOrder) {
+      return leftModuleOrder - rightModuleOrder;
+    }
+    const leftModuleTitle = left.moduleTitle?.trim() || '';
+    const rightModuleTitle = right.moduleTitle?.trim() || '';
+    if (leftModuleTitle !== rightModuleTitle) {
+      return leftModuleTitle.localeCompare(rightModuleTitle);
+    }
     if (left.displayOrder !== right.displayOrder) {
       return left.displayOrder - right.displayOrder;
     }
@@ -421,25 +456,69 @@ const sortCourseSessions = (sessions: TeacherCourseSession[]) =>
     return left.id.localeCompare(right.id);
   });
 
+const sortCourseModules = (modules: TeacherCourseModule[]) =>
+  [...modules].sort((left, right) => {
+    if (left.displayOrder !== right.displayOrder) {
+      return left.displayOrder - right.displayOrder;
+    }
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+const normalizeCourseModule = (
+  module: ApiCourseModule,
+): TeacherCourseModule => ({
+  id: module.id,
+  identifier: module.identifier || getIdSuffix(module.id),
+  title: module.title?.trim() || 'Untitled module',
+  displayOrder:
+    typeof module.displayOrder === 'number' ? module.displayOrder : 0,
+  tenantId: module.tenantId ?? null,
+  createdAt: module.createdAt || nowIso(),
+  updatedAt: module.updatedAt || nowIso(),
+});
+
 const normalizeCourseSession = (
   session: ApiCourseSession,
-): TeacherCourseSession => ({
-  id: session.id,
-  identifier: session.identifier || getIdSuffix(session.id),
-  title: session.title?.trim() || 'Untitled session',
-  displayOrder:
-    typeof session.displayOrder === 'number' ? session.displayOrder : 0,
-  scheduledDate: normalizeDateValue(session.scheduledDate),
-  mode: session.mode || 'mixed',
-  itemCount:
-    typeof session.itemCount === 'number'
-      ? session.itemCount
-      : session.items?.length || 0,
-  tenantId: session.tenantId ?? null,
-  items: session.items || [],
-  createdAt: session.createdAt || nowIso(),
-  updatedAt: session.updatedAt || nowIso(),
-});
+): TeacherCourseSession => {
+  const normalizedModule = session.module
+    ? normalizeCourseModule(session.module)
+    : null;
+
+  return {
+    id: session.id,
+    identifier: session.identifier || getIdSuffix(session.id),
+    moduleId:
+      normalizedModule?.id ||
+      (typeof session.moduleId === 'string' ? session.moduleId : '') ||
+      '',
+    moduleIdentifier:
+      normalizedModule?.identifier ||
+      (typeof session.moduleId === 'string' && session.moduleId
+        ? getIdSuffix(session.moduleId)
+        : undefined),
+    moduleTitle: normalizedModule?.title || undefined,
+    moduleDisplayOrder:
+      typeof normalizedModule?.displayOrder === 'number'
+        ? normalizedModule.displayOrder
+        : undefined,
+    title: session.title?.trim() || 'Untitled session',
+    displayOrder:
+      typeof session.displayOrder === 'number' ? session.displayOrder : 0,
+    scheduledDate: normalizeDateValue(session.scheduledDate),
+    mode: session.mode || 'mixed',
+    itemCount:
+      typeof session.itemCount === 'number'
+        ? session.itemCount
+        : session.items?.length || 0,
+    tenantId: session.tenantId ?? null,
+    items: session.items || [],
+    createdAt: session.createdAt || nowIso(),
+    updatedAt: session.updatedAt || nowIso(),
+  };
+};
 
 const normalizeStudent = (
   studentId: string,
@@ -1366,11 +1445,45 @@ export const academyStudioBackend = {
     );
   },
 
+  listCourseModules: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+  ): Promise<TeacherCourseModule[]> => {
+    const response = await apiClient.get<ApiCourseModuleListResponse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules`,
+    );
+
+    return sortCourseModules(
+      (response.modules || []).map(normalizeCourseModule),
+    );
+  },
+
+  saveCourseModule: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    module: Pick<TeacherCourseModule, 'title' | 'displayOrder'> &
+      Partial<Pick<TeacherCourseModule, 'id' | 'identifier'>>,
+  ): Promise<TeacherCourseModule> => {
+    const response = await apiClient.post<ApiCourseModule>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules`,
+      {
+        module: {
+          ...(module.id ? { id: module.id } : {}),
+          ...(module.identifier ? { identifier: module.identifier } : {}),
+          title: module.title.trim(),
+          displayOrder: module.displayOrder,
+        },
+      },
+    );
+
+    return normalizeCourseModule(response);
+  },
+
   saveCourseSession: async (
     course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
     session: Pick<
       TeacherCourseSession,
-      'title' | 'displayOrder' | 'scheduledDate' | 'items'
+      'moduleId' | 'title' | 'displayOrder' | 'scheduledDate' | 'items'
     > &
       Partial<Pick<TeacherCourseSession, 'id' | 'identifier'>>,
   ): Promise<TeacherCourseSession> => {
@@ -1381,6 +1494,7 @@ export const academyStudioBackend = {
         session: {
           ...(session.id ? { id: session.id } : {}),
           ...(session.identifier ? { identifier: session.identifier } : {}),
+          moduleId: session.moduleId,
           title: session.title.trim(),
           displayOrder: session.displayOrder,
           ...(session.scheduledDate
@@ -1402,6 +1516,18 @@ export const academyStudioBackend = {
       'TESTS',
       `/courses/${findCourseIdentifier(course)}/sessions/${encodeURIComponent(
         findCourseSessionIdentifier(session),
+      )}`,
+    );
+  },
+
+  deleteCourseModule: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    module: Pick<TeacherCourseModule, 'id' | 'identifier'>,
+  ) => {
+    await apiClient.delete<void>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules/${encodeURIComponent(
+        module.identifier || getIdSuffix(module.id),
       )}`,
     );
   },

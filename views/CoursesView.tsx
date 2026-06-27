@@ -35,7 +35,7 @@ import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOve
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
 import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
 import CourseResourcesPanel from '@/components/academy/course-workbench/CourseResourcesPanel';
-import CourseSessionsPanel from '@/components/academy/course-workbench/CourseSessionsPanel';
+import CourseModulesPanel from '@/components/academy/course-workbench/CourseModulesPanel';
 import { ItemModality } from '@/components/academy/course-workbench/ObjectiveItemsList';
 import QuestionEditor from '@/components/QuestionEditor';
 import SAQEditor from '@/components/SAQEditor';
@@ -274,6 +274,9 @@ const CoursesView: React.FC = () => {
   } | null>(null);
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
   const [isObjectiveFactoryOpen, setIsObjectiveFactoryOpen] = useState(false);
+  const [pendingModulesAction, setPendingModulesAction] = useState<
+    'create-session' | null
+  >(null);
 
   const mergeHydratedCourse = useCallback(
     (hydratedCourse: TeacherCourse, pendingDelta = 0) => {
@@ -530,14 +533,23 @@ const CoursesView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const selectTab = (tab: WorkbenchTab) => {
+  const selectTab = useCallback((tab: WorkbenchTab) => {
     setActiveTab(tab);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set('tab', tab);
       return next;
     });
-  };
+  }, [setSearchParams]);
+
+  const handleCreateSessionFromContent = useCallback(() => {
+    setPendingModulesAction('create-session');
+    selectTab('sessions');
+  }, [selectTab]);
+
+  const handleModulesActionHandled = useCallback(() => {
+    setPendingModulesAction(null);
+  }, []);
 
   // --- Course CRUD ----------------------------------------------------------
   const handleSelectCourse = (courseId: string) => {
@@ -695,7 +707,7 @@ const CoursesView: React.FC = () => {
       badge: selectedCourseObjectiveCount,
     },
     { id: 'content', label: 'Content', icon: Library },
-    { id: 'sessions', label: 'Sessions', icon: Layers },
+    { id: 'sessions', label: 'Modules', icon: Layers },
     { id: 'resources', label: 'Resources', icon: Paperclip },
   ];
 
@@ -853,6 +865,7 @@ const CoursesView: React.FC = () => {
                     course={selectedCourse}
                     itemFactory={itemFactory}
                     onCreateItem={handleCreateItem}
+                    onCreateSession={handleCreateSessionFromContent}
                     onOpenItem={(item) => void handleOpenItem(item)}
                     refreshSignal={contentRefreshKey}
                   />
@@ -862,7 +875,11 @@ const CoursesView: React.FC = () => {
                 selectedCourseNeedsObjectives ? (
                   renderObjectivesGate(selectedCourse)
                 ) : (
-                  <CourseSessionsPanel course={selectedCourse} />
+                  <CourseModulesPanel
+                    course={selectedCourse}
+                    entryAction={pendingModulesAction}
+                    onEntryActionHandled={handleModulesActionHandled}
+                  />
                 )
               )}
               {activeTab === 'resources' && (

@@ -42,6 +42,8 @@ interface CourseContentPanelProps {
   itemFactory: ItemFactory;
   /** Open the in-page editor to author a brand new item for an objective. */
   onCreateItem: (modality: ItemModality, objectiveId: string) => void;
+  /** Jump into the module-first session builder for this course. */
+  onCreateSession: () => void;
   /** Open the in-page editor for an existing live item. */
   onOpenItem: (item: BackendApiItem) => void;
   /** Bumped by the host after a manual save so the live list refetches. */
@@ -554,6 +556,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
   course,
   itemFactory,
   onCreateItem,
+  onCreateSession,
   onOpenItem,
   refreshSignal,
 }) => {
@@ -921,13 +924,23 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
           </h3>
           <p className="mt-1 max-w-xl text-xs font-medium text-slate-500">
             Pick an objective, then author items by hand or let AI draft them —
-            everything lands in the same list. Nothing is added until you save or
-            accept it.
+            everything lands in the same list. Once the items are ready, jump to
+            Modules to package them into learner-facing sessions.
           </p>
         </div>
-        <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-          {objectives.length} objective{objectives.length === 1 ? '' : 's'}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onCreateSession}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
+          >
+            <Layers size={13} />
+            Create session
+          </button>
+          <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            {objectives.length} objective{objectives.length === 1 ? '' : 's'}
+          </span>
+        </div>
       </div>
 
       {itemFactory.error && (
