@@ -1,11 +1,15 @@
 import { apiClient } from './apiClient';
 import { iamService } from './iamService';
-import type { PaginatedApiResponse } from '@/types/TestsServiceTypes';
+import type {
+  BackendApiItem,
+  PaginatedApiResponse,
+} from '@/types/TestsServiceTypes';
 import type {
   CohortStudyPlanJob,
   CourseContentDraft,
   TeacherCohort,
   TeacherCourse,
+  TeacherCourseSession,
   TeacherLearningObjective,
   TeacherStudent,
 } from '@/types/AcademyStudioTypes';
@@ -111,6 +115,26 @@ interface ApiCourse {
   learningObjectives?: ApiLearningObjective[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface ApiCourseSession {
+  id: string;
+  identifier?: string;
+  title?: string;
+  displayOrder?: number;
+  scheduledDate?: string | null;
+  mode?: TeacherCourseSession['mode'];
+  itemCount?: number;
+  tenantId?: string | null;
+  items?: BackendApiItem[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface ApiCourseSessionListResponse {
+  sessions?: ApiCourseSession[];
+  total?: number;
+  page?: number;
 }
 
 interface ApiCohortCourseSelection {
@@ -380,6 +404,42 @@ const applyLoadedCourseLearningObjectives = (
     ).length,
   };
 };
+
+const sortCourseSessions = (sessions: TeacherCourseSession[]) =>
+  [...sessions].sort((left, right) => {
+    if (left.displayOrder !== right.displayOrder) {
+      return left.displayOrder - right.displayOrder;
+    }
+    if (left.scheduledDate !== right.scheduledDate) {
+      if (!left.scheduledDate) return -1;
+      if (!right.scheduledDate) return 1;
+      return left.scheduledDate.localeCompare(right.scheduledDate);
+    }
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+const normalizeCourseSession = (
+  session: ApiCourseSession,
+): TeacherCourseSession => ({
+  id: session.id,
+  identifier: session.identifier || getIdSuffix(session.id),
+  title: session.title?.trim() || 'Untitled session',
+  displayOrder:
+    typeof session.displayOrder === 'number' ? session.displayOrder : 0,
+  scheduledDate: normalizeDateValue(session.scheduledDate),
+  mode: session.mode || 'mixed',
+  itemCount:
+    typeof session.itemCount === 'number'
+      ? session.itemCount
+      : session.items?.length || 0,
+  tenantId: session.tenantId ?? null,
+  items: session.items || [],
+  createdAt: session.createdAt || nowIso(),
+  updatedAt: session.updatedAt || nowIso(),
+});
 
 const normalizeStudent = (
   studentId: string,
@@ -656,6 +716,10 @@ const loadCatalogSnapshot = async (): Promise<AcademyStudioCatalogSnapshot> => {
 
 const findCourseIdentifier = (course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>) =>
   course.backendIdentifier || course.id.split('/').pop() || course.id;
+
+const findCourseSessionIdentifier = (
+  session: Pick<TeacherCourseSession, 'id' | 'identifier'>,
+) => session.identifier || getIdSuffix(session.id);
 
 const findCohortIdentifier = (cohort: Pick<TeacherCohort, 'id' | 'backendIdentifier'>) =>
   cohort.backendIdentifier || cohort.id.split('/').pop() || cohort.id;
@@ -1288,6 +1352,59 @@ export const academyStudioBackend = {
         identifier: course.backendIdentifier,
       }),
     ),
+
+  listCourseSessions: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+  ): Promise<TeacherCourseSession[]> => {
+    const response = await apiClient.get<ApiCourseSessionListResponse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions`,
+    );
+
+    return sortCourseSessions(
+      (response.sessions || []).map(normalizeCourseSession),
+    );
+  },
+
+  saveCourseSession: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    session: Pick<
+      TeacherCourseSession,
+      'title' | 'displayOrder' | 'scheduledDate' | 'items'
+    > &
+      Partial<Pick<TeacherCourseSession, 'id' | 'identifier'>>,
+  ): Promise<TeacherCourseSession> => {
+    const response = await apiClient.post<ApiCourseSession>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions`,
+      {
+        session: {
+          ...(session.id ? { id: session.id } : {}),
+          ...(session.identifier ? { identifier: session.identifier } : {}),
+          title: session.title.trim(),
+          displayOrder: session.displayOrder,
+          ...(session.scheduledDate
+            ? { scheduledDate: toRfc3339DateTime(session.scheduledDate) }
+            : {}),
+        },
+        itemIds: session.items.map((item) => item.id),
+      },
+    );
+
+    return normalizeCourseSession(response);
+  },
+
+  deleteCourseSession: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    session: Pick<TeacherCourseSession, 'id' | 'identifier'>,
+  ) => {
+    await apiClient.delete<void>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions/${encodeURIComponent(
+        findCourseSessionIdentifier(session),
+      )}`,
+    );
+  },
 
   saveCourse: upsertCourse,
 

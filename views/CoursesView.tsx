@@ -35,6 +35,7 @@ import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOve
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
 import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
 import CourseResourcesPanel from '@/components/academy/course-workbench/CourseResourcesPanel';
+import CourseSessionsPanel from '@/components/academy/course-workbench/CourseSessionsPanel';
 import { ItemModality } from '@/components/academy/course-workbench/ObjectiveItemsList';
 import QuestionEditor from '@/components/QuestionEditor';
 import SAQEditor from '@/components/SAQEditor';
@@ -47,7 +48,12 @@ import {
   STAGE_STYLES,
 } from '@/components/academy/course-workbench/shared';
 
-type WorkbenchTab = 'overview' | 'objectives' | 'resources' | 'content';
+type WorkbenchTab =
+  | 'overview'
+  | 'objectives'
+  | 'resources'
+  | 'content'
+  | 'sessions';
 
 // Maps URL ?tab values (including legacy ones from the old 5-tab layout) onto
 // the current 4-tab model so existing deep-links keep resolving.
@@ -56,6 +62,7 @@ const TAB_ALIASES: Record<string, WorkbenchTab> = {
   objectives: 'objectives',
   resources: 'resources',
   content: 'content',
+  sessions: 'sessions',
   factory: 'objectives',
   'content-ai': 'content',
 };
@@ -252,7 +259,9 @@ const CoursesView: React.FC = () => {
     ? courseIdentifierOf(selectedCourse)
     : null;
   const selectedCourseNeedsObjectives = Boolean(
-    (activeTab === 'objectives' || activeTab === 'content') &&
+    (activeTab === 'objectives' ||
+      activeTab === 'content' ||
+      activeTab === 'sessions') &&
       selectedCourse &&
       !selectedCourse.learningObjectivesLoaded,
   );
@@ -686,6 +695,7 @@ const CoursesView: React.FC = () => {
       badge: selectedCourseObjectiveCount,
     },
     { id: 'content', label: 'Content', icon: Library },
+    { id: 'sessions', label: 'Sessions', icon: Layers },
     { id: 'resources', label: 'Resources', icon: Paperclip },
   ];
 
@@ -846,6 +856,13 @@ const CoursesView: React.FC = () => {
                     onOpenItem={(item) => void handleOpenItem(item)}
                     refreshSignal={contentRefreshKey}
                   />
+                )
+              )}
+              {activeTab === 'sessions' && (
+                selectedCourseNeedsObjectives ? (
+                  renderObjectivesGate(selectedCourse)
+                ) : (
+                  <CourseSessionsPanel course={selectedCourse} />
                 )
               )}
               {activeTab === 'resources' && (

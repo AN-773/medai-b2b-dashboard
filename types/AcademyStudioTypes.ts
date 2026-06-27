@@ -1,3 +1,5 @@
+import type { BackendApiItem } from './TestsServiceTypes';
+
 export interface TeacherStudent {
   id: string;
   accountId?: string;
@@ -59,6 +61,27 @@ export interface TeacherCourse {
   learningObjectivesLoaded?: boolean;
   learningObjectives: TeacherLearningObjective[];
   contentDrafts: CourseContentDraft[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TeacherCourseSessionMode =
+  | 'mcq'
+  | 'saq'
+  | 'lecture'
+  | 'flashcard'
+  | 'mixed';
+
+export interface TeacherCourseSession {
+  id: string;
+  identifier: string;
+  title: string;
+  displayOrder: number;
+  scheduledDate: string;
+  mode: TeacherCourseSessionMode;
+  itemCount: number;
+  tenantId?: string | null;
+  items: BackendApiItem[];
   createdAt: string;
   updatedAt: string;
 }
