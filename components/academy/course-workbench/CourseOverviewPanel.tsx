@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Save, Sparkles, Target, Users } from 'lucide-react';
+import { Loader2, Lock, Save, Sparkles, Target, Unlock, Users } from 'lucide-react';
 import type { TeacherCohort, TeacherCourse } from '@/types/AcademyStudioTypes';
 import {
   getCourseObjectiveCount,
@@ -15,7 +15,7 @@ interface CourseOverviewPanelProps {
   cohortsUsingCourse: TeacherCohort[];
   learnerCount: number;
   pendingSuggestions: number;
-  onSave: (data: { title: string; summary: string }) => Promise<void>;
+  onSave: (data: { title: string; summary: string; locked: boolean }) => Promise<void>;
 }
 
 const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
@@ -28,17 +28,19 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
   const [form, setForm] = useState({
     title: course.title,
     summary: course.summary,
+    locked: course.locked,
   });
   const [isSaving, setSaving] = useState(false);
 
   useEffect(() => {
-    setForm({ title: course.title, summary: course.summary });
-  }, [course.id, course.title, course.summary]);
+    setForm({ title: course.title, summary: course.summary, locked: course.locked });
+  }, [course.id, course.title, course.summary, course.locked]);
 
   const isDirty = useMemo(
     () =>
       form.title.trim() !== course.title ||
-      form.summary.trim() !== course.summary,
+      form.summary.trim() !== course.summary ||
+      form.locked !== course.locked,
     [form, course],
   );
 
@@ -58,7 +60,7 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
   return (
     <div className="space-y-8">
       {/* Stats */}
-      <div className="grid grid-cols-2 border-y border-slate-200 lg:grid-cols-4 lg:divide-x lg:divide-slate-200">
+      <div className="grid grid-cols-2 border-y border-slate-200 lg:grid-cols-5 lg:divide-x lg:divide-slate-200">
         <div className="px-4 py-3">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
             Stage
@@ -75,6 +77,11 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
           label="Pending review"
           value={pendingSuggestions}
           accent={pendingSuggestions > 0 ? 'amber' : 'slate'}
+        />
+        <StatTile
+          label="LOs without items"
+          value={course.learningObjectivesWithoutItemsTotal ?? 0}
+          accent={(course.learningObjectivesWithoutItemsTotal ?? 0) > 0 ? 'amber' : 'slate'}
         />
       </div>
 
@@ -105,6 +112,30 @@ const CourseOverviewPanel: React.FC<CourseOverviewPanelProps> = ({
           </div>
 
           <div className="mt-5 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-y border-slate-200 py-3">
+              <div>
+                <SectionLabel>Delivery lock</SectionLabel>
+                <p className="mt-1 text-sm font-semibold text-slate-700">
+                  {form.locked
+                    ? 'Locked courses only deliver existing course LO items.'
+                    : 'Unlocked courses can use AI fallback during study plan sessions.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({ ...current, locked: !current.locked }))
+                }
+                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-black uppercase tracking-[0.16em] transition ${
+                  form.locked
+                    ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                }`}
+              >
+                {form.locked ? <Lock size={14} /> : <Unlock size={14} />}
+                {form.locked ? 'Locked' : 'Unlocked'}
+              </button>
+            </div>
             <div>
               <SectionLabel>Title</SectionLabel>
               <input

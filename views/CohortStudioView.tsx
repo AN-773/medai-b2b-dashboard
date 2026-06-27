@@ -455,6 +455,8 @@ const CohortStudioView: React.FC = () => {
       id: nextId,
       title: newCourseForm.title.trim(),
       summary: newCourseForm.summary.trim(),
+      locked: false,
+      learningObjectivesWithoutItemsTotal: 0,
       learningObjectives: [],
       sourceFiles: [],
       modules: [],

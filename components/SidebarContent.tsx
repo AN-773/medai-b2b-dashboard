@@ -52,11 +52,11 @@ const EDUCATOR_NAV: NavSection[] = [
   {
     item: { view: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
     children: [
+      { view: 'CURRICULA', label: 'Curriculum Workbench', icon: Library },
+      { view: 'DISCIPLINES', label: 'Disciplines', icon: FlaskConical },
+      { view: 'COURSES', label: 'Courses', icon: BookOpen },
       { view: 'STUDENTS', label: 'Student Registry', icon: Users },
       { view: 'COHORTS', label: 'Cohorts', icon: Layers },
-      { view: 'COURSES', label: 'Courses', icon: BookOpen },
-      { view: 'DISCIPLINES', label: 'Disciplines', icon: FlaskConical },
-      { view: 'CURRICULA', label: 'Curriculum Workbench', icon: Library },
       { view: 'MASTERY', label: 'Student Mastery', icon: BarChart3 },
     ],
   },

@@ -85,6 +85,13 @@ const normalizeCourse = (
     id: course.id || makeId('course'),
     title: course.title?.trim() || 'Untitled Course',
     summary: course.summary?.trim() || '',
+    locked: Boolean(course.locked),
+    learningObjectivesWithoutItemsTotal:
+      typeof course.learningObjectivesWithoutItemsTotal === 'number'
+        ? course.learningObjectivesWithoutItemsTotal
+        : (course.learningObjectives || []).filter(
+            (objective) => (objective.itemTotals?.total ?? 0) === 0,
+          ).length,
     learningObjectives: Array.isArray(course.learningObjectives)
       ? course.learningObjectives
       : [],

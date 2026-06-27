@@ -51,8 +51,10 @@ export interface TeacherCourse {
   teacherId?: string;
   tenantId?: string | null;
   curriculumId?: string | null;
+  locked: boolean;
   summary: string;
   learningObjectivesTotal?: number;
+  learningObjectivesWithoutItemsTotal?: number;
   pendingLearningObjectiveSuggestionsTotal?: number;
   learningObjectivesLoaded?: boolean;
   learningObjectives: TeacherLearningObjective[];

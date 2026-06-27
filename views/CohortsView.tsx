@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   Check,
   Layers3,
+  Lock,
   Loader2,
   Pencil,
   Plus,
@@ -56,6 +57,7 @@ interface CohortPublishReadiness {
   hasCourses: boolean;
   allCoursesHaveObjectives: boolean;
   missingObjectiveCourseCount: number;
+  lockedCoursesMissingItemsCount: number;
   canPublish: boolean;
 }
 
@@ -78,6 +80,34 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 
 const getCourseObjectiveCount = (course: TeacherCourse) =>
   course.learningObjectivesTotal ?? course.learningObjectives.length;
+
+const getCourseMissingItemCount = (course: TeacherCourse) =>
+  typeof course.learningObjectivesWithoutItemsTotal === 'number'
+    ? course.learningObjectivesWithoutItemsTotal
+    : course.learningObjectives.filter(
+        (objective) => (objective.itemTotals?.total ?? 0) === 0,
+      ).length;
+
+const getLockedSelectionMissingItemCount = (
+  course: TeacherCourse,
+  selectedObjectiveIds?: string[],
+) => {
+  if (!course.locked) return 0;
+
+  if (!selectedObjectiveIds) {
+    return getCourseMissingItemCount(course);
+  }
+
+  if (!course.learningObjectivesLoaded) {
+    return 0;
+  }
+
+  const selected = new Set(selectedObjectiveIds);
+  return course.learningObjectives.filter(
+    (objective) =>
+      selected.has(objective.id) && (objective.itemTotals?.total ?? 0) === 0,
+  ).length;
+};
 
 const getCohortDateRangeError = (startDate: string, endDate: string) => {
   if ((startDate && !endDate) || (!startDate && endDate)) {
@@ -116,6 +146,7 @@ const getCohortPublishReadiness = (
       hasCourses: false,
       allCoursesHaveObjectives: false,
       missingObjectiveCourseCount: 0,
+      lockedCoursesMissingItemsCount: 0,
       canPublish: false,
     };
   }
@@ -130,13 +161,28 @@ const getCohortPublishReadiness = (
   ).length;
   const allCoursesHaveObjectives =
     hasCourses && missingObjectiveCourseCount === 0;
+  const lockedCoursesMissingItemsCount = assignedCourses.filter((course) => {
+    const selection = cohort.courseSelections.find(
+      (entry) => entry.courseId === course.id,
+    );
+    return (
+      getLockedSelectionMissingItemCount(
+        course,
+        selection?.learningObjectiveIds,
+      ) > 0
+    );
+  }).length;
 
   return {
     hasStudents,
     hasCourses,
     allCoursesHaveObjectives,
     missingObjectiveCourseCount,
-    canPublish: hasStudents && allCoursesHaveObjectives,
+    lockedCoursesMissingItemsCount,
+    canPublish:
+      hasStudents &&
+      allCoursesHaveObjectives &&
+      lockedCoursesMissingItemsCount === 0,
   };
 };
 
@@ -226,6 +272,12 @@ const getCohortPublishSupportText = (
     return readiness.missingObjectiveCourseCount === 1
       ? 'One attached course is missing learning objectives.'
       : `${readiness.missingObjectiveCourseCount} attached courses are missing learning objectives.`;
+  }
+
+  if (readiness.lockedCoursesMissingItemsCount > 0) {
+    return readiness.lockedCoursesMissingItemsCount === 1
+      ? 'One locked course needs item coverage before publishing.'
+      : `${readiness.lockedCoursesMissingItemsCount} locked courses need item coverage before publishing.`;
   }
 
   return 'This cohort is ready to generate study plans.';
@@ -623,6 +675,8 @@ const CohortsView: React.FC = () => {
                 learningObjectives: hydratedCourse.learningObjectives,
                 learningObjectivesLoaded: true,
                 learningObjectivesTotal: hydratedCourse.learningObjectivesTotal,
+                learningObjectivesWithoutItemsTotal:
+                  hydratedCourse.learningObjectivesWithoutItemsTotal,
               }
             : candidate,
         ),
@@ -678,14 +732,19 @@ const CohortsView: React.FC = () => {
     }
   };
 
-  const saveCohortRecord = async (cohort: TeacherCohort) => {
+  const commitCohortMutation = async (
+    action: () => Promise<TeacherCohort>,
+  ) => {
     return runLockedCohortRequest(async () => {
-      const savedCohort = await academyStudioBackend.saveCohort(cohort);
+      const savedCohort = await action();
       await loadData();
       setSelectedCohortId(savedCohort.id);
       return savedCohort;
     });
   };
+
+  const saveCohortRecord = async (cohort: TeacherCohort) =>
+    commitCohortMutation(() => academyStudioBackend.saveCohort(cohort));
 
   const createCohortShell = async (source: typeof newCohortForm) => {
     return runLockedCohortRequest(async () => {
@@ -695,9 +754,6 @@ const CohortsView: React.FC = () => {
         description: source.description.trim(),
         startDate: source.startDate.trim(),
         endDate: source.endDate.trim(),
-        studentIds: [],
-        courseIds: [],
-        courseSelections: [],
       });
       await loadData();
       setSelectedCohortId(savedCohort.id);
@@ -745,12 +801,18 @@ const CohortsView: React.FC = () => {
     try {
       setLoadError(null);
       const savedCohort = await saveCohortRecord({
-        ...selectedCohort,
+        id: selectedCohort.id,
+        backendIdentifier: selectedCohort.backendIdentifier,
         title: cohortForm.title.trim(),
         term: cohortForm.term.trim(),
         description: cohortForm.description.trim(),
         startDate: cohortForm.startDate.trim(),
         endDate: cohortForm.endDate.trim(),
+        studentIds: selectedCohort.studentIds,
+        courseIds: selectedCohort.courseIds,
+        courseSelections: selectedCohort.courseSelections,
+        createdAt: selectedCohort.createdAt,
+        updatedAt: selectedCohort.updatedAt,
       });
       if (!savedCohort) return;
       setMessage('Cohort details updated.');
@@ -785,6 +847,25 @@ const CohortsView: React.FC = () => {
 
     try {
       const started = await runLockedCohortRequest(async () => {
+        const hydratedCourses = new Map(courseById);
+        for (const selection of selectedCohort.courseSelections) {
+          const course = hydratedCourses.get(selection.courseId);
+          if (!course?.locked || course.learningObjectivesLoaded) continue;
+          hydratedCourses.set(course.id, await loadCourseObjectives(course));
+        }
+
+        const lockedCoursesMissingItemsCount =
+          getCohortPublishReadiness(selectedCohort, hydratedCourses)
+            .lockedCoursesMissingItemsCount;
+        if (lockedCoursesMissingItemsCount > 0) {
+          setLoadError(
+            lockedCoursesMissingItemsCount === 1
+              ? 'One locked course needs item coverage before publishing.'
+              : `${lockedCoursesMissingItemsCount} locked courses need item coverage before publishing.`,
+          );
+          return false;
+        }
+
         setPendingPublishIds((current) =>
           current.includes(selectedCohort.id)
             ? current
@@ -811,17 +892,13 @@ const CohortsView: React.FC = () => {
     const isAssigned = selectedCohort.studentIds.some(
       (id) => getIdSuffix(id) === studentIdSuffix,
     );
-    const nextIds = isAssigned
-      ? selectedCohort.studentIds.filter(
-          (id) => getIdSuffix(id) !== studentIdSuffix,
-        )
-      : [...selectedCohort.studentIds, studentId];
 
     try {
-      const savedCohort = await saveCohortRecord({
-        ...selectedCohort,
-        studentIds: nextIds,
-      });
+      const savedCohort = await commitCohortMutation(() =>
+        isAssigned
+          ? academyStudioBackend.removeCohortLearner(selectedCohort, studentId)
+          : academyStudioBackend.attachCohortLearners(selectedCohort, [studentId]),
+      );
       if (!savedCohort) return;
     } catch (error) {
       reportMutationError(error, 'Unable to update cohort learners.');
@@ -831,22 +908,26 @@ const CohortsView: React.FC = () => {
   const handleToggleCourse = async (courseId: string) => {
     if (!selectedCohort) return;
 
-    const nextCourseIds = selectedCohort.courseIds.includes(courseId)
-      ? selectedCohort.courseIds.filter((id) => id !== courseId)
-      : [...selectedCohort.courseIds, courseId];
-    const nextSelections = selectedCohort.courseSelections.filter((selection) =>
-      nextCourseIds.includes(selection.courseId),
-    );
+    const isAssigned = selectedCohort.courseIds.includes(courseId);
+    const course = courseById.get(courseId);
+    if (
+      !isAssigned &&
+      course?.locked &&
+      getCourseMissingItemCount(course) > 0
+    ) {
+      setLoadError('This locked course needs item coverage before it can be attached.');
+      return;
+    }
 
     try {
-      const savedCohort = await saveCohortRecord({
-        ...selectedCohort,
-        courseIds: nextCourseIds,
-        courseSelections: nextSelections,
-      });
+      const savedCohort = await commitCohortMutation(() =>
+        isAssigned
+          ? academyStudioBackend.removeCohortCourse(selectedCohort, courseId)
+          : academyStudioBackend.attachCohortCourses(selectedCohort, [courseId]),
+      );
       if (!savedCohort) return;
 
-      if (!selectedCohort.courseIds.includes(courseId)) {
+      if (!isAssigned) {
         setSelectedCourseId(courseId);
         setMessage('Course attached to the cohort.');
       }
@@ -862,17 +943,71 @@ const CohortsView: React.FC = () => {
     if (!selectedCohort) return;
 
     const uniqueIds = Array.from(new Set(learningObjectiveIds));
-    const remainingSelections = selectedCohort.courseSelections.filter(
-      (selection) => selection.courseId !== courseId,
+    const currentSelection = selectedCohort.courseSelections.find(
+      (selection) => selection.courseId === courseId,
     );
+    const currentIds = currentSelection?.learningObjectiveIds || [];
+    const currentIdSet = new Set(currentIds);
 
     try {
-      const savedCohort = await saveCohortRecord({
-        ...selectedCohort,
-        courseSelections:
-          uniqueIds.length === 0
-            ? remainingSelections
-            : [...remainingSelections, { courseId, learningObjectiveIds: uniqueIds }],
+      const course = courseById.get(courseId);
+      if (course?.locked) {
+        const hydratedCourse = course.learningObjectivesLoaded
+          ? course
+          : await loadCourseObjectives(course);
+        if (uniqueIds.length === 0) {
+          if (getCourseMissingItemCount(hydratedCourse) > 0) {
+            setLoadError(
+              'This locked course needs item coverage before it can return to full-course mode.',
+            );
+            return false;
+          }
+        } else if (
+          getLockedSelectionMissingItemCount(hydratedCourse, uniqueIds) > 0
+        ) {
+          setLoadError(
+            'Locked course delivery can only include learning objectives with linked items.',
+          );
+          return false;
+        }
+      }
+
+      const savedCohort = await commitCohortMutation(async () => {
+        if (uniqueIds.length === 0) {
+          return academyStudioBackend.clearCohortCourseLearningObjectives(
+            selectedCohort,
+            courseId,
+          );
+        }
+
+        const idsToAdd = uniqueIds.filter((id) => !currentIdSet.has(id));
+        const desiredIdSet = new Set(uniqueIds);
+        const idsToRemove = currentIds.filter((id) => !desiredIdSet.has(id));
+
+        if (idsToAdd.length === 0 && idsToRemove.length === 0) {
+          return selectedCohort;
+        }
+
+        let nextCohort = selectedCohort;
+
+        if (idsToAdd.length > 0) {
+          nextCohort = await academyStudioBackend.appendCohortCourseLearningObjectives(
+            nextCohort,
+            courseId,
+            idsToAdd,
+          );
+        }
+
+        for (const learningObjectiveId of idsToRemove) {
+          nextCohort =
+            await academyStudioBackend.removeCohortCourseLearningObjective(
+              nextCohort,
+              courseId,
+              learningObjectiveId,
+            );
+        }
+
+        return nextCohort;
       });
       return Boolean(savedCohort);
     } catch (error) {
@@ -1351,6 +1486,9 @@ const CohortsView: React.FC = () => {
                     course.id,
                   );
                   const isActive = selectedAssignedCourse?.id === course.id;
+                  const missingItemCount = getCourseMissingItemCount(course);
+                  const isLockedAttachBlocked =
+                    course.locked && !isAssigned && missingItemCount > 0;
 
                   return (
                     <div
@@ -1372,6 +1510,12 @@ const CohortsView: React.FC = () => {
                                 Active
                               </span>
                             )}
+                            {course.locked && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                <Lock size={12} />
+                                Locked
+                              </span>
+                            )}
                           </div>
                           <p className="mt-1 text-sm text-slate-500">
                             {course.summary || 'No summary yet'}
@@ -1380,6 +1524,11 @@ const CohortsView: React.FC = () => {
                             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {getCourseObjectiveCount(course)} objectives
                             </span>
+                            {course.locked && missingItemCount > 0 && (
+                              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                {missingItemCount} without items
+                              </span>
+                            )}
                             {/* <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                               {course.contentDrafts.length} AI drafts
                             </span> */}
@@ -1390,8 +1539,16 @@ const CohortsView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleToggleCourse(course.id)}
+                            disabled={isLockedAttachBlocked}
+                            title={
+                              isLockedAttachBlocked
+                                ? 'Locked courses need item coverage before attach.'
+                                : undefined
+                            }
                             className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                              isAssigned
+                              isLockedAttachBlocked
+                                ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                                : isAssigned
                                 ? 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                                 : 'bg-slate-900 text-white hover:bg-slate-800'
                             }`}
@@ -1453,12 +1610,13 @@ const CohortsView: React.FC = () => {
                     key={course.id}
                     type="button"
                     onClick={() => setSelectedCourseId(course.id)}
-                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
                       selectedCourseId === course.id
                         ? 'bg-[#16324F] text-white'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
+                    {course.locked && <Lock size={13} />}
                     {course.title}
                   </button>
                 ))}
@@ -1475,12 +1633,20 @@ const CohortsView: React.FC = () => {
                         <h4 className="mt-1 text-lg font-black text-slate-900">
                           {selectedAssignedCourse.title}
                         </h4>
-                        <p className="mt-2 text-sm text-slate-500">
-                          {formatModeLabel(
-                            selectedCohort,
-                            selectedAssignedCourse,
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                          <span>
+                            {formatModeLabel(
+                              selectedCohort,
+                              selectedAssignedCourse,
+                            )}
+                          </span>
+                          {selectedAssignedCourse.locked && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                              <Lock size={12} />
+                              Locked
+                            </span>
                           )}
-                        </p>
+                        </div>
                       </div>
 
                       <div className="flex gap-2 rounded-[1.25rem] bg-white p-1.5 shadow-sm">
@@ -1548,20 +1714,31 @@ const CohortsView: React.FC = () => {
                       </div>
                     ) : (
                       selectedAssignedCourse.learningObjectives.map(
-                        (objective) => (
+                        (objective) => {
+                          const hasNoItems =
+                            (objective.itemTotals?.total ?? 0) === 0;
+                          const isSelected = selectedObjectiveIds.has(
+                            objective.id,
+                          );
+                          const isObjectiveDisabled =
+                            !isCustomMode ||
+                            (selectedAssignedCourse.locked &&
+                              hasNoItems &&
+                              !isSelected);
+
+                          return (
                           <button
                             key={objective.id}
                             type="button"
-                            disabled={!isCustomMode}
+                            disabled={isObjectiveDisabled}
                             onClick={() =>
                               handleToggleObjectiveSelection(objective.id)
                             }
                             className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition ${
-                              isCustomMode &&
-                              selectedObjectiveIds.has(objective.id)
+                              isCustomMode && isSelected
                                 ? 'border-[#1BD183] bg-emerald-50'
                                 : 'border-slate-200 bg-slate-50'
-                            } ${!isCustomMode ? 'cursor-default' : ''}`}
+                            } ${isObjectiveDisabled ? 'cursor-default opacity-70' : ''}`}
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div>
@@ -1579,13 +1756,18 @@ const CohortsView: React.FC = () => {
                                       {objective.cognitiveSkill}
                                     </span>
                                   )}
+                                  {selectedAssignedCourse.locked && hasNoItems && (
+                                    <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">
+                                      0 items
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
                               {isCustomMode ? (
                                 <div
                                   className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                                    selectedObjectiveIds.has(objective.id)
+                                    isSelected
                                       ? 'bg-[#1BD183] text-white'
                                       : 'bg-white text-slate-300'
                                   }`}
@@ -1599,7 +1781,8 @@ const CohortsView: React.FC = () => {
                               )}
                             </div>
                           </button>
-                        ),
+                          );
+                        },
                       )
                     )}
                   </div>

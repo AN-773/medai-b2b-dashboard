@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -7,6 +7,8 @@ import {
   Layers,
   Library,
   Loader2,
+  Lock,
+  Paperclip,
   Target,
   Trash2,
   X,
@@ -32,6 +34,7 @@ import CourseLibrarySidebar from '@/components/academy/course-workbench/CourseLi
 import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOverviewPanel';
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
 import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
+import CourseResourcesPanel from '@/components/academy/course-workbench/CourseResourcesPanel';
 import { ItemModality } from '@/components/academy/course-workbench/ObjectiveItemsList';
 import QuestionEditor from '@/components/QuestionEditor';
 import SAQEditor from '@/components/SAQEditor';
@@ -44,13 +47,14 @@ import {
   STAGE_STYLES,
 } from '@/components/academy/course-workbench/shared';
 
-type WorkbenchTab = 'overview' | 'objectives' | 'content';
+type WorkbenchTab = 'overview' | 'objectives' | 'resources' | 'content';
 
 // Maps URL ?tab values (including legacy ones from the old 5-tab layout) onto
-// the current 3-tab model so existing deep-links keep resolving.
+// the current 4-tab model so existing deep-links keep resolving.
 const TAB_ALIASES: Record<string, WorkbenchTab> = {
   overview: 'overview',
   objectives: 'objectives',
+  resources: 'resources',
   content: 'content',
   factory: 'objectives',
   'content-ai': 'content',
@@ -260,15 +264,33 @@ const CoursesView: React.FC = () => {
     item: BackendApiItem | null;
   } | null>(null);
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
+  const [isObjectiveFactoryOpen, setIsObjectiveFactoryOpen] = useState(false);
 
-  const factory = useCourseFactory(selectedCourseIdentifier, () => {
-    if (selectedCourseId) void loadData(selectedCourseId);
-  });
-
-  // AI content factory: AI-drafted items reviewed per learning objective.
-  const itemFactory = useItemFactory(selectedCourseIdentifier, () => {
-    void refreshSelectedCourseObjectiveTotals();
-  });
+  const mergeHydratedCourse = useCallback(
+    (hydratedCourse: TeacherCourse, pendingDelta = 0) => {
+      startTransition(() => {
+        setCourses((current) =>
+          current.map((candidate) =>
+            candidate.id === hydratedCourse.id
+              ? {
+                  ...candidate,
+                  learningObjectives: hydratedCourse.learningObjectives,
+                  learningObjectivesLoaded: true,
+                  learningObjectivesTotal: hydratedCourse.learningObjectivesTotal,
+                  learningObjectivesWithoutItemsTotal:
+                    hydratedCourse.learningObjectivesWithoutItemsTotal,
+                  pendingLearningObjectiveSuggestionsTotal: Math.max(
+                    0,
+                    (candidate.pendingLearningObjectiveSuggestionsTotal || 0) + pendingDelta,
+                  ),
+                }
+              : candidate,
+          ),
+        );
+      });
+    },
+    [],
+  );
 
   const loadCourseObjectives = useCallback(async (course: TeacherCourse) => {
     if (course.learningObjectivesLoaded) {
@@ -294,6 +316,8 @@ const CoursesView: React.FC = () => {
                 learningObjectives: hydratedCourse.learningObjectives,
                 learningObjectivesLoaded: true,
                 learningObjectivesTotal: hydratedCourse.learningObjectivesTotal,
+                learningObjectivesWithoutItemsTotal:
+                  hydratedCourse.learningObjectivesWithoutItemsTotal,
               }
             : candidate,
         ),
@@ -386,7 +410,7 @@ const CoursesView: React.FC = () => {
     : 0;
   const selectedCoursePendingSuggestions = selectedCourse
     ? getCoursePendingSuggestionCount(selectedCourse)
-    : factory.stats.pending;
+    : 0;
 
   const totals = useMemo(
     () => ({
@@ -453,30 +477,27 @@ const CoursesView: React.FC = () => {
     }
   };
 
-  // Silently re-hydrate the selected course's objectives so per-objective item
-  // totals (itemTotals) reflect a just-authored item, without flashing the
-  // objectives loading gate behind the drawer.
-  const refreshSelectedCourseObjectiveTotals = async () => {
+  // Silently re-hydrate the selected course's objectives so local objective and
+  // review state stay current without replacing the whole course page state.
+  const refreshSelectedCourseObjectives = useCallback(async (pendingDelta = 0) => {
     if (!selectedCourse) return;
     try {
       const hydrated =
         await academyStudioBackend.loadCourseWithLearningObjectives(selectedCourse);
-      setCourses((current) =>
-        current.map((candidate) =>
-          candidate.id === hydrated.id
-            ? {
-                ...candidate,
-                learningObjectives: hydrated.learningObjectives,
-                learningObjectivesLoaded: true,
-                learningObjectivesTotal: hydrated.learningObjectivesTotal,
-              }
-            : candidate,
-        ),
-      );
+      mergeHydratedCourse(hydrated, pendingDelta);
     } catch (error) {
-      console.error('Failed to refresh objective item totals:', error);
+      console.error('Failed to refresh selected course objectives:', error);
     }
-  };
+  }, [mergeHydratedCourse, selectedCourse]);
+
+  const factory = useCourseFactory(selectedCourseIdentifier, (acceptedCount) => {
+    void refreshSelectedCourseObjectives(-acceptedCount);
+  });
+
+  // AI content factory: AI-drafted items reviewed per learning objective.
+  const itemFactory = useItemFactory(selectedCourseIdentifier, () => {
+    void refreshSelectedCourseObjectives();
+  });
 
   const handleSaveItem = async (request: ItemUpsertRequest) => {
     try {
@@ -484,7 +505,7 @@ const CoursesView: React.FC = () => {
       setAuthoring(null);
       setContentRefreshKey((key) => key + 1);
       flashMessage('Item saved.');
-      void refreshSelectedCourseObjectiveTotals();
+      void refreshSelectedCourseObjectives();
     } catch (error) {
       reportError(error, 'Unable to save this item.');
     }
@@ -536,7 +557,6 @@ const CoursesView: React.FC = () => {
         title: input.title.trim(),
         summary: input.summary.trim(),
         curriculumId: selectedCurriculum.id,
-        learningObjectives: [],
         contentDrafts: [],
       });
       await loadData(saved.id);
@@ -552,13 +572,18 @@ const CoursesView: React.FC = () => {
   const handleSaveCourse = async (data: {
     title: string;
     summary: string;
+    locked: boolean;
   }) => {
     if (!selectedCourse || !data.title.trim()) return;
     try {
       const saved = await academyStudioBackend.saveCourse({
-        ...selectedCourse,
+        id: selectedCourse.id,
+        backendIdentifier: selectedCourse.backendIdentifier,
+        teacherId: selectedCourse.teacherId,
+        curriculumId: selectedCourse.curriculumId,
         title: data.title.trim(),
         summary: data.summary.trim(),
+        locked: data.locked,
       });
       await loadData(saved.id);
       flashMessage('Course details saved.');
@@ -588,8 +613,7 @@ const CoursesView: React.FC = () => {
   const handleAttachObjective = async (objective: TeacherLearningObjective) => {
     if (!selectedCourse || selectedCourseObjectiveIds.has(objective.id)) return;
     try {
-      await academyStudioBackend.saveCourseLearningObjectives(selectedCourse, [
-        ...selectedCourse.learningObjectives,
+      await academyStudioBackend.attachCourseLearningObjectives(selectedCourse, [
         objective,
       ]);
       await loadData(selectedCourse.id);
@@ -603,8 +627,7 @@ const CoursesView: React.FC = () => {
     if (!selectedCourse) return;
     // Created objectives surface their own error in the modal, so let failures
     // propagate rather than swallowing them with reportError.
-    await academyStudioBackend.saveCourseLearningObjectives(selectedCourse, [
-      ...selectedCourse.learningObjectives,
+    await academyStudioBackend.attachCourseLearningObjectives(selectedCourse, [
       objective,
     ]);
     await loadData(selectedCourse.id);
@@ -615,9 +638,9 @@ const CoursesView: React.FC = () => {
     if (!selectedCourse) return;
     if (!window.confirm(`Remove "${objective.title}" from ${selectedCourse.title}?`)) return;
     try {
-      await academyStudioBackend.saveCourseLearningObjectives(
+      await academyStudioBackend.removeCourseLearningObjective(
         selectedCourse,
-        selectedCourse.learningObjectives.filter((candidate) => candidate.id !== objective.id),
+        objective.id,
       );
       await loadData(selectedCourse.id);
       flashMessage('Objective removed.');
@@ -663,6 +686,7 @@ const CoursesView: React.FC = () => {
       badge: selectedCourseObjectiveCount,
     },
     { id: 'content', label: 'Content', icon: Library },
+    { id: 'resources', label: 'Resources', icon: Paperclip },
   ];
 
   return (
@@ -726,6 +750,12 @@ const CoursesView: React.FC = () => {
                     >
                       {getCourseStage(selectedCourse)}
                     </span>
+                    {selectedCourse.locked && (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">
+                        <Lock size={11} />
+                        Locked
+                      </span>
+                    )}
                   </div>
                   {selectedCourse.summary && (
                     <p className="mt-1.5 max-w-2xl truncate text-sm text-slate-500">
@@ -744,31 +774,33 @@ const CoursesView: React.FC = () => {
               </div>
 
               {/* Tabs */}
-              <div className="mt-4 flex items-center gap-1">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => selectTab(tab.id)}
-                      className={`relative inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${
-                        isActive
-                          ? 'border-[#1BD183] text-slate-900'
-                          : 'border-transparent text-slate-400 hover:text-slate-600'
-                      }`}
-                    >
-                      <Icon size={15} />
-                      {tab.label}
-                      {tab.badge ? (
-                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-500">
-                          {tab.badge}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
+              <div className="mt-4 overflow-x-auto overflow-y-hidden custom-scrollbar">
+                <div className="flex min-w-max items-center gap-1">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => selectTab(tab.id)}
+                        className={`relative inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${
+                          isActive
+                            ? 'border-[#1BD183] text-slate-900'
+                            : 'border-transparent text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        <Icon size={15} />
+                        {tab.label}
+                        {tab.badge ? (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-500">
+                            {tab.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -791,6 +823,8 @@ const CoursesView: React.FC = () => {
                     course={selectedCourse}
                     attachedIds={selectedCourseObjectiveIds}
                     factory={factory}
+                    isGenerateOpen={isObjectiveFactoryOpen}
+                    onGenerateOpenChange={setIsObjectiveFactoryOpen}
                     onAttach={handleAttachObjective}
                     onCreate={handleCreateObjective}
                     onRemove={handleRemoveObjective}
@@ -813,6 +847,9 @@ const CoursesView: React.FC = () => {
                     refreshSignal={contentRefreshKey}
                   />
                 )
+              )}
+              {activeTab === 'resources' && (
+                <CourseResourcesPanel course={selectedCourse} />
               )}
             </div>
           </>

@@ -100,7 +100,9 @@ interface ApiCourse {
   teacherId?: string;
   tenantId?: string | null;
   curriculumId?: string | null;
+  locked?: boolean;
   learningObjectivesTotal?: number;
+  learningObjectivesWithoutItemsTotal?: number;
   pendingLearningObjectiveSuggestionsTotal?: number;
   teacher?: {
     id: string;
@@ -339,10 +341,17 @@ const normalizeCourse = (
     teacherId: course.teacherId || course.teacher?.id,
     tenantId: course.tenantId ?? null,
     curriculumId: course.curriculumId ?? null,
+    locked: Boolean(course.locked),
     learningObjectivesTotal:
       typeof course.learningObjectivesTotal === 'number'
         ? course.learningObjectivesTotal
         : learningObjectives.length,
+    learningObjectivesWithoutItemsTotal:
+      typeof course.learningObjectivesWithoutItemsTotal === 'number'
+        ? course.learningObjectivesWithoutItemsTotal
+        : learningObjectives.filter(
+            (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+          ).length,
     pendingLearningObjectiveSuggestionsTotal:
       course.pendingLearningObjectiveSuggestionsTotal || 0,
     learningObjectivesLoaded: Array.isArray(course.learningObjectives),
@@ -356,12 +365,21 @@ const normalizeCourse = (
 const applyLoadedCourseLearningObjectives = (
   course: TeacherCourse,
   learningObjectives: ApiLearningObjective[],
-): TeacherCourse => ({
-  ...course,
-  learningObjectives: learningObjectives.map(normalizeLearningObjective),
-  learningObjectivesLoaded: true,
-  learningObjectivesTotal: learningObjectives.length,
-});
+): TeacherCourse => {
+  const normalizedLearningObjectives = learningObjectives.map(
+    normalizeLearningObjective,
+  );
+
+  return {
+    ...course,
+    learningObjectives: normalizedLearningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal: normalizedLearningObjectives.length,
+    learningObjectivesWithoutItemsTotal: normalizedLearningObjectives.filter(
+      (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+    ).length,
+  };
+};
 
 const normalizeStudent = (
   studentId: string,
@@ -416,6 +434,20 @@ const getPrimaryAccountId = (user: Pick<ApiIamUser, 'accountId' | 'accounts'>) =
 const buildLearnerIdBySuffix = <T extends { id: string }>(
   users: T[],
 ) => new Map(users.map((user) => [getIdSuffix(user.id), user.id] as const));
+
+const buildPreferredLearnerIdBySuffix = (...groups: string[][]) => {
+  const learnerIdBySuffix = new Map<string, string>();
+
+  groups.forEach((group) => {
+    group.forEach((learnerId) => {
+      const suffix = getIdSuffix(learnerId);
+      if (!suffix || learnerIdBySuffix.has(suffix)) return;
+      learnerIdBySuffix.set(suffix, learnerId);
+    });
+  });
+
+  return learnerIdBySuffix;
+};
 
 const findCanonicalLearnerId = (
   learnerId: string,
@@ -627,6 +659,72 @@ const findCourseIdentifier = (course: Pick<TeacherCourse, 'id' | 'backendIdentif
 
 const findCohortIdentifier = (cohort: Pick<TeacherCohort, 'id' | 'backendIdentifier'>) =>
   cohort.backendIdentifier || cohort.id.split('/').pop() || cohort.id;
+
+const normalizeCourseWriteResult = (
+  response: ApiCourse,
+  learningObjectives?: TeacherLearningObjective[],
+): TeacherCourse => {
+  const normalizedCourse = normalizeCourse(response, readMetadata());
+
+  if (!learningObjectives) {
+    return normalizedCourse;
+  }
+
+  return {
+    ...normalizedCourse,
+    learningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal:
+      typeof response.learningObjectivesTotal === 'number'
+        ? response.learningObjectivesTotal
+        : learningObjectives.length,
+    learningObjectivesWithoutItemsTotal:
+      typeof response.learningObjectivesWithoutItemsTotal === 'number'
+        ? response.learningObjectivesWithoutItemsTotal
+        : learningObjectives.filter(
+            (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+          ).length,
+  };
+};
+
+const normalizeCohortWriteResult = (
+  response: ApiCohort,
+  preferredLearnerIds: string[] = [],
+) =>
+  normalizeCohort(
+    response,
+    readMetadata(),
+    buildPreferredLearnerIdBySuffix(
+      preferredLearnerIds,
+      (response.learners || []).map((learner) => learner.id),
+    ),
+  );
+
+const buildLearnerAttachPayload = (learnerIds: string[]) => {
+  const metadata = readMetadata();
+  const uniqueLearnerIds = Array.from(
+    new Map(
+      learnerIds.map((learnerId) => [getIdSuffix(learnerId), learnerId] as const),
+    ).values(),
+  );
+
+  const learners = uniqueLearnerIds.map((learnerId) => {
+    const profile = getLearnerProfileForId(metadata, learnerId);
+
+    return {
+      userId: learnerId,
+      ...(profile.name?.trim() ? { name: profile.name.trim() } : {}),
+      ...(profile.accountId?.trim()
+        ? { accountId: profile.accountId.trim() }
+        : {}),
+    };
+  });
+
+  return {
+    learnerIds: uniqueLearnerIds,
+    ...(learners.length > 0 ? { learners } : {}),
+  };
+};
 
 const buildStudyPlanExamDate = (baseDate = new Date()) => {
   const examDate = new Date(
@@ -920,6 +1018,7 @@ const upsertCourse = async (
         | 'backendIdentifier'
         | 'teacherId'
         | 'curriculumId'
+        | 'locked'
         | 'summary'
         | 'learningObjectives'
         | 'contentDrafts'
@@ -938,15 +1037,9 @@ const upsertCourse = async (
           : {}),
         ...(course.teacherId ? { teacherId: course.teacherId } : {}),
         ...(course.curriculumId ? { curriculumId: course.curriculumId } : {}),
+        ...(course.locked !== undefined ? { locked: course.locked } : {}),
       },
       ...(course.teacherId ? { teacherId: course.teacherId } : {}),
-      ...(course.learningObjectives
-        ? {
-            learningObjectiveIds: course.learningObjectives.map(
-              (learningObjective) => learningObjective.id,
-            ),
-          }
-        : {}),
     },
   );
 
@@ -956,43 +1049,26 @@ const upsertCourse = async (
     });
   }
 
-  const normalizedCourse = normalizeCourse(response, readMetadata());
-
-  if (!course.learningObjectives) {
-    return normalizedCourse;
-  }
-
-  return {
-    ...normalizedCourse,
-    learningObjectives: course.learningObjectives,
-    learningObjectivesLoaded: true,
-    learningObjectivesTotal: course.learningObjectives.length,
-  };
+  return normalizeCourseWriteResult(response, course.learningObjectives);
 };
 
 const upsertCohort = async (
-  cohort: Pick<TeacherCohort, 'title' | 'studentIds' | 'courseIds' | 'courseSelections'> &
+  cohort: Pick<TeacherCohort, 'title'> &
     Partial<
       Pick<
         TeacherCohort,
-        'id' | 'backendIdentifier' | 'term' | 'description' | 'startDate' | 'endDate'
+        | 'id'
+        | 'backendIdentifier'
+        | 'term'
+        | 'description'
+        | 'startDate'
+        | 'endDate'
+        | 'studentIds'
       >
     >,
 ) => {
-  const metadata = readMetadata();
   const startsAt = toRfc3339DateTime(cohort.startDate);
   const endsAt = toRfc3339DateTime(cohort.endDate);
-  const learners = cohort.studentIds.map((studentId) => {
-    const profile = getLearnerProfileForId(metadata, studentId);
-
-    return {
-      userId: studentId,
-      ...(profile.name?.trim() ? { name: profile.name.trim() } : {}),
-      ...(profile.accountId?.trim()
-        ? { accountId: profile.accountId.trim() }
-        : {}),
-    };
-  });
   const response = await apiClient.post<ApiCohort>(
     'TESTS',
     '/cohorts',
@@ -1003,10 +1079,6 @@ const upsertCohort = async (
         ...(startsAt ? { startsAt } : {}),
         ...(endsAt ? { endsAt } : {}),
       },
-      learnerIds: cohort.studentIds,
-      learners,
-      courseIds: cohort.courseIds,
-      courseSelections: cohort.courseSelections,
     },
   );
 
@@ -1017,11 +1089,186 @@ const upsertCohort = async (
     endDate: normalizeDateValue(cohort.endDate),
   });
 
-  const learnerIdBySuffix = new Map(
-    cohort.studentIds.map((studentId) => [getIdSuffix(studentId), studentId] as const),
+  return normalizeCohortWriteResult(response, cohort.studentIds || []);
+};
+
+const syncCourseLearningObjectives = async (
+  course: TeacherCourse,
+  learningObjectives: TeacherLearningObjective[],
+) => {
+  const desiredLearningObjectives = Array.from(
+    new Map(
+      learningObjectives.map((learningObjective) => [
+        learningObjective.id,
+        learningObjective,
+      ] as const),
+    ).values(),
+  );
+  const currentLearningObjectiveIds = new Set(
+    course.learningObjectives.map((learningObjective) => learningObjective.id),
+  );
+  const desiredLearningObjectiveIds = new Set(
+    desiredLearningObjectives.map((learningObjective) => learningObjective.id),
+  );
+  const learningObjectiveIdsToAdd = desiredLearningObjectives
+    .filter((learningObjective) => !currentLearningObjectiveIds.has(learningObjective.id))
+    .map((learningObjective) => learningObjective.id);
+  const learningObjectiveIdsToRemove = course.learningObjectives
+    .filter((learningObjective) => !desiredLearningObjectiveIds.has(learningObjective.id))
+    .map((learningObjective) => learningObjective.id);
+
+  let latestResponse: ApiCourse | null = null;
+
+  if (learningObjectiveIdsToAdd.length > 0) {
+    latestResponse = await apiClient.post<ApiCourse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives`,
+      {
+        learningObjectiveIds: learningObjectiveIdsToAdd,
+      },
+    );
+  }
+
+  for (const learningObjectiveId of learningObjectiveIdsToRemove) {
+    latestResponse = await apiClient.delete<ApiCourse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives/${encodeURIComponent(
+        getIdSuffix(learningObjectiveId),
+      )}`,
+    );
+  }
+
+  if (latestResponse) {
+    return normalizeCourseWriteResult(latestResponse, desiredLearningObjectives);
+  }
+
+  return {
+    ...course,
+    learningObjectives: desiredLearningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal: desiredLearningObjectives.length,
+    learningObjectivesWithoutItemsTotal: desiredLearningObjectives.filter(
+      (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+    ).length,
+  };
+};
+
+const attachCohortLearners = async (
+  cohort: TeacherCohort,
+  learnerIds: string[],
+) => {
+  if (learnerIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/learners`,
+    buildLearnerAttachPayload(learnerIds),
   );
 
-  return normalizeCohort(response, readMetadata(), learnerIdBySuffix);
+  return normalizeCohortWriteResult(response, [...cohort.studentIds, ...learnerIds]);
+};
+
+const removeCohortLearner = async (
+  cohort: TeacherCohort,
+  learnerId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/learners/${encodeURIComponent(
+      getIdSuffix(learnerId),
+    )}`,
+  );
+
+  return normalizeCohortWriteResult(
+    response,
+    cohort.studentIds.filter((studentId) => getIdSuffix(studentId) !== getIdSuffix(learnerId)),
+  );
+};
+
+const attachCohortCourses = async (
+  cohort: TeacherCohort,
+  courseIds: string[],
+) => {
+  if (courseIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses`,
+    {
+      courseIds,
+    },
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const removeCohortCourse = async (
+  cohort: TeacherCohort,
+  courseId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const appendCohortCourseLearningObjectives = async (
+  cohort: TeacherCohort,
+  courseId: string,
+  learningObjectiveIds: string[],
+) => {
+  if (learningObjectiveIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives`,
+    {
+      learningObjectiveIds,
+    },
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const removeCohortCourseLearningObjective = async (
+  cohort: TeacherCohort,
+  courseId: string,
+  learningObjectiveId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives/${encodeURIComponent(getIdSuffix(learningObjectiveId))}`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const clearCohortCourseLearningObjectives = async (
+  cohort: TeacherCohort,
+  courseId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
 };
 
 export const academyStudioBackend = {
@@ -1052,25 +1299,37 @@ export const academyStudioBackend = {
     removeCourseMetadata(course.id);
   },
 
-  saveCourseLearningObjectives: async (
-    course: Pick<
-      TeacherCourse,
-      | 'id'
-      | 'backendIdentifier'
-      | 'teacherId'
-      | 'curriculumId'
-      | 'title'
-      | 'summary'
-      | 'contentDrafts'
-    >,
+  saveCourseLearningObjectives: syncCourseLearningObjectives,
+
+  attachCourseLearningObjectives: async (
+    course: TeacherCourse,
     learningObjectives: TeacherLearningObjective[],
   ) =>
-    upsertCourse({
-      ...course,
-      learningObjectives,
-    }),
+    syncCourseLearningObjectives(course, [
+      ...course.learningObjectives,
+      ...learningObjectives,
+    ]),
+
+  removeCourseLearningObjective: async (
+    course: TeacherCourse,
+    learningObjectiveId: string,
+  ) =>
+    syncCourseLearningObjectives(
+      course,
+      course.learningObjectives.filter(
+        (learningObjective) => learningObjective.id !== learningObjectiveId,
+      ),
+    ),
 
   saveCohort: upsertCohort,
+
+  attachCohortLearners,
+  removeCohortLearner,
+  attachCohortCourses,
+  removeCohortCourse,
+  appendCohortCourseLearningObjectives,
+  removeCohortCourseLearningObjective,
+  clearCohortCourseLearningObjectives,
 
   publishCohortStudyPlanTemplate: async (
     cohort: Pick<TeacherCohort, 'id' | 'backendIdentifier'>,

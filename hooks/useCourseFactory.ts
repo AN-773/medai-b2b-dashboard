@@ -86,11 +86,11 @@ const countByStatus = (suggestions: LearningObjectiveSuggestion[]) => {
  * and review actions (edit / accept / reject, plus per-upload batch actions).
  *
  * `onObjectivesPromoted` is called after any acceptance so the host can refresh
- * the normal course learning-objectives list.
+ * the normal course learning-objectives list without reloading the whole page.
  */
 export const useCourseFactory = (
   courseIdentifier: string | null,
-  onObjectivesPromoted?: () => void,
+  onObjectivesPromoted?: (acceptedCount: number) => void,
 ) => {
   const [uploads, setUploads] = useState<CourseUpload[]>([]);
   const [suggestionsByUploadId, setSuggestionsByUploadId] = useState<
@@ -503,7 +503,7 @@ export const useCourseFactory = (
           acceptedLearningObjectiveId: result.learningObjectiveId,
           ...(result.suggestion || {}),
         }));
-        onObjectivesPromoted?.();
+        onObjectivesPromoted?.(1);
         return true;
       } catch (err) {
         if (isCourseScopeActive(scope)) {
@@ -571,7 +571,7 @@ export const useCourseFactory = (
         const uploadRow = uploads.find((upload) => upload.id === group.uploadId);
         if (uploadRow) await fetchSuggestionsForUpload(uploadRow);
         if (!isCourseScopeActive(scope)) return null;
-        if (result.accepted > 0) onObjectivesPromoted?.();
+        if (result.accepted > 0) onObjectivesPromoted?.(result.accepted);
         return result;
       } catch (err) {
         if (isCourseScopeActive(scope)) {

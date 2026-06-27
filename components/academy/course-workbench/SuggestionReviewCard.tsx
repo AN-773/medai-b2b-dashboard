@@ -20,6 +20,8 @@ import { bloomStyle } from './shared';
 interface SuggestionReviewCardProps {
   suggestion: LearningObjectiveSuggestion;
   isBusy: boolean;
+  /** Locks actions while a bulk accept/reject is running for this source. */
+  locked?: boolean;
   onSave: (payload: { title?: string; bloomLevel?: string }) => Promise<boolean>;
   onAccept: () => Promise<boolean>;
   onReject: () => Promise<boolean>;
@@ -92,6 +94,7 @@ const EvidenceChunkCard: React.FC<EvidenceChunkCardProps> = ({
 const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   suggestion,
   isBusy,
+  locked = false,
   onSave,
   onAccept,
   onReject,
@@ -102,6 +105,8 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   const [expandedChunkIds, setExpandedChunkIds] = useState<Record<string, boolean>>({});
 
   const isPending = suggestion.status === 'pending';
+  // Disabled while this card is processing, or a bulk op is running for the source.
+  const actionsDisabled = isBusy || locked;
 
   useEffect(() => {
     setTitle(suggestion.title);
@@ -207,7 +212,7 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
               <button
                 type="button"
                 onClick={() => void persistEdits()}
-                disabled={isBusy || !title.trim()}
+                disabled={actionsDisabled || !title.trim()}
                 title="Save edits"
                 className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
               >
@@ -217,7 +222,7 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
             <button
               type="button"
               onClick={() => void onReject()}
-              disabled={isBusy}
+              disabled={actionsDisabled}
               title="Reject"
               className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white p-2 text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
             >
@@ -226,7 +231,7 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
             <button
               type="button"
               onClick={() => void handleAccept()}
-              disabled={isBusy || !title.trim()}
+              disabled={actionsDisabled || !title.trim()}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#1BD183] px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
             >
               {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}

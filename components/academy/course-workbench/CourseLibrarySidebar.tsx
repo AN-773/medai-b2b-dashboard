@@ -3,6 +3,7 @@ import {
   BookOpen,
   Layers,
   Loader2,
+  Lock,
   Plus,
   Search,
   Trash2,
@@ -313,6 +314,12 @@ const CourseLibrarySidebar: React.FC<CourseLibrarySidebarProps> = ({
                         <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                           {objectiveCount} LO
                         </span>
+                        {course.locked && (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-700">
+                            <Lock size={10} />
+                            Locked
+                          </span>
+                        )}
                         {cohorts > 0 && (
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
                             {cohorts} cohort{cohorts === 1 ? '' : 's'}

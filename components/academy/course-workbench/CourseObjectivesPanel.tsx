@@ -5,6 +5,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   FileText,
   Layers,
@@ -56,6 +57,9 @@ const STATUS_FILTERS: { value: SuggestionStatus; label: string }[] = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
+/** Suggested objectives per page — a single source can yield 200+ suggestions. */
+const SUGGESTIONS_PER_PAGE = 20;
+
 const UPLOAD_STATUS_META: Record<
   UploadGroup['status'],
   { label: string; className: string }
@@ -71,6 +75,8 @@ interface CourseObjectivesPanelProps {
   attachedIds: Set<string>;
   /** Objective AI factory (upload sources → review suggestions). */
   factory: CourseFactory;
+  isGenerateOpen: boolean;
+  onGenerateOpenChange: (open: boolean) => void;
   onAttach: (objective: TeacherLearningObjective) => Promise<void>;
   onCreate: (objective: TeacherLearningObjective) => Promise<void>;
   onRemove: (objective: TeacherLearningObjective) => Promise<void>;
@@ -82,6 +88,8 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
   course,
   attachedIds,
   factory,
+  isGenerateOpen,
+  onGenerateOpenChange,
   onAttach,
   onCreate,
   onRemove,
@@ -96,9 +104,9 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
 
   // --- AI factory (generate from sources) -----------------------------------
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [showGenerate, setShowGenerate] = useState(false);
   const [isDragging, setDragging] = useState(false);
   const [statusFilter, setStatusFilter] = useState<SuggestionStatus>('pending');
+  const [suggestionPage, setSuggestionPage] = useState(1);
   const [confirmAction, setConfirmAction] = useState<{
     type: 'accept' | 'reject';
     group: UploadGroup;
@@ -187,12 +195,36 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
     [uploadGroups, selectedUploadId],
   );
 
+  // True while an accept-all / reject-all is running for the active source —
+  // used to lock every per-suggestion action so nothing fires concurrently.
+  const isBatchBusy = activeGroup ? busyUploadId === activeGroup.uploadId : false;
+
   const visibleSuggestions = useMemo(() => {
     const base = activeGroup ? activeGroup.suggestions : [];
     return base
       .filter((suggestion) => suggestion.status === statusFilter)
       .sort((left, right) => (left.createdAt || '').localeCompare(right.createdAt || ''));
   }, [activeGroup, statusFilter]);
+
+  const totalSuggestionPages = Math.max(
+    1,
+    Math.ceil(visibleSuggestions.length / SUGGESTIONS_PER_PAGE),
+  );
+
+  const pagedSuggestions = useMemo(() => {
+    const start = (suggestionPage - 1) * SUGGESTIONS_PER_PAGE;
+    return visibleSuggestions.slice(start, start + SUGGESTIONS_PER_PAGE);
+  }, [visibleSuggestions, suggestionPage]);
+
+  // Reset to the first page whenever the source or status filter changes.
+  useEffect(() => {
+    setSuggestionPage(1);
+  }, [selectedUploadId, statusFilter]);
+
+  // Clamp the page when the list shrinks (e.g. accepting/rejecting suggestions).
+  useEffect(() => {
+    setSuggestionPage((current) => Math.min(current, totalSuggestionPages));
+  }, [totalSuggestionPages]);
 
   const totalPendingFromAI = useMemo(
     () => uploadGroups.reduce((sum, group) => sum + group.pendingCount, 0),
@@ -275,18 +307,52 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
       );
     }
     return (
-      <div className="divide-y divide-slate-100 border-y border-slate-200">
-        {visibleSuggestions.map((suggestion) => (
-          <SuggestionReviewCard
-            key={suggestion.id}
-            suggestion={suggestion}
-            isBusy={busySuggestionId === suggestion.id}
-            onSave={(payload) => patchSuggestion(suggestion, payload)}
-            onAccept={() => acceptSuggestion(suggestion)}
-            onReject={() => rejectSuggestion(suggestion)}
-          />
-        ))}
-      </div>
+      <>
+        <div className="divide-y divide-slate-100 border-y border-slate-200">
+          {pagedSuggestions.map((suggestion) => (
+            <SuggestionReviewCard
+              key={suggestion.id}
+              suggestion={suggestion}
+              isBusy={busySuggestionId === suggestion.id}
+              locked={isBatchBusy}
+              onSave={(payload) => patchSuggestion(suggestion, payload)}
+              onAccept={() => acceptSuggestion(suggestion)}
+              onReject={() => rejectSuggestion(suggestion)}
+            />
+          ))}
+        </div>
+        {totalSuggestionPages > 1 && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-medium text-slate-500">
+              {visibleSuggestions.length} suggestion
+              {visibleSuggestions.length === 1 ? '' : 's'} · page {suggestionPage} of{' '}
+              {totalSuggestionPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSuggestionPage((current) => Math.max(1, current - 1))}
+                disabled={suggestionPage <= 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSuggestionPage((current) => Math.min(totalSuggestionPages, current + 1))
+                }
+                disabled={suggestionPage >= totalSuggestionPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -310,9 +376,9 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setShowGenerate((open) => !open)}
+            onClick={() => onGenerateOpenChange(!isGenerateOpen)}
             className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white shadow-lg transition active:scale-[0.98] ${
-              showGenerate
+              isGenerateOpen
                 ? 'bg-slate-900 shadow-slate-900/20'
                 : 'bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] shadow-[#1BD183]/20 hover:shadow-xl hover:shadow-[#1BD183]/30'
             }`}
@@ -323,13 +389,13 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
                 {totalPendingFromAI}
               </span>
             )}
-            {showGenerate ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {isGenerateOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         </div>
       </div>
 
       {/* AI factory section (collapsible) */}
-      {showGenerate && (
+      {isGenerateOpen && (
         <section className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -471,16 +537,20 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      disabled={busyUploadId === activeGroup.uploadId}
+                      disabled={isBatchBusy}
                       onClick={() => setConfirmAction({ type: 'accept', group: activeGroup })}
                       className="inline-flex items-center gap-1 rounded-lg bg-[#1BD183] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
                     >
-                      <CheckCheck size={11} />
+                      {isBatchBusy ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <CheckCheck size={11} />
+                      )}
                       Accept all
                     </button>
                     <button
                       type="button"
-                      disabled={busyUploadId === activeGroup.uploadId}
+                      disabled={isBatchBusy}
                       onClick={() => setConfirmAction({ type: 'reject', group: activeGroup })}
                       className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:opacity-50"
                     >

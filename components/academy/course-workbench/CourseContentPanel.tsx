@@ -381,10 +381,12 @@ const ItemDraftEditor: React.FC<{
 const ItemReviewCard: React.FC<{
   suggestion: ItemSuggestion;
   isBusy: boolean;
+  /** Locks actions while a bulk accept/reject is running. */
+  locked?: boolean;
   onSave: (draft: ItemSuggestionDraft) => Promise<boolean>;
   onAccept: () => void;
   onReject: () => void;
-}> = ({ suggestion, isBusy, onSave, onAccept, onReject }) => {
+}> = ({ suggestion, isBusy, locked = false, onSave, onAccept, onReject }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<ItemSuggestionDraft>(() =>
     cloneItemSuggestionDraft(suggestion.draft),
@@ -398,6 +400,8 @@ const ItemReviewCard: React.FC<{
   const editError = isEditing
     ? getDraftEditError(suggestion.type, editDraft)
     : null;
+  // Disabled while this card is processing, or a bulk op is running.
+  const actionsDisabled = isBusy || locked;
 
   const handleSave = async () => {
     if (editError) return;
@@ -415,7 +419,7 @@ const ItemReviewCard: React.FC<{
           {suggestion.status === 'pending' && !isEditing && (
             <button
               type="button"
-              disabled={isBusy}
+              disabled={actionsDisabled}
               onClick={() => setIsEditing(true)}
               className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:border-[#1BD183] hover:text-[#07895a] disabled:opacity-50"
             >
@@ -451,7 +455,7 @@ const ItemReviewCard: React.FC<{
             <>
               <button
                 type="button"
-                disabled={isBusy || Boolean(editError)}
+                disabled={actionsDisabled || Boolean(editError)}
                 onClick={() => void handleSave()}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1BD183] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
               >
@@ -464,7 +468,7 @@ const ItemReviewCard: React.FC<{
               </button>
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={actionsDisabled}
                 onClick={() => {
                   setEditDraft(cloneItemSuggestionDraft(suggestion.draft));
                   setIsEditing(false);
@@ -479,7 +483,7 @@ const ItemReviewCard: React.FC<{
             <>
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={actionsDisabled}
                 onClick={onAccept}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1BD183] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
               >
@@ -492,7 +496,7 @@ const ItemReviewCard: React.FC<{
               </button>
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={actionsDisabled}
                 onClick={onReject}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:opacity-50"
               >
@@ -710,6 +714,11 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
   const itemsActive = itemFactory.isGenerating || itemFactory.isPolling;
   const progress = getJobProgress(itemFactory.job);
 
+  // True while any bulk accept/reject (per-objective or whole batch) is running.
+  // Used to lock every per-item action so nothing fires concurrently.
+  const isBulkBusy =
+    itemFactory.busyObjectiveId !== null || itemFactory.isJobBatchBusy;
+
   const batchPlanEntries = useMemo(
     () => visiblePlanEntries(batchPlan),
     [batchPlan],
@@ -873,6 +882,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
             <ItemReviewCard
               suggestion={suggestion}
               isBusy={itemFactory.busySuggestionId === suggestion.id}
+              locked={isBulkBusy}
               onSave={(draft) => handleSaveSuggestion(suggestion, draft)}
               onAccept={() => void handleAcceptSuggestion(suggestion)}
               onReject={() => void handleRejectSuggestion(suggestion)}
@@ -1029,7 +1039,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
               </span>
               <button
                 type="button"
-                disabled={itemFactory.isJobBatchBusy}
+                disabled={isBulkBusy}
                 onClick={() => setBatchConfirm('accept')}
                 className="inline-flex items-center gap-1 rounded-lg bg-[#1BD183] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
               >
@@ -1042,7 +1052,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
               </button>
               <button
                 type="button"
-                disabled={itemFactory.isJobBatchBusy}
+                disabled={isBulkBusy}
                 onClick={() => setBatchConfirm('reject')}
                 className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:opacity-50"
               >
@@ -1361,16 +1371,20 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            disabled={itemFactory.busyObjectiveId === selectedObjective.id}
+                            disabled={isBulkBusy}
                             onClick={() => setConfirmAction('accept')}
                             className="inline-flex items-center gap-1 rounded-lg bg-[#1BD183] px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
                           >
-                            <CheckCheck size={11} />
+                            {itemFactory.busyObjectiveId === selectedObjective.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <CheckCheck size={11} />
+                            )}
                             Accept all
                           </button>
                           <button
                             type="button"
-                            disabled={itemFactory.busyObjectiveId === selectedObjective.id}
+                            disabled={isBulkBusy}
                             onClick={() => setConfirmAction('reject')}
                             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:opacity-50"
                           >
@@ -1403,6 +1417,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
                               key={suggestion.id}
                               suggestion={suggestion}
                               isBusy={itemFactory.busySuggestionId === suggestion.id}
+                              locked={isBulkBusy}
                               onSave={(draft) => handleSaveSuggestion(suggestion, draft)}
                               onAccept={() => void handleAcceptSuggestion(suggestion)}
                               onReject={() => void handleRejectSuggestion(suggestion)}
