@@ -17,6 +17,7 @@ import {
   ListChecks,
   Loader2,
   Lock,
+  Maximize2,
   Plus,
   RefreshCw,
   Save,
@@ -38,6 +39,8 @@ import {
   itemTitle,
   MODALITIES,
 } from '@/components/academy/course-workbench/ObjectiveItemsList';
+import SessionItemDetailModal from '@/components/academy/course-workbench/SessionItemDetailModal';
+import HoverTooltip from '@/components/academy/course-workbench/HoverTooltip';
 import { inputClass, SectionLabel } from './shared';
 
 interface CourseModulesPanelProps {
@@ -322,6 +325,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
   const [sessionToDelete, setSessionToDelete] = useState<TeacherCourseSession | null>(
     null,
   );
+  const [previewItem, setPreviewItem] = useState<SessionEligibleItem | null>(null);
   const activeCourseIdRef = useRef(course.id);
   const loadRequestIdRef = useRef(0);
   const moduleSaveRequestIdRef = useRef(0);
@@ -1401,12 +1405,12 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                   return (
                     <div key={group.objectiveId} className="min-w-0 space-y-2">
                       <div className="flex items-center justify-between gap-3">
-                        <h4
-                          title={group.objectiveTitle}
-                          className="min-w-0 truncate text-[11px] font-black uppercase tracking-[0.18em] text-slate-400"
+                        <HoverTooltip
+                          label={group.objectiveTitle}
+                          className="block min-w-0 truncate text-[11px] font-black uppercase tracking-[0.18em] text-slate-400"
                         >
                           {group.objectiveTitle}
-                        </h4>
+                        </HoverTooltip>
                         <button
                           type="button"
                           onClick={() => handleToggleGroup(group.items)}
@@ -1443,9 +1447,12 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                                 <Icon size={15} />
                               </span>
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-bold text-slate-900">
+                                <HoverTooltip
+                                  label={itemTitle(item)}
+                                  className="block truncate text-sm font-bold text-slate-900"
+                                >
                                   {itemTitle(item)}
-                                </span>
+                                </HoverTooltip>
                                 <span className="mt-1 flex flex-wrap items-center gap-2">
                                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                                     {formatSessionMode(item.type)}
@@ -1457,6 +1464,19 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                                   </span>
                                 </span>
                               </span>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  // Keep the wrapping label from toggling the checkbox.
+                                  event.preventDefault();
+                                  setPreviewItem(item);
+                                }}
+                                title="View item details"
+                                aria-label="View item details"
+                                className="mt-0.5 inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-[#1BD183] hover:text-[#16324F]"
+                              >
+                                <Maximize2 size={14} />
+                              </button>
                             </label>
                           );
                         })}
@@ -1844,6 +1864,11 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
         onCancel={() => {
           if (!isDeletingSession) setSessionToDelete(null);
         }}
+      />
+
+      <SessionItemDetailModal
+        item={previewItem}
+        onClose={() => setPreviewItem(null)}
       />
     </div>
   );
