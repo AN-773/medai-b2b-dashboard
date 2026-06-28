@@ -32,7 +32,6 @@ import {
   MasteryLoadingView,
   StatusBadge,
   findCohortByRouteId,
-  formatPacing,
   formatPercent,
   formatScore,
   getCohortIdentifier,
@@ -353,7 +352,7 @@ const MasteryLearnerView: React.FC = () => {
               <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
                 <span className="text-xs font-bold text-slate-500">Pacing</span>
                 <span className="text-xs font-black text-slate-800">
-                  {formatPacing(learnerReport?.metrics.pacing ?? 0)}
+                  {formatPercent(learnerReport?.metrics.pacing ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
