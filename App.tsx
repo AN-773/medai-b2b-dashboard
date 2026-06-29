@@ -27,7 +27,6 @@ import MasteryCohortView from './views/mastery/MasteryCohortView';
 import MasteryLearnerView from './views/mastery/MasteryLearnerView';
 import AIAgentCenter from './views/AIAgentCenter';
 import ExamBlueprintView from './views/ExamBlueprintView';
-import CurriculumHealthView from './views/CurriculumHealthView';
 import CurriculumWorkbenchView from './views/CurriculumWorkbenchView';
 import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
@@ -44,6 +43,44 @@ import CohortsView from './views/CohortsView';
 import CoursesView from './views/CoursesView';
 import DisciplinesView from './views/DisciplinesView';
 import StudyPlanAuditView from './views/StudyPlanAuditView';
+
+interface LegacyCurriculumViewProps {
+  homePath: string;
+}
+
+const LegacyCurriculumView: React.FC<LegacyCurriculumViewProps> = ({ homePath }) => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+      <div className="rounded-full bg-amber-100 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700">
+        Legacy Page
+      </div>
+      <h3 className="mt-5 text-2xl font-black uppercase tracking-tight text-slate-900">
+        Curriculum Health has moved
+      </h3>
+      <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
+        This old curriculum page is no longer used. Open the new Curriculum Workbench to manage curricula, organ systems, topics, and objectives.
+      </p>
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => navigate('/curricula')}
+          className="rounded-2xl bg-[#00AA55] px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-900/10 transition hover:bg-[#008f48]"
+        >
+          Open Curriculum Workbench
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(homePath)}
+          className="rounded-2xl border border-slate-200 bg-white px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50"
+        >
+          Back to dashboard
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -92,6 +129,8 @@ const DashboardLayout: React.FC = () => {
   };
 
   const activeView = getActiveView();
+  const isLegacyCurriculumRoute =
+    location.pathname === '/curriculum' || location.pathname.startsWith('/curriculum/');
 
   // Map View types to route paths
   const getRoutePath = (view: View): string => {
@@ -160,14 +199,15 @@ const DashboardLayout: React.FC = () => {
           { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
           { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
           { id: 'MASTERY', label: 'Student Mastery', icon: Users },
-          { id: 'CURRICULUM', label: 'Curriculum Health', icon: BookOpen },
           { id: 'CURRICULA', label: 'Curriculum Workbench', icon: Library },
           { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
           { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
         ]),
   ];
   const activeViewLabel =
-    navItems.find((n) => n.id === activeView)?.label || 'Mission Control';
+    isLegacyCurriculumRoute
+      ? 'Legacy Curriculum Page'
+      : navItems.find((n) => n.id === activeView)?.label || 'Mission Control';
 
   return (
     <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
@@ -237,7 +277,7 @@ const DashboardLayout: React.FC = () => {
         <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
           <div className="hidden xl:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
             MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
-            {activeView.split('_').join(' ')}
+            {isLegacyCurriculumRoute ? 'Legacy Curriculum' : activeView.split('_').join(' ')}
           </div>
           <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-10 gap-6">
             <div>
@@ -273,12 +313,8 @@ const DashboardLayout: React.FC = () => {
               <Route path="/disciplines" element={<DisciplinesView />} />
               <Route path="/cohort-studio" element={<Navigate to="/cohorts" replace />} />
               <Route
-                path="/curriculum"
-                element={
-                  <CurriculumHealthView
-                    onNavigate={(view, context) => handleNavigate(view, context)}
-                  />
-                }
+                path="/curriculum/*"
+                element={<LegacyCurriculumView homePath={isSuperadmin ? '/tenants' : '/faculty'} />}
               />
               <Route path="/curricula" element={<CurriculumWorkbenchView />} />
               <Route path="/assessment" element={<AssessmentPlaceholder />} />

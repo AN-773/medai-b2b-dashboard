@@ -394,7 +394,7 @@ const FacultyDashboard: React.FC = () => {
   };
 
   const handleSendResources = () => {
-    navigate('/curriculum');
+    navigate('/curricula');
   };
 
   const HeaderNavigation = () => (
