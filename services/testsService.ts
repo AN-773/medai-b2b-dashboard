@@ -431,13 +431,14 @@ export const testsService = {
 
   upsertLearningObjective: async (
     name: string,
-    syndromeId: string,
+    syndromeId: string | undefined,
     cognitiveSkillId: string,
     disciplines: string[],
     id?: string,
     examType?: string,
     subjectId?: string,
     curriculumId?: string,
+    courseId?: string,
   ): Promise<LearningObjective> => {
     let payload = {
       learningObjective: {
@@ -447,7 +448,8 @@ export const testsService = {
         // is silently dropped. Always optional; omitted stays null server-side.
         ...(curriculumId ? { curriculumId } : {}),
       },
-      syndromeId,
+      ...(syndromeId ? { syndromeId } : {}),
+      ...(courseId ? { courseId } : {}),
       cognitiveSkillId,
       disciplines,
       examType,

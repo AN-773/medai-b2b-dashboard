@@ -227,15 +227,17 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
     disciplines: string[];
     source: 'manual' | 'ai';
   }) => {
+    const createCourseScoped = !selectedSyndromeId;
     const created = await testsService.upsertLearningObjective(
       input.title,
-      selectedSyndromeId,
+      createCourseScoped ? undefined : selectedSyndromeId || undefined,
       input.cognitiveSkillId,
       input.disciplines,
       undefined,
       undefined, // exam scope is not used for course objectives
       selectedSubjectId || undefined,
       course.curriculumId ?? undefined,
+      createCourseScoped ? course.id : undefined,
     );
 
     const skillTitle = cognitiveSkills.find(
@@ -257,10 +259,6 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
   const handleManualSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedSyndromeId) {
-      setError('Pick a subtopic so the objective has a home in the curriculum.');
-      return;
-    }
     if (!title.trim()) {
       setError('Write the objective before creating it.');
       return;
@@ -288,10 +286,6 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
   };
 
   const handleGenerate = async () => {
-    if (!organSystemName || !topicName || !syndromeName) {
-      setError('Complete the placement (organ system → topic → subtopic) first.');
-      return;
-    }
     if (!selectedBloom || !selectedDisciplineId) return;
 
     const disciplineName =
@@ -302,9 +296,9 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
     setGenerated(null);
     try {
       const result = await testsService.generateLearningObjective(
-        organSystemName,
-        topicName,
-        syndromeName,
+        '',
+        '',
+        '',
         '',
         selectedBloom,
         disciplineName,
@@ -330,10 +324,6 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
   const handleSaveGenerated = async () => {
     if (!generated) return;
-    if (!selectedSyndromeId) {
-      setError('Pick a subtopic so the objective has a home in the curriculum.');
-      return;
-    }
     const cognitiveSkillId = bloomToCognitiveSkillId(generated.bloom_level);
     if (!cognitiveSkillId) {
       setError(`No cognitive skill matches "${generated.bloom_level}".`);
@@ -371,7 +361,6 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
   }, [mode, selectedDisciplineId, selectedDisciplines, disciplines]);
 
   const checklist = [
-    { label: 'Placement', done: Boolean(selectedSyndromeId) },
     { label: 'Objective text', done: Boolean(previewTitle) },
     {
       label: 'Cognitive skill',
@@ -381,11 +370,9 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
   if (!isOpen || typeof document === 'undefined') return null;
 
-  const canGenerate = Boolean(
-    selectedSyndromeId && selectedBloom && selectedDisciplineId,
-  );
+  const canGenerate = Boolean(selectedBloom && selectedDisciplineId);
   const canSubmitManual = Boolean(
-    selectedSyndromeId && title.trim() && selectedCognitiveSkillId,
+    title.trim() && selectedCognitiveSkillId,
   );
 
   const modalContent = (
@@ -439,7 +426,7 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
             </div>
             <div className="mt-3 space-y-4">
               <div>
-                <FieldLabel required>Organ system</FieldLabel>
+                <FieldLabel>Organ system</FieldLabel>
                 <NativeSelect
                   value={selectedOrganSystemId}
                   onChange={handleOrganSystemChange}
@@ -459,7 +446,7 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
               {selectedOrganSystemId && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <FieldLabel required>Topic</FieldLabel>
+                  <FieldLabel>Topic</FieldLabel>
                   <NativeSelect
                     value={selectedTopicId}
                     onChange={handleTopicChange}
@@ -480,7 +467,7 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
               {selectedTopicId && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <FieldLabel required>Subtopic</FieldLabel>
+                  <FieldLabel>Subtopic</FieldLabel>
                   <NativeSelect
                     value={selectedSyndromeId}
                     onChange={setSelectedSyndromeId}
@@ -654,8 +641,8 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
                     </button>
                     {!canGenerate && (
                       <p className="text-center text-[11px] font-medium text-slate-400">
-                        Complete the placement above, then pick a Bloom level and
-                        discipline.
+                        Pick a Bloom level and discipline to generate a
+                        course-scoped objective.
                       </p>
                     )}
                   </>
