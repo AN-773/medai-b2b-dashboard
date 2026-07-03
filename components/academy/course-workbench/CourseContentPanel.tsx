@@ -1,9 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   AlertTriangle,
   BookOpen,
   Check,
   CheckCheck,
+  ChevronLeft,
   ChevronRight,
   Pencil,
   GraduationCap,
@@ -99,6 +106,7 @@ const visiblePlanEntries = (plan: Record<ItemSuggestionType, number>) =>
   }));
 
 const COURSE_REVIEW_PAGE_SIZE = 100;
+const CONTENT_OBJECTIVES_PAGE_SIZE = 25;
 
 const EMPTY_COURSE_SUGGESTION_COUNTS: Record<SuggestionStatus, number> = {
   pending: 0,
@@ -561,6 +569,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
   refreshSignal,
 }) => {
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [batchPlan, setBatchPlan] =
     useState<Record<ItemSuggestionType, number>>(createDefaultPlan);
   const [objectivePlan, setObjectivePlan] =
@@ -589,18 +598,37 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
     null,
   );
   const [courseSuggestionsTick, setCourseSuggestionsTick] = useState(0);
+  const [objectivePage, setObjectivePage] = useState(1);
 
   const objectives = course.learningObjectives;
 
   const filteredObjectives = useMemo(() => {
-    const trimmed = query.trim().toLowerCase();
+    const trimmed = deferredQuery.trim().toLowerCase();
     if (!trimmed) return objectives;
     return objectives.filter(
       (objective) =>
         objective.title.toLowerCase().includes(trimmed) ||
         (objective.organSystem || '').toLowerCase().includes(trimmed),
     );
-  }, [objectives, query]);
+  }, [deferredQuery, objectives]);
+  const totalObjectivePages = Math.max(
+    1,
+    Math.ceil(filteredObjectives.length / CONTENT_OBJECTIVES_PAGE_SIZE),
+  );
+  const objectivePageStart = (objectivePage - 1) * CONTENT_OBJECTIVES_PAGE_SIZE;
+  const pagedObjectives = useMemo(
+    () =>
+      filteredObjectives.slice(
+        objectivePageStart,
+        objectivePageStart + CONTENT_OBJECTIVES_PAGE_SIZE,
+      ),
+    [filteredObjectives, objectivePageStart],
+  );
+  const objectiveRangeStart = filteredObjectives.length === 0 ? 0 : objectivePageStart + 1;
+  const objectiveRangeEnd =
+    filteredObjectives.length === 0
+      ? 0
+      : Math.min(filteredObjectives.length, objectivePageStart + CONTENT_OBJECTIVES_PAGE_SIZE);
 
   const objectiveTitleById = useMemo(() => {
     const titleById = new Map<string, string>();
@@ -630,7 +658,16 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
     setCourseSuggestionError(null);
     setCourseStatusFilter('pending');
     setReviewMode('by-objective');
+    setObjectivePage(1);
   }, [course.id]);
+
+  useEffect(() => {
+    setObjectivePage(1);
+  }, [query]);
+
+  useEffect(() => {
+    setObjectivePage((current) => Math.min(current, totalObjectivePages));
+  }, [totalObjectivePages]);
 
   const refreshCourseSuggestions = useCallback(() => {
     setCourseSuggestionsTick((tick) => tick + 1);
@@ -769,8 +806,8 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
     );
 
   const visibleObjectiveIds = useMemo(
-    () => filteredObjectives.map((objective) => objective.id),
-    [filteredObjectives],
+    () => pagedObjectives.map((objective) => objective.id),
+    [pagedObjectives],
   );
   const allVisibleSelected =
     visibleObjectiveIds.length > 0 &&
@@ -1173,7 +1210,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
               onClick={toggleSelectAllVisible}
               className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 hover:text-slate-800"
             >
-              {allVisibleSelected ? 'Clear all' : 'Select all'}
+              {allVisibleSelected ? 'Clear page' : 'Select page'}
             </button>
             <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
               {batchSelectedIds.length} selected for batch
@@ -1186,7 +1223,7 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
                 No objectives match “{query.trim()}”.
               </div>
             ) : (
-              filteredObjectives.map((objective) => {
+              pagedObjectives.map((objective) => {
                 const group = itemFactory.buildGroup(objective.id);
                 const isActive = selectedObjectiveId === objective.id;
                 const isChecked = batchSelectedIds.includes(objective.id);
@@ -1243,6 +1280,43 @@ const CourseContentPanel: React.FC<CourseContentPanelProps> = ({
               })
             )}
           </div>
+
+          {filteredObjectives.length > 0 && totalObjectivePages > 1 && (
+            <div className="mt-3 flex items-center justify-between gap-3 px-1">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                  Showing {objectiveRangeStart}-{objectiveRangeEnd} of {filteredObjectives.length}
+                </p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                  Page {objectivePage} of {totalObjectivePages}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={objectivePage <= 1}
+                  onClick={() => setObjectivePage((current) => Math.max(1, current - 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft size={12} />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={objectivePage >= totalObjectivePages}
+                  onClick={() =>
+                    setObjectivePage((current) =>
+                      Math.min(totalObjectivePages, current + 1),
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Selected objective workspace */}

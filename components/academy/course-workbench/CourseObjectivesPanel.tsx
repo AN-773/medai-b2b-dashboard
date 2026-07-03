@@ -22,7 +22,12 @@ import {
 } from 'lucide-react';
 import { testsService } from '@/services/testsService';
 import type { TeacherCourse, TeacherLearningObjective } from '@/types/AcademyStudioTypes';
-import type { LearningObjective } from '@/types/TestsServiceTypes';
+import type {
+  LearningObjective,
+  OrganSystem,
+  Syndrome,
+  Topic,
+} from '@/types/TestsServiceTypes';
 import type { SuggestionStatus } from '@/types/CourseStudioTypes';
 import type { UploadGroup, useCourseFactory } from '@/hooks/useCourseFactory';
 import { bloomStyle, getCourseObjectiveCount, SectionLabel } from './shared';
@@ -59,6 +64,10 @@ const STATUS_FILTERS: { value: SuggestionStatus; label: string }[] = [
 
 /** Suggested objectives per page — a single source can yield 200+ suggestions. */
 const SUGGESTIONS_PER_PAGE = 20;
+const CATALOG_PAGE_SIZE = 25;
+const ATTACHED_OBJECTIVES_PAGE_SIZE = 25;
+const catalogSelectClass =
+  'w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#1BD183] focus:bg-white focus:ring-2 focus:ring-[#1BD183]/15 disabled:cursor-not-allowed disabled:opacity-50';
 
 const UPLOAD_STATUS_META: Record<
   UploadGroup['status'],
@@ -78,6 +87,12 @@ interface CourseObjectivesPanelProps {
   isGenerateOpen: boolean;
   onGenerateOpenChange: (open: boolean) => void;
   onAttach: (objective: TeacherLearningObjective) => Promise<void>;
+  onAddAll: (filters: {
+    q?: string;
+    organSystemId?: string;
+    topicId?: string;
+    syndromeId?: string;
+  }) => Promise<{ matched: number; added: number; alreadyAttached: number }>;
   onCreate: (objective: TeacherLearningObjective) => Promise<void>;
   onRemove: (objective: TeacherLearningObjective) => Promise<void>;
   /** Jump to the Content tab with this objective preselected. */
@@ -91,16 +106,64 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
   isGenerateOpen,
   onGenerateOpenChange,
   onAttach,
+  onAddAll,
   onCreate,
   onRemove,
   onBuildContent,
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TeacherLearningObjective[]>([]);
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [attachedPage, setAttachedPage] = useState(1);
   const [isSearching, setSearching] = useState(false);
+  const [isAddingAll, setIsAddingAll] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isCreateOpen, setCreateOpen] = useState(false);
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0);
+  const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [syndromes, setSyndromes] = useState<Syndrome[]>([]);
+  const [selectedOrganSystemId, setSelectedOrganSystemId] = useState('');
+  const [selectedTopicId, setSelectedTopicId] = useState('');
+  const [selectedSyndromeId, setSelectedSyndromeId] = useState('');
+  const [isLoadingOrganSystems, setIsLoadingOrganSystems] = useState(false);
+  const [isLoadingTopics, setIsLoadingTopics] = useState(false);
+  const [isLoadingSyndromes, setIsLoadingSyndromes] = useState(false);
   const objectiveCount = getCourseObjectiveCount(course);
+  const trimmedQuery = query.trim();
+  const hasHierarchyFilter = Boolean(
+    selectedOrganSystemId || selectedTopicId || selectedSyndromeId,
+  );
+  const shouldApplyQuery =
+    trimmedQuery.length >= 2 || (hasHierarchyFilter && trimmedQuery.length > 0);
+  const hasActiveCatalogInputs = hasHierarchyFilter || trimmedQuery.length >= 2;
+  const totalCatalogPages = Math.max(
+    1,
+    Math.ceil(resultsTotal / CATALOG_PAGE_SIZE),
+  );
+  const totalAttachedPages = Math.max(
+    1,
+    Math.ceil(course.learningObjectives.length / ATTACHED_OBJECTIVES_PAGE_SIZE),
+  );
+  const attachedPageStart = (attachedPage - 1) * ATTACHED_OBJECTIVES_PAGE_SIZE;
+  const attachedPageObjectives = useMemo(
+    () =>
+      course.learningObjectives.slice(
+        attachedPageStart,
+        attachedPageStart + ATTACHED_OBJECTIVES_PAGE_SIZE,
+      ),
+    [attachedPageStart, course.learningObjectives],
+  );
+  const attachedRangeStart =
+    course.learningObjectives.length === 0 ? 0 : attachedPageStart + 1;
+  const attachedRangeEnd =
+    course.learningObjectives.length === 0
+      ? 0
+      : Math.min(
+          course.learningObjectives.length,
+          attachedPageStart + ATTACHED_OBJECTIVES_PAGE_SIZE,
+        );
 
   // --- AI factory (generate from sources) -----------------------------------
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -137,12 +200,56 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
   useEffect(() => {
     setQuery('');
     setResults([]);
-  }, [course.id]);
+    setResultsTotal(0);
+    setCatalogPage(1);
+    setAttachedPage(1);
+    setSelectedOrganSystemId('');
+    setSelectedTopicId('');
+    setSelectedSyndromeId('');
+    setTopics([]);
+    setSyndromes([]);
+    setSearching(false);
+
+    let cancelled = false;
+    setIsLoadingOrganSystems(true);
+    void testsService
+      .getOrganSystems(1, 200, undefined, course.curriculumId || undefined)
+      .then((response) => {
+        if (cancelled) return;
+        setOrganSystems(response.items || []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to load catalog organ systems:', error);
+        setOrganSystems([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingOrganSystems(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [course.id, course.curriculumId]);
 
   useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
+    setCatalogPage(1);
+  }, [query, selectedOrganSystemId, selectedTopicId, selectedSyndromeId, course.id]);
+
+  useEffect(() => {
+    setCatalogPage((current) => Math.min(current, totalCatalogPages));
+  }, [totalCatalogPages]);
+
+  useEffect(() => {
+    setAttachedPage((current) => Math.min(current, totalAttachedPages));
+  }, [totalAttachedPages]);
+
+  useEffect(() => {
+    if (!hasActiveCatalogInputs) {
       setResults([]);
+      setResultsTotal(0);
       setSearching(false);
       return;
     }
@@ -151,7 +258,15 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
     setSearching(true);
     const timer = window.setTimeout(() => {
       void testsService
-        .getLearningObjectives(1, 25, undefined, trimmed)
+        .listLearningObjectiveCatalog({
+          page: catalogPage,
+          limit: CATALOG_PAGE_SIZE,
+          q: shouldApplyQuery ? trimmedQuery : undefined,
+          curriculumId: course.curriculumId || undefined,
+          organSystemId: selectedOrganSystemId || undefined,
+          topicId: selectedTopicId || undefined,
+          syndromeId: selectedSyndromeId || undefined,
+        })
         .then((response) => {
           if (cancelled) return;
           setResults(
@@ -159,22 +274,86 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
               normalizeSearchLearningObjective(objective as SearchLearningObjective),
             ),
           );
+          setResultsTotal(response.total || 0);
         })
         .catch((searchError) => {
           if (cancelled) return;
           console.error('Failed to search learning objectives:', searchError);
           setResults([]);
+          setResultsTotal(0);
         })
         .finally(() => {
           if (!cancelled) setSearching(false);
         });
-    }, 250);
+    }, trimmedQuery.length > 0 ? 250 : 0);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [
+    catalogPage,
+    catalogRefreshKey,
+    course.curriculumId,
+    hasActiveCatalogInputs,
+    selectedOrganSystemId,
+    selectedSyndromeId,
+    selectedTopicId,
+    shouldApplyQuery,
+    trimmedQuery,
+  ]);
+
+  const handleOrganSystemChange = async (organSystemId: string) => {
+    setSelectedOrganSystemId(organSystemId);
+    setSelectedTopicId('');
+    setSelectedSyndromeId('');
+    setTopics([]);
+    setSyndromes([]);
+    if (!organSystemId) return;
+    setIsLoadingTopics(true);
+    try {
+      const response = await testsService.getTopics(organSystemId, 1, 200);
+      setTopics(response.items || []);
+    } catch (error) {
+      console.error('Failed to load catalog topics:', error);
+      setTopics([]);
+    } finally {
+      setIsLoadingTopics(false);
+    }
+  };
+
+  const handleTopicChange = async (topicId: string) => {
+    setSelectedTopicId(topicId);
+    setSelectedSyndromeId('');
+    setSyndromes([]);
+    if (!topicId) return;
+    setIsLoadingSyndromes(true);
+    try {
+      const response = await testsService.getSyndromes(topicId, 1, 200);
+      setSyndromes(response.items || []);
+    } catch (error) {
+      console.error('Failed to load catalog syndromes:', error);
+      setSyndromes([]);
+    } finally {
+      setIsLoadingSyndromes(false);
+    }
+  };
+
+  const handleAddAll = async () => {
+    if (!hasActiveCatalogInputs || isAddingAll) return;
+    setIsAddingAll(true);
+    try {
+      await onAddAll({
+        q: shouldApplyQuery ? trimmedQuery : undefined,
+        organSystemId: selectedOrganSystemId || undefined,
+        topicId: selectedTopicId || undefined,
+        syndromeId: selectedSyndromeId || undefined,
+      });
+      setCatalogRefreshKey((current) => current + 1);
+    } finally {
+      setIsAddingAll(false);
+    }
+  };
 
   const runAction = async (id: string, action: () => Promise<void>) => {
     setBusyId(id);
@@ -569,19 +748,127 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
       <div className="grid gap-8 xl:grid-cols-2">
         {/* Search / attach */}
         <section>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
-              <Search size={16} />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
+                <Search size={16} />
+              </div>
+              <div>
+                <SectionLabel>Catalog</SectionLabel>
+                <h3 className="text-lg font-black tracking-tight text-slate-900">
+                  Attach existing objectives
+                </h3>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {course.curriculumId
+                    ? 'Scoped to this course curriculum.'
+                    : 'Showing the tenant-wide learning objective catalog.'}
+                </p>
+              </div>
             </div>
-            <div>
-              <SectionLabel>Catalog</SectionLabel>
-              <h3 className="text-lg font-black tracking-tight text-slate-900">
-                Attach existing objectives
-              </h3>
+            <button
+              type="button"
+              disabled={
+                !hasActiveCatalogInputs ||
+                isAddingAll ||
+                isSearching ||
+                resultsTotal === 0
+              }
+              onClick={() => void handleAddAll()}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isAddingAll ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <CheckCheck size={13} />
+              )}
+              Add all
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="relative">
+              <select
+                value={selectedOrganSystemId}
+                onChange={(event) => void handleOrganSystemChange(event.target.value)}
+                disabled={isLoadingOrganSystems}
+                className={catalogSelectClass}
+              >
+                <option value="">All organ systems</option>
+                {organSystems.map((organSystem) => (
+                  <option key={organSystem.id} value={organSystem.id}>
+                    {organSystem.title}
+                  </option>
+                ))}
+              </select>
+              {isLoadingOrganSystems ? (
+                <Loader2
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
+                />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+              )}
+            </div>
+
+            <div className="relative">
+              <select
+                value={selectedTopicId}
+                onChange={(event) => void handleTopicChange(event.target.value)}
+                disabled={!selectedOrganSystemId || isLoadingTopics}
+                className={catalogSelectClass}
+              >
+                <option value="">All topics</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.title}
+                  </option>
+                ))}
+              </select>
+              {isLoadingTopics ? (
+                <Loader2
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
+                />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+              )}
+            </div>
+
+            <div className="relative">
+              <select
+                value={selectedSyndromeId}
+                onChange={(event) => setSelectedSyndromeId(event.target.value)}
+                disabled={!selectedTopicId || isLoadingSyndromes}
+                className={catalogSelectClass}
+              >
+                <option value="">All syndromes</option>
+                {syndromes.map((syndrome) => (
+                  <option key={syndrome.id} value={syndrome.id}>
+                    {syndrome.title}
+                  </option>
+                ))}
+              </select>
+              {isLoadingSyndromes ? (
+                <Loader2
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
+                />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+              )}
             </div>
           </div>
 
-          <div className="relative mt-5">
+          <div className="relative mt-4">
             <Search
               size={16}
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -594,6 +881,31 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
             />
           </div>
 
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+            <span>
+              {hasActiveCatalogInputs
+                ? `${resultsTotal} matching objective${resultsTotal === 1 ? '' : 's'}`
+                : 'Set a filter or type at least 2 characters to browse the catalog.'}
+            </span>
+            {hasHierarchyFilter || trimmedQuery.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setSelectedOrganSystemId('');
+                  setSelectedTopicId('');
+                  setSelectedSyndromeId('');
+                  setTopics([]);
+                  setSyndromes([]);
+                }}
+                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:text-slate-700"
+              >
+                <XCircle size={12} />
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+
           <div className="mt-4 max-h-[420px] divide-y divide-slate-100 overflow-y-auto border-t border-slate-200 pr-1 custom-scrollbar">
             {isSearching && (
               <div className="flex items-center gap-2 px-1 py-3 text-sm font-semibold text-slate-500">
@@ -601,15 +913,16 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
               </div>
             )}
 
-            {!isSearching && query.trim().length >= 2 && results.length === 0 && (
+            {!isSearching && hasActiveCatalogInputs && results.length === 0 && (
               <div className="px-1 py-10 text-center text-sm font-semibold text-slate-500">
-                No objectives matched “{query.trim()}”.
+                No objectives matched the current catalog filters.
               </div>
             )}
 
-            {!isSearching && query.trim().length < 2 && (
+            {!isSearching && !hasActiveCatalogInputs && (
               <div className="px-1 py-10 text-center text-sm font-medium text-slate-500">
-                Type at least 2 characters to search the catalog.
+                Choose an organ system, topic, syndrome, or type at least 2
+                characters to search the catalog.
               </div>
             )}
 
@@ -659,6 +972,38 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
               );
             })}
           </div>
+
+          {hasActiveCatalogInputs && totalCatalogPages > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-slate-500">
+                Page {catalogPage} of {totalCatalogPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={catalogPage <= 1 || isSearching}
+                  onClick={() => setCatalogPage((current) => Math.max(1, current - 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft size={12} />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={catalogPage >= totalCatalogPages || isSearching}
+                  onClick={() =>
+                    setCatalogPage((current) =>
+                      Math.min(totalCatalogPages, current + 1),
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Attached list */}
@@ -682,7 +1027,7 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
                 generate them from your source material above.
               </div>
             ) : (
-              course.learningObjectives.map((objective) => (
+              attachedPageObjectives.map((objective) => (
                 <div key={objective.id} className="px-1 py-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -732,6 +1077,44 @@ const CourseObjectivesPanel: React.FC<CourseObjectivesPanelProps> = ({
               ))
             )}
           </div>
+
+          {course.learningObjectives.length > 0 && totalAttachedPages > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-slate-500">
+                  Showing {attachedRangeStart}-{attachedRangeEnd} of{' '}
+                  {course.learningObjectives.length}
+                </p>
+                <p className="text-[11px] font-semibold text-slate-400">
+                  Page {attachedPage} of {totalAttachedPages}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={attachedPage <= 1}
+                  onClick={() => setAttachedPage((current) => Math.max(1, current - 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft size={12} />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={attachedPage >= totalAttachedPages}
+                  onClick={() =>
+                    setAttachedPage((current) =>
+                      Math.min(totalAttachedPages, current + 1),
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-[#1BD183] hover:text-[#0f7a4d] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
 

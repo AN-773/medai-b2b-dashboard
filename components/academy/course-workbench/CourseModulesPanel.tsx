@@ -96,6 +96,7 @@ const MODE_STYLES: Record<TeacherCourseSessionMode, string> = {
 const UNGROUPED_MODULE_ID = '__ungrouped__';
 const OBJECTIVES_PER_PAGE = 20;
 const ITEMS_PAGE_SIZE = 200;
+const ITEM_FETCH_CONCURRENCY = 4;
 
 const sortModules = (modules: TeacherCourseModule[]) =>
   [...modules].sort((left, right) => {
@@ -275,6 +276,22 @@ const listObjectiveItems = async (
   );
 };
 
+const listObjectiveItemsInBatches = async (
+  objectives: TeacherCourse['learningObjectives'],
+): Promise<SessionEligibleItem[]> => {
+  const items: SessionEligibleItem[] = [];
+
+  for (let index = 0; index < objectives.length; index += ITEM_FETCH_CONCURRENCY) {
+    const chunk = objectives.slice(index, index + ITEM_FETCH_CONCURRENCY);
+    const chunkItems = await Promise.all(
+      chunk.map((objective) => listObjectiveItems(objective)),
+    );
+    items.push(...chunkItems.flat());
+  }
+
+  return items;
+};
+
 const sortEligibleItems = (items: SessionEligibleItem[]) =>
   [...items].sort((left, right) => {
     if (left.objectiveTitle !== right.objectiveTitle) {
@@ -312,6 +329,12 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [pickerPage, setPickerPage] = useState(1);
+  const [loadedObjectiveIds, setLoadedObjectiveIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [loadingObjectiveIds, setLoadingObjectiveIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingModule, setIsSavingModule] = useState(false);
   const [isDeletingModule, setIsDeletingModule] = useState(false);
@@ -337,6 +360,14 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
   activeCourseIdRef.current = course.id;
 
   const realModules = useMemo(() => sortModules(modules), [modules]);
+
+  const objectiveById = useMemo(
+    () =>
+      new Map(
+        course.learningObjectives.map((objective) => [objective.id, objective] as const),
+      ),
+    [course.learningObjectives],
+  );
 
   const objectiveTitleById = useMemo(
     () =>
@@ -436,15 +467,14 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
     setStatusMessage(null);
 
     try {
-      const [loadedModules, loadedSessions, itemPages] = await Promise.all([
+      const [loadedModules, loadedSessions] = await Promise.all([
         academyStudioBackend.listCourseModules(course),
         academyStudioBackend.listCourseSessions(course),
-        Promise.all(course.learningObjectives.map((objective) => listObjectiveItems(objective))),
       ]);
 
-      const mergedItems = hydrateEligibleItems(
-        loadedSessions,
-        itemPages.flat(),
+      const mergedItems = hydrateEligibleItems(loadedSessions, []);
+      const sessionObjectiveIds = new Set(
+        collectObjectiveIds(loadedSessions.flatMap((session) => session.items)),
       );
       const orderedModules = sortModules(loadedModules);
       const orderedSessions = sortSessions(loadedSessions);
@@ -471,6 +501,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       setModules(orderedModules);
       setSessions(orderedSessions);
       setEligibleItems(mergedItems);
+      setLoadedObjectiveIds(sessionObjectiveIds);
+      setLoadingObjectiveIds(new Set());
       setSelectedModuleId(initialModuleId);
       setEditorMode('module');
       setIsCreatingSession(false);
@@ -508,6 +540,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       setModules([]);
       setSessions([]);
       setEligibleItems([]);
+      setLoadedObjectiveIds(new Set());
+      setLoadingObjectiveIds(new Set());
       setObjectivePriorityIds([]);
       setSelectedModuleId(null);
       setIsCreatingSession(false);
@@ -535,6 +569,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
     setModules([]);
     setSessions([]);
     setEligibleItems([]);
+    setLoadedObjectiveIds(new Set());
+    setLoadingObjectiveIds(new Set());
     setObjectivePriorityIds([]);
     setSelectedModuleId(null);
     setIsCreatingSession(false);
@@ -562,7 +598,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
 
   useEffect(() => {
     setPickerPage(1);
-  }, [deferredSearch, eligibleItems]);
+  }, [deferredSearch]);
 
   const displayedModules = useMemo(() => {
     const counts = sessions.reduce((byModule, session) => {
@@ -703,6 +739,18 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
     [eligibleItems],
   );
 
+  const eligibleItemsByObjectiveId = useMemo(() => {
+    const byObjective = new Map<string, SessionEligibleItem[]>();
+
+    eligibleItems.forEach((item) => {
+      const items = byObjective.get(item.objectiveId) || [];
+      items.push(item);
+      byObjective.set(item.objectiveId, items);
+    });
+
+    return byObjective;
+  }, [eligibleItems]);
+
   const selectedItems = useMemo(
     () =>
       form.itemIds
@@ -714,6 +762,32 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
   const selectedMode = useMemo(
     () => sessionModeFromItems(selectedItems),
     [selectedItems],
+  );
+
+  const sessionObjectiveIds = useMemo(
+    () => new Set(collectObjectiveIds(sessions.flatMap((session) => session.items))),
+    [sessions],
+  );
+
+  const availableObjectives = useMemo(
+    () =>
+      course.learningObjectives.filter(
+        (objective) =>
+          (objective.itemTotals?.total ?? 0) > 0 || sessionObjectiveIds.has(objective.id),
+      ),
+    [course.learningObjectives, sessionObjectiveIds],
+  );
+
+  const availableItemTotal = useMemo(
+    () =>
+      Math.max(
+        availableObjectives.reduce(
+          (total, objective) => total + (objective.itemTotals?.total ?? 0),
+          0,
+        ),
+        eligibleItems.length,
+      ),
+    [availableObjectives, eligibleItems.length],
   );
 
   const prioritizedObjectiveIds = useMemo(
@@ -730,52 +804,66 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
     [selectedItems],
   );
 
-  const visibleItems = useMemo(
-    () =>
-      deferredSearch
-        ? eligibleItems.filter((item) => {
-            const haystack = [
-              itemTitle(item),
-              item.objectiveTitle,
-              item.identifier,
-              item.type,
-              item.status,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase();
-            return haystack.includes(deferredSearch);
-          })
-        : eligibleItems,
-    [deferredSearch, eligibleItems],
-  );
-
   const allGroups = useMemo(() => {
     const selectedIds = new Set(form.itemIds);
-    const groups = new Map<
-      string,
-      { objectiveTitle: string; items: SessionEligibleItem[] }
-    >();
+    return availableObjectives
+      .map((objective) => {
+        const loadedItems = sortEligibleItems(
+          eligibleItemsByObjectiveId.get(objective.id) || [],
+        );
+        const objectiveSearchText = [objective.title, objective.organSystem]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        const objectiveMatchesSearch = deferredSearch
+          ? objectiveSearchText.includes(deferredSearch)
+          : true;
+        const filteredItems = !deferredSearch
+          ? loadedItems
+          : objectiveMatchesSearch
+            ? loadedItems
+            : loadedItems.filter((item) => {
+                const haystack = [
+                  itemTitle(item),
+                  item.objectiveTitle,
+                  item.identifier,
+                  item.type,
+                  item.status,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                  .toLowerCase();
+                return haystack.includes(deferredSearch);
+              });
 
-    visibleItems.forEach((item) => {
-      const group =
-        groups.get(item.objectiveId) || {
-          objectiveTitle: item.objectiveTitle,
-          items: [],
-        };
-      group.items.push(item);
-      groups.set(item.objectiveId, group);
-    });
+        if (deferredSearch && !objectiveMatchesSearch && filteredItems.length === 0) {
+          return null;
+        }
 
-    return Array.from(groups.entries())
-      .map(([objectiveId, group]) => {
-        const sorted = sortEligibleItems(group.items);
         const items = [
-          ...sorted.filter((item) => selectedIds.has(item.id)),
-          ...sorted.filter((item) => !selectedIds.has(item.id)),
+          ...filteredItems.filter((item) => selectedIds.has(item.id)),
+          ...filteredItems.filter((item) => !selectedIds.has(item.id)),
         ];
-        return { objectiveId, objectiveTitle: group.objectiveTitle, items };
+
+        return {
+          objectiveId: objective.id,
+          objectiveTitle: objective.title,
+          items,
+          itemTotal: objective.itemTotals?.total ?? loadedItems.length,
+          isLoading: loadingObjectiveIds.has(objective.id),
+        };
       })
+      .filter(
+        (
+          group,
+        ): group is {
+          objectiveId: string;
+          objectiveTitle: string;
+          items: SessionEligibleItem[];
+          itemTotal: number;
+          isLoading: boolean;
+        } => Boolean(group),
+      )
       .sort((left, right) => {
         const leftIsPrioritized = prioritizedObjectiveIds.has(left.objectiveId);
         const rightIsPrioritized = prioritizedObjectiveIds.has(right.objectiveId);
@@ -784,7 +872,14 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
         }
         return left.objectiveTitle.localeCompare(right.objectiveTitle);
       });
-  }, [prioritizedObjectiveIds, visibleItems, form.itemIds]);
+  }, [
+    availableObjectives,
+    deferredSearch,
+    eligibleItemsByObjectiveId,
+    form.itemIds,
+    loadingObjectiveIds,
+    prioritizedObjectiveIds,
+  ]);
 
   const pickerTotalPages = Math.max(
     1,
@@ -800,6 +895,99 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       ),
     [allGroups, pickerCurrentPage],
   );
+
+  const selectedObjectiveIds = useMemo(
+    () => collectObjectiveIds(selectedItems),
+    [selectedItems],
+  );
+
+  useEffect(() => {
+    if (editorMode !== 'session') {
+      return;
+    }
+
+    const objectiveIdsToLoad = Array.from(
+      new Set([
+        ...groupedVisibleItems.map((group) => group.objectiveId),
+        ...selectedObjectiveIds,
+        ...objectivePriorityIds,
+      ]),
+    ).filter(
+      (objectiveId) =>
+        objectiveById.has(objectiveId) &&
+        !loadedObjectiveIds.has(objectiveId) &&
+        !loadingObjectiveIds.has(objectiveId),
+    );
+
+    if (objectiveIdsToLoad.length === 0) {
+      return;
+    }
+
+    const objectivesToLoad = objectiveIdsToLoad
+      .map((objectiveId) => objectiveById.get(objectiveId))
+      .filter(
+        (
+          objective,
+        ): objective is TeacherCourse['learningObjectives'][number] => Boolean(objective),
+      );
+
+    if (objectivesToLoad.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadError(null);
+    setLoadingObjectiveIds((current) => {
+      const next = new Set(current);
+      objectiveIdsToLoad.forEach((objectiveId) => next.add(objectiveId));
+      return next;
+    });
+
+    void listObjectiveItemsInBatches(objectivesToLoad)
+      .then((fetchedItems) => {
+        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        setEligibleItems((current) =>
+          hydrateEligibleItems(sessions, [...current, ...fetchedItems]),
+        );
+        setLoadedObjectiveIds((current) => {
+          const next = new Set(current);
+          objectiveIdsToLoad.forEach((objectiveId) => next.add(objectiveId));
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to load course items for the modules picker:', error);
+        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load course items for this page.',
+        );
+      })
+      .finally(() => {
+        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        setLoadingObjectiveIds((current) => {
+          const next = new Set(current);
+          objectiveIdsToLoad.forEach((objectiveId) => next.delete(objectiveId));
+          return next;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    course.id,
+    editorMode,
+    groupedVisibleItems,
+    hydrateEligibleItems,
+    loadedObjectiveIds,
+    loadingObjectiveIds,
+    objectiveById,
+    objectivePriorityIds,
+    selectedObjectiveIds,
+    sessions,
+  ]);
 
   const currentSession = useMemo(
     () =>
@@ -1351,7 +1539,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
             <div className="min-w-0">
               <SectionLabel>Course items</SectionLabel>
               <p className="mt-1 text-sm text-slate-500">
-                Pick any mix of items linked to this course.
+                Pick any mix of items linked to this course. Item groups load a
+                page at a time so large courses stay responsive.
               </p>
             </div>
             <label className="relative block w-full sm:w-72">
@@ -1386,12 +1575,12 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
             </div>
           )}
 
-          {eligibleItems.length === 0 ? (
+          {availableItemTotal === 0 ? (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm font-medium text-slate-500">
               This course does not have any linked items yet. Create or approve
               content on the Content tab first.
             </div>
-          ) : visibleItems.length === 0 ? (
+          ) : allGroups.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm font-medium text-slate-500">
               No course items match this search.
             </div>
@@ -1399,7 +1588,9 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
             <>
               <div className="mt-5 space-y-6">
                 {groupedVisibleItems.map((group) => {
-                  const allSelected = group.items.every((item) =>
+                  const allSelected =
+                    group.items.length > 0 &&
+                    group.items.every((item) =>
                     form.itemIds.includes(item.id),
                   );
                   return (
@@ -1414,73 +1605,85 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleGroup(group.items)}
+                          disabled={group.items.length === 0 || group.isLoading}
                           className="inline-flex flex-shrink-0 items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 transition hover:text-[#1BD183]"
                         >
                           <CheckCheck size={12} />
                           {allSelected ? 'Clear' : 'Select all'}
                         </button>
                       </div>
-                      <div className="grid gap-2 lg:grid-cols-2">
-                        {group.items.map((item) => {
-                          const modality = modalityByType.get(item.type);
-                          const Icon = modality?.icon || Layers;
-                          const isSelected = form.itemIds.includes(item.id);
+                      {group.isLoading ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm font-medium text-slate-500">
+                          <Loader2 size={16} className="mx-auto mb-2 animate-spin text-[#1BD183]" />
+                          Loading items for this objective…
+                        </div>
+                      ) : group.items.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm font-medium text-slate-500">
+                          No items available in this objective for the current search.
+                        </div>
+                      ) : (
+                        <div className="grid gap-2 lg:grid-cols-2">
+                          {group.items.map((item) => {
+                            const modality = modalityByType.get(item.type);
+                            const Icon = modality?.icon || Layers;
+                            const isSelected = form.itemIds.includes(item.id);
 
-                          return (
-                            <label
-                              key={item.id}
-                              className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition ${
-                                isSelected
-                                  ? 'border-[#1BD183] bg-emerald-50/70'
-                                  : 'border-slate-200 bg-white hover:border-slate-300'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => handleToggleItem(item.id)}
-                                className="mt-1 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-[#1BD183] focus:ring-[#1BD183]"
-                              />
-                              <span
-                                className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${modality?.badge || 'border-slate-200 bg-slate-50 text-slate-500'}`}
+                            return (
+                              <label
+                                key={item.id}
+                                className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition ${
+                                  isSelected
+                                    ? 'border-[#1BD183] bg-emerald-50/70'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                                }`}
                               >
-                                <Icon size={15} />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <HoverTooltip
-                                  label={itemTitle(item)}
-                                  className="block truncate text-sm font-bold text-slate-900"
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleItem(item.id)}
+                                  className="mt-1 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-[#1BD183] focus:ring-[#1BD183]"
+                                />
+                                <span
+                                  className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${modality?.badge || 'border-slate-200 bg-slate-50 text-slate-500'}`}
                                 >
-                                  {itemTitle(item)}
-                                </HoverTooltip>
-                                <span className="mt-1 flex flex-wrap items-center gap-2">
-                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                                    {formatSessionMode(item.type)}
-                                  </span>
-                                  <span
-                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${STATUS_STYLES[item.status]}`}
+                                  <Icon size={15} />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <HoverTooltip
+                                    label={itemTitle(item)}
+                                    className="block truncate text-sm font-bold text-slate-900"
                                   >
-                                    {item.status}
+                                    {itemTitle(item)}
+                                  </HoverTooltip>
+                                  <span className="mt-1 flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                      {formatSessionMode(item.type)}
+                                    </span>
+                                    <span
+                                      className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${STATUS_STYLES[item.status]}`}
+                                    >
+                                      {item.status}
+                                    </span>
                                   </span>
                                 </span>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  // Keep the wrapping label from toggling the checkbox.
-                                  event.preventDefault();
-                                  setPreviewItem(item);
-                                }}
-                                title="View item details"
-                                aria-label="View item details"
-                                className="mt-0.5 inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-[#1BD183] hover:text-[#16324F]"
-                              >
-                                <Maximize2 size={14} />
-                              </button>
-                            </label>
-                          );
-                        })}
-                      </div>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    // Keep the wrapping label from toggling the checkbox.
+                                    event.preventDefault();
+                                    setPreviewItem(item);
+                                  }}
+                                  title="View item details"
+                                  aria-label="View item details"
+                                  className="mt-0.5 inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-[#1BD183] hover:text-[#16324F]"
+                                >
+                                  <Maximize2 size={14} />
+                                </button>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1553,8 +1756,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
             <span className="text-slate-900">{sessions.length}</span>
             sessions
             <span className="text-slate-300">·</span>
-            <span className="text-slate-900">{eligibleItems.length}</span>
-            items
+            <span className="text-slate-900">{availableItemTotal}</span>
+            available items
           </div>
           <span
             title={

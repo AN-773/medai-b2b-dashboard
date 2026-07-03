@@ -118,6 +118,12 @@ interface ApiCourse {
   updatedAt?: string;
 }
 
+interface CourseLearningObjectiveAddAllResult {
+  matched: number;
+  added: number;
+  alreadyAttached: number;
+}
+
 interface ApiCourseSession {
   id: string;
   identifier?: string;
@@ -1562,6 +1568,26 @@ export const academyStudioBackend = {
       course.learningObjectives.filter(
         (learningObjective) => learningObjective.id !== learningObjectiveId,
       ),
+    ),
+
+  addAllCourseLearningObjectives: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier' | 'curriculumId'>,
+    filters: {
+      q?: string;
+      organSystemId?: string;
+      topicId?: string;
+      syndromeId?: string;
+    },
+  ): Promise<CourseLearningObjectiveAddAllResult> =>
+    apiClient.post<CourseLearningObjectiveAddAllResult>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives/add-all`,
+      {
+        ...(filters.q ? { q: filters.q } : {}),
+        ...(filters.organSystemId ? { organSystemId: filters.organSystemId } : {}),
+        ...(filters.topicId ? { topicId: filters.topicId } : {}),
+        ...(filters.syndromeId ? { syndromeId: filters.syndromeId } : {}),
+      },
     ),
 
   saveCohort: upsertCohort,

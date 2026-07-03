@@ -644,6 +644,33 @@ const CoursesView: React.FC = () => {
     }
   };
 
+  const handleAddAllObjectives = async (filters: {
+    q?: string;
+    organSystemId?: string;
+    topicId?: string;
+    syndromeId?: string;
+  }) => {
+    if (!selectedCourse) {
+      return { matched: 0, added: 0, alreadyAttached: 0 };
+    }
+    try {
+      const result = await academyStudioBackend.addAllCourseLearningObjectives(
+        selectedCourse,
+        filters,
+      );
+      await refreshSelectedCourseObjectives();
+      flashMessage(
+        result.added === 1
+          ? 'Added 1 objective from the catalog.'
+          : `Added ${result.added} objectives from the catalog.`,
+      );
+      return result;
+    } catch (error) {
+      reportError(error, 'Unable to add all matching learning objectives.');
+      throw error;
+    }
+  };
+
   const handleCreateObjective = async (objective: TeacherLearningObjective) => {
     if (!selectedCourse) return;
     // Created objectives surface their own error in the modal, so let failures
@@ -848,6 +875,7 @@ const CoursesView: React.FC = () => {
                     isGenerateOpen={isObjectiveFactoryOpen}
                     onGenerateOpenChange={setIsObjectiveFactoryOpen}
                     onAttach={handleAttachObjective}
+                    onAddAll={handleAddAllObjectives}
                     onCreate={handleCreateObjective}
                     onRemove={handleRemoveObjective}
                     onBuildContent={(objective) => {
