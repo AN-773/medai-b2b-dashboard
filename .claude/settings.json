@@ -1,8 +1,25 @@
 {
   "permissions": {
     "deny": [
-      "Git rm"
+      "Bash(git rm:*)",
+      "Read(./.env)",
+      "Edit(./.env)"
     ],
     "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r \".tool_input.file_path // empty\" | { read -r f; case \"$f\" in *.ts|*.tsx) cd \"$CLAUDE_PROJECT_DIR\" && rel=\"${f#\"$CLAUDE_PROJECT_DIR\"/}\"; out=$(npx tsc --noEmit 2>&1 | grep -F \"$rel(\" || true); if [ -n \"$out\" ]; then echo \"$out\" | head -20 >&2; exit 2; fi ;; esac; }",
+            "timeout": 120,
+            "statusMessage": "Type-checking edited file..."
+          }
+        ]
+      }
+    ]
   }
 }
