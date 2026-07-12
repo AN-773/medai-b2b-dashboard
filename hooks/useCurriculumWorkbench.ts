@@ -57,8 +57,17 @@ export interface UseCurriculumWorkbenchReturn {
   isMutating: boolean;
   actionError: string | null;
   clearActionError: () => void;
-  createCurriculum: (title: string, visible: boolean) => Promise<Curriculum | null>;
-  renameCurriculum: (id: string, title: string, visible: boolean) => Promise<void>;
+  createCurriculum: (
+    title: string,
+    visible: boolean,
+    summary?: string,
+  ) => Promise<Curriculum | null>;
+  renameCurriculum: (
+    id: string,
+    title: string,
+    visible: boolean,
+    summary?: string,
+  ) => Promise<void>;
   deleteCurriculum: (identifier: string) => Promise<void>;
 
   // Capabilities
@@ -193,11 +202,20 @@ export const useCurriculumWorkbench = (): UseCurriculumWorkbenchReturn => {
   );
 
   const createCurriculum = useCallback(
-    async (title: string, visible: boolean): Promise<Curriculum | null> => {
+    async (
+      title: string,
+      visible: boolean,
+      summary?: string,
+    ): Promise<Curriculum | null> => {
       setIsMutating(true);
       setActionError(null);
       try {
-        const created = await curriculumService.upsertCurriculum(title, undefined, visible);
+        const created = await curriculumService.upsertCurriculum(
+          title,
+          undefined,
+          visible,
+          summary,
+        );
         refreshList();
         const slug = created ? identifierOf(created) : '';
         if (slug) {
@@ -215,11 +233,16 @@ export const useCurriculumWorkbench = (): UseCurriculumWorkbenchReturn => {
   );
 
   const renameCurriculum = useCallback(
-    async (id: string, title: string, visible: boolean): Promise<void> => {
+    async (
+      id: string,
+      title: string,
+      visible: boolean,
+      summary?: string,
+    ): Promise<void> => {
       setIsMutating(true);
       setActionError(null);
       try {
-        await curriculumService.upsertCurriculum(title, id, visible);
+        await curriculumService.upsertCurriculum(title, id, visible, summary);
         refreshList();
       } catch (error) {
         setActionError(friendlyError(error, 'update'));

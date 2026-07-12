@@ -21,6 +21,8 @@ export interface CohortMetricsWindow {
   daysElapsed: number;
   daysRemaining: number;
   expectedLOsCovered: number;
+  expectedLOsByNow?: number;
+  expectedSessionsByNow?: number;
 }
 
 export interface CohortMetricsProgress {
@@ -28,6 +30,10 @@ export interface CohortMetricsProgress {
   itemsAnswered: number;
   itemsCorrect: number;
   itemsIncorrect: number;
+  sessionsTotal?: number;
+  sessionsCompleted?: number;
+  sessionsDue?: number;
+  sessionsRemaining?: number;
   lastAnsweredAt?: string;
 }
 

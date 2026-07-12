@@ -11,7 +11,8 @@ import {
   Trash2,
   MonitorPlay,
   FileText,
-  ClipboardCheck
+  ClipboardCheck,
+  Layers
 } from 'lucide-react';
 import { Question, BloomsLevel, Issue, ItemType } from '../types';
 
@@ -64,6 +65,15 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
       mainIcon: FileText,
       tableCol: 'Prompt Text',
       statsLabel: 'Total SAQs'
+    },
+    [ItemType.FLASHCARD]: {
+      singular: 'Flashcard',
+      plural: 'Flashcards',
+      header: 'Flashcards Dashboard',
+      subtitle: 'Spaced-repetition recall cards and active-recall prompts.',
+      mainIcon: Layers,
+      tableCol: 'Front (Prompt)',
+      statsLabel: 'Total Flashcards'
     },
     [ItemType.LECTURE]: {
       singular: 'Lecture',

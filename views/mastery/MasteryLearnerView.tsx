@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   BarChart2,
   Calendar,
+  CheckCircle2,
   Clock as ClockIcon,
   Layers,
   Zap,
@@ -32,7 +33,6 @@ import {
   MasteryLoadingView,
   StatusBadge,
   findCohortByRouteId,
-  formatPacing,
   formatPercent,
   formatScore,
   getCohortIdentifier,
@@ -260,6 +260,11 @@ const MasteryLearnerView: React.FC = () => {
         row.loTitle.length > 28 ? `${row.loTitle.slice(0, 25)}…` : row.loTitle,
       mastery: row.touched ? Math.round(row.mastery * 100) : 0,
     })) || [];
+  const masteryBasisText = learnerReport
+    ? learnerReport.progress.losTouched > 0
+      ? `Avg across ${learnerReport.progress.losTouched} touched LOs`
+      : 'No LOs touched yet'
+    : 'Awaiting data';
 
   return (
     <div className="flex flex-col h-full animate-in slide-in-from-right duration-500 pb-20">
@@ -353,7 +358,7 @@ const MasteryLearnerView: React.FC = () => {
               <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
                 <span className="text-xs font-bold text-slate-500">Pacing</span>
                 <span className="text-xs font-black text-slate-800">
-                  {formatPacing(learnerReport?.metrics.pacing ?? 0)}
+                  {formatPercent(learnerReport?.metrics.pacing ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
@@ -388,9 +393,7 @@ const MasteryLearnerView: React.FC = () => {
                     Mastery
                   </span>
                   <span className="text-[9px] font-medium text-slate-400">
-                    {learnerReport
-                      ? `${learnerReport.progress.itemsCorrect} / ${learnerReport.progress.itemsAnswered} correct`
-                      : 'Awaiting data'}
+                    {masteryBasisText}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -550,6 +553,15 @@ const MasteryLearnerView: React.FC = () => {
                 <span className="text-slate-500">Items answered</span>
                 <span className="ml-auto text-slate-800 font-bold">
                   {learnerReport?.progress.itemsAnswered ?? 0}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={14} className="text-slate-400" />
+                <span className="text-slate-500">Correct answers</span>
+                <span className="ml-auto text-slate-800 font-bold">
+                  {learnerReport
+                    ? `${learnerReport.progress.itemsCorrect} / ${learnerReport.progress.itemsAnswered}`
+                    : '0 / 0'}
                 </span>
               </div>
               <div className="flex items-center gap-3">

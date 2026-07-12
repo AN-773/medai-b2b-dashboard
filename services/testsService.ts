@@ -47,6 +47,16 @@ const extractResourceIdentifier = (value: string): string => {
   return segments.length > 0 ? segments[segments.length - 1] : withoutQuery;
 };
 
+export interface LearningObjectiveCatalogOptions {
+  page?: number;
+  limit?: number;
+  q?: string;
+  curriculumId?: string;
+  organSystemId?: string;
+  topicId?: string;
+  syndromeId?: string;
+}
+
 export const testsService = {
   getOrganSystems: async (
     page = 1,
@@ -124,6 +134,35 @@ export const testsService = {
       url,
     );
     return res;
+  },
+
+  listLearningObjectiveCatalog: async (
+    options: LearningObjectiveCatalogOptions = {},
+  ): Promise<PaginatedApiResponse<LearningObjective>> => {
+    const params = new URLSearchParams();
+    params.set('page', String(options.page ?? 1));
+    params.set('limit', String(options.limit ?? 20));
+
+    if (options.q) {
+      params.set('q', options.q);
+    }
+    if (options.curriculumId) {
+      params.set('curriculumId', options.curriculumId);
+    }
+    if (options.organSystemId) {
+      params.set('organSystemId', options.organSystemId);
+    }
+    if (options.topicId) {
+      params.set('topicId', options.topicId);
+    }
+    if (options.syndromeId) {
+      params.set('syndromeId', options.syndromeId);
+    }
+
+    return apiClient.get<PaginatedApiResponse<LearningObjective>>(
+      'TESTS',
+      `/learning-objectives?${params.toString()}`,
+    );
   },
 
   getLearningObjective: async (id: string): Promise<LearningObjective> => {
@@ -431,13 +470,14 @@ export const testsService = {
 
   upsertLearningObjective: async (
     name: string,
-    syndromeId: string,
+    syndromeId: string | undefined,
     cognitiveSkillId: string,
     disciplines: string[],
     id?: string,
     examType?: string,
     subjectId?: string,
     curriculumId?: string,
+    courseId?: string,
   ): Promise<LearningObjective> => {
     let payload = {
       learningObjective: {
@@ -447,7 +487,8 @@ export const testsService = {
         // is silently dropped. Always optional; omitted stays null server-side.
         ...(curriculumId ? { curriculumId } : {}),
       },
-      syndromeId,
+      ...(syndromeId ? { syndromeId } : {}),
+      ...(courseId ? { courseId } : {}),
       cognitiveSkillId,
       disciplines,
       examType,
@@ -611,12 +652,18 @@ export const testsService = {
     discipline: string,
     additionalContext?: string,
     chatHistory?: ChatMessage[],
+    scope?: {
+      curriculumId?: string;
+      courseId?: string;
+    },
   ): Promise<GeneratedObjective> => {
     const raw = await apiClient.post<any>('TESTS', '/lo-gen', {
       organSystem,
       topic,
       syndrome,
       exam,
+      ...(scope?.curriculumId ? { curriculumId: scope.curriculumId } : {}),
+      ...(scope?.courseId ? { courseId: scope.courseId } : {}),
       bloomLevel,
       discipline,
       additionalContext,

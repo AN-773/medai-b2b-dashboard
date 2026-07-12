@@ -88,6 +88,13 @@ const DashboardLayout: React.FC = () => {
   const { logout, isSuperadmin } = useAuth();
   const [isAuditMapOpen, setIsAuditMapOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => localStorage.getItem('msai_sidebar_collapsed') === 'true'
+  );
+
+  useEffect(() => {
+    localStorage.setItem('msai_sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   useEffect(() => {
     if (!isMobileMenuOpen) return;
@@ -212,11 +219,17 @@ const DashboardLayout: React.FC = () => {
   return (
     <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
       {/* Desktop Sidebar */}
-      <aside className="w-72 hidden xl:flex flex-col shrink-0 h-full">
+      <aside
+        className={`${
+          isSidebarCollapsed ? 'w-20' : 'w-64'
+        } hidden xl:flex flex-col shrink-0 h-full transition-[width] duration-300`}
+      >
         <SidebarContent
           activeView={activeView}
           onNavigate={handleNavigate}
           onLogout={() => logout()}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         />
       </aside>
 
@@ -274,12 +287,12 @@ const DashboardLayout: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="p-4 xl:p-10 max-w-[1600px] mx-auto w-full">
+        <div className="p-4 max-w-[1600px] mx-auto w-full">
           <div className="hidden xl:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
             MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
             {isLegacyCurriculumRoute ? 'Legacy Curriculum' : activeView.split('_').join(' ')}
           </div>
-          <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-10 gap-6">
+          <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-6 gap-6">
             <div>
               <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-none">
                 {activeViewLabel}

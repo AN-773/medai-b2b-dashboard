@@ -3,7 +3,7 @@ import {
   CourseContentDraft,
   CourseSourceFile,
   TeacherCohort,
-  TeacherCourse,
+  TeacherCourseWithSources,
   TeacherLearningObjective,
   TeacherStudent,
 } from '@/types/AcademyStudioTypes';
@@ -39,7 +39,7 @@ const safeStorage = {
         courses: Array.isArray(parsed.courses)
           ? parsed.courses.map((course) =>
               normalizeCourse(
-                course as Partial<TeacherCourse> & {
+                course as Partial<TeacherCourseWithSources> & {
                   modules?: CourseContentDraft[];
                 },
               ),
@@ -78,19 +78,24 @@ const uniqueById = <T extends { id: string }>(items: T[]) => {
 };
 
 const normalizeCourse = (
-  course: Partial<TeacherCourse> & { modules?: CourseContentDraft[] },
-): TeacherCourse => {
+  course: Partial<TeacherCourseWithSources> & { modules?: CourseContentDraft[] },
+): TeacherCourseWithSources => {
   const timestamp = nowIso();
   return {
     id: course.id || makeId('course'),
     title: course.title?.trim() || 'Untitled Course',
-    code:
-      course.code?.trim() ||
-      `CRS-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     summary: course.summary?.trim() || '',
+    locked: Boolean(course.locked),
+    learningObjectivesWithoutItemsTotal:
+      typeof course.learningObjectivesWithoutItemsTotal === 'number'
+        ? course.learningObjectivesWithoutItemsTotal
+        : (course.learningObjectives || []).filter(
+            (objective) => (objective.itemTotals?.total ?? 0) === 0,
+          ).length,
     learningObjectives: Array.isArray(course.learningObjectives)
       ? course.learningObjectives
       : [],
+    learningObjectivesLoaded: course.learningObjectivesLoaded ?? true,
     sourceFiles: Array.isArray(course.sourceFiles) ? course.sourceFiles : [],
     contentDrafts: Array.isArray(course.contentDrafts)
       ? course.contentDrafts
@@ -173,7 +178,7 @@ export const academyStudioService = {
   makeId,
   getState: (): AcademyStudioState => safeStorage.load(),
   getStudents: (): TeacherStudent[] => safeStorage.load().students,
-  getCourses: (): TeacherCourse[] => safeStorage.load().courses,
+  getCourses: (): TeacherCourseWithSources[] => safeStorage.load().courses,
   getCohorts: (): TeacherCohort[] => safeStorage.load().cohorts,
 
   saveStudent: (student: Omit<TeacherStudent, 'id' | 'createdAt'> & { id?: string }) => {
@@ -237,11 +242,16 @@ export const academyStudioService = {
       })),
     })),
 
-  saveCourse: (course: Partial<TeacherCourse> & Pick<TeacherCourse, 'title'>) => {
+  saveCourse: (
+    course: Partial<TeacherCourseWithSources> &
+      Pick<TeacherCourseWithSources, 'title'>,
+  ) => {
     const timestamp = nowIso();
-    const normalized: TeacherCourse = {
+    const normalized: TeacherCourseWithSources = {
       ...normalizeCourse(
-        course as Partial<TeacherCourse> & { modules?: CourseContentDraft[] },
+        course as Partial<TeacherCourseWithSources> & {
+          modules?: CourseContentDraft[];
+        },
       ),
       title: course.title,
       updatedAt: timestamp,
@@ -274,6 +284,7 @@ export const academyStudioService = {
           ? {
               ...course,
               learningObjectives,
+              learningObjectivesLoaded: true,
               updatedAt: nowIso(),
             }
           : course,
@@ -297,6 +308,7 @@ export const academyStudioService = {
           ? {
               ...course,
               learningObjectives: [...course.learningObjectives, objective],
+              learningObjectivesLoaded: true,
               updatedAt: nowIso(),
             }
           : course,
@@ -312,6 +324,7 @@ export const academyStudioService = {
           ? {
               ...course,
               learningObjectives: course.learningObjectives.filter((objective) => objective.id !== learningObjectiveId),
+              learningObjectivesLoaded: true,
               contentDrafts: course.contentDrafts.map((draft) => ({
                 ...draft,
                 objectives: draft.objectives.filter((objectiveTitle) =>
@@ -358,7 +371,10 @@ export const academyStudioService = {
       ),
     })).courses,
 
-  generateContentDraftsFromSource: (course: TeacherCourse, fileName: string) =>
+  generateContentDraftsFromSource: (
+    course: TeacherCourseWithSources,
+    fileName: string,
+  ) =>
     generateCourseContentDrafts(course.title, fileName, course.learningObjectives),
 
   saveCohort: (cohort: Partial<TeacherCohort> & Pick<TeacherCohort, 'title'>) => {

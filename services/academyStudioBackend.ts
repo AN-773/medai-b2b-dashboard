@@ -1,17 +1,22 @@
 import { apiClient } from './apiClient';
 import { iamService } from './iamService';
-import type { PaginatedApiResponse } from '@/types/TestsServiceTypes';
+import type {
+  BackendApiItem,
+  PaginatedApiResponse,
+} from '@/types/TestsServiceTypes';
 import type {
   CohortStudyPlanJob,
   CourseContentDraft,
-  CourseSourceFile,
   TeacherCohort,
   TeacherCourse,
+  TeacherCourseModule,
+  TeacherCourseSession,
   TeacherLearningObjective,
   TeacherStudent,
 } from '@/types/AcademyStudioTypes';
 
-const METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v1';
+const METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v2';
+const LEGACY_METADATA_STORAGE_KEY = 'msai_teacher_academy_backend_metadata_v1';
 const DEFAULT_PAGE_LIMIT = 200;
 
 interface LearnerProfile {
@@ -26,9 +31,6 @@ interface LearnerProfile {
 }
 
 interface CourseMetadata {
-  code?: string;
-  summary?: string;
-  sourceFiles?: CourseSourceFile[];
   contentDrafts?: CourseContentDraft[];
 }
 
@@ -69,6 +71,16 @@ interface ApiIamUser {
   created?: string;
 }
 
+interface ApiItemTotals {
+  total?: number;
+  byType?: {
+    mcq?: number;
+    saq?: number;
+    flashcard?: number;
+    lecture?: number;
+  } | null;
+}
+
 interface ApiLearningObjective {
   id: string;
   title: string;
@@ -80,6 +92,7 @@ interface ApiLearningObjective {
     } | null;
   } | null;
   cognitiveSkill?: ApiReferenceEntity | null;
+  itemTotals?: ApiItemTotals | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -88,9 +101,65 @@ interface ApiCourse {
   id: string;
   identifier?: string;
   title: string;
+  summary?: string | null;
+  teacherId?: string;
+  tenantId?: string | null;
+  curriculumId?: string | null;
+  locked?: boolean;
+  learningObjectivesTotal?: number;
+  learningObjectivesWithoutItemsTotal?: number;
+  pendingLearningObjectiveSuggestionsTotal?: number;
+  teacher?: {
+    id: string;
+    name?: string;
+  } | null;
   learningObjectives?: ApiLearningObjective[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface CourseLearningObjectiveAddAllResult {
+  matched: number;
+  added: number;
+  alreadyAttached: number;
+}
+
+interface ApiCourseSession {
+  id: string;
+  identifier?: string;
+  moduleId?: string | null;
+  module?: ApiCourseModule | null;
+  title?: string;
+  displayOrder?: number;
+  scheduledDate?: string | null;
+  mode?: TeacherCourseSession['mode'];
+  itemCount?: number;
+  tenantId?: string | null;
+  items?: BackendApiItem[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface ApiCourseSessionListResponse {
+  sessions?: ApiCourseSession[];
+  total?: number;
+  page?: number;
+}
+
+interface ApiCourseModule {
+  id: string;
+  identifier?: string;
+  title?: string;
+  displayOrder?: number;
+  tenantId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface ApiCourseModuleListResponse {
+  modules?: ApiCourseModule[];
+  total?: number;
+  page?: number;
 }
 
 interface ApiCohortCourseSelection {
@@ -155,13 +224,29 @@ const nowIso = () => new Date().toISOString();
 const safeWindow = () =>
   typeof window === 'undefined' ? null : window;
 
-const readMetadata = (): AcademyBackendMetadata => {
-  const browserWindow = safeWindow();
-  if (!browserWindow) return emptyMetadata();
+const normalizeStoredCourseMetadata = (
+  value: unknown,
+): Record<string, CourseMetadata> => {
+  if (!value || typeof value !== 'object') return {};
 
-  const raw = browserWindow.localStorage.getItem(METADATA_STORAGE_KEY);
-  if (!raw) return emptyMetadata();
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([courseId, raw]) => {
+      const metadata =
+        raw && typeof raw === 'object' ? (raw as Partial<CourseMetadata>) : {};
 
+      return [
+        courseId,
+        {
+          ...(Array.isArray(metadata.contentDrafts)
+            ? { contentDrafts: metadata.contentDrafts }
+            : {}),
+        },
+      ] as const;
+    }),
+  );
+};
+
+const parseMetadata = (raw: string): AcademyBackendMetadata | null => {
   try {
     const parsed = JSON.parse(raw) as Partial<AcademyBackendMetadata>;
     return {
@@ -169,10 +254,7 @@ const readMetadata = (): AcademyBackendMetadata => {
         parsed.learnerProfiles && typeof parsed.learnerProfiles === 'object'
           ? parsed.learnerProfiles
           : {},
-      courseMetadata:
-        parsed.courseMetadata && typeof parsed.courseMetadata === 'object'
-          ? parsed.courseMetadata
-          : {},
+      courseMetadata: normalizeStoredCourseMetadata(parsed.courseMetadata),
       cohortMetadata:
         parsed.cohortMetadata && typeof parsed.cohortMetadata === 'object'
           ? parsed.cohortMetadata
@@ -180,17 +262,43 @@ const readMetadata = (): AcademyBackendMetadata => {
     };
   } catch (error) {
     console.error('Failed to parse academy backend metadata:', error);
-    return emptyMetadata();
+    return null;
   }
+};
+
+const readMetadata = (): AcademyBackendMetadata => {
+  const browserWindow = safeWindow();
+  if (!browserWindow) return emptyMetadata();
+
+  const raw = browserWindow.localStorage.getItem(METADATA_STORAGE_KEY);
+  if (raw) {
+    return parseMetadata(raw) || emptyMetadata();
+  }
+
+  const legacyRaw = browserWindow.localStorage.getItem(LEGACY_METADATA_STORAGE_KEY);
+  if (!legacyRaw) return emptyMetadata();
+
+  const migrated = parseMetadata(legacyRaw) || emptyMetadata();
+  writeMetadata(migrated);
+  try {
+    browserWindow.localStorage.removeItem(LEGACY_METADATA_STORAGE_KEY);
+  } catch {
+    // Ignore migration cleanup failures; the v2 key is the source of truth.
+  }
+  return migrated;
 };
 
 const writeMetadata = (metadata: AcademyBackendMetadata) => {
   const browserWindow = safeWindow();
   if (!browserWindow) return;
-  browserWindow.localStorage.setItem(
-    METADATA_STORAGE_KEY,
-    JSON.stringify(metadata),
-  );
+  try {
+    browserWindow.localStorage.setItem(
+      METADATA_STORAGE_KEY,
+      JSON.stringify(metadata),
+    );
+  } catch (error) {
+    console.error('Failed to persist academy backend metadata:', error);
+  }
 };
 
 const updateMetadata = (
@@ -236,6 +344,22 @@ const buildLearnerCode = (name: string, id: string) => {
   return normalizedName || normalizedId || 'LEARNR';
 };
 
+const normalizeItemTotals = (
+  totals: ApiItemTotals | null | undefined,
+): TeacherLearningObjective['itemTotals'] => {
+  if (!totals) return undefined;
+  const byType = totals.byType || {};
+  return {
+    total: totals.total ?? 0,
+    byType: {
+      mcq: byType.mcq ?? 0,
+      saq: byType.saq ?? 0,
+      flashcard: byType.flashcard ?? 0,
+      lecture: byType.lecture ?? 0,
+    },
+  };
+};
+
 const normalizeLearningObjective = (
   learningObjective: ApiLearningObjective,
 ): TeacherLearningObjective => ({
@@ -246,6 +370,7 @@ const normalizeLearningObjective = (
   cognitiveSkill: learningObjective.cognitiveSkill?.title || undefined,
   source: learningObjective.source === 'ai' ? 'ai' : 'manual',
   createdAt: learningObjective.createdAt || nowIso(),
+  itemTotals: normalizeItemTotals(learningObjective.itemTotals),
 });
 
 const normalizeCourse = (
@@ -253,20 +378,151 @@ const normalizeCourse = (
   metadata: AcademyBackendMetadata,
 ): TeacherCourse => {
   const courseMetadata = metadata.courseMetadata[course.id] || {};
+  const learningObjectives = (course.learningObjectives || []).map(
+    normalizeLearningObjective,
+  );
 
   return {
     id: course.id,
     backendIdentifier: course.identifier,
     title: course.title || 'Untitled Course',
-    code: courseMetadata.code || course.identifier || '',
-    summary: courseMetadata.summary || '',
-    learningObjectives: (course.learningObjectives || []).map(
-      normalizeLearningObjective,
-    ),
-    sourceFiles: courseMetadata.sourceFiles || [],
+    summary: course.summary?.trim() || '',
+    teacherId: course.teacherId || course.teacher?.id,
+    tenantId: course.tenantId ?? null,
+    curriculumId: course.curriculumId ?? null,
+    locked: Boolean(course.locked),
+    learningObjectivesTotal:
+      typeof course.learningObjectivesTotal === 'number'
+        ? course.learningObjectivesTotal
+        : learningObjectives.length,
+    learningObjectivesWithoutItemsTotal:
+      typeof course.learningObjectivesWithoutItemsTotal === 'number'
+        ? course.learningObjectivesWithoutItemsTotal
+        : learningObjectives.filter(
+            (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+          ).length,
+    pendingLearningObjectiveSuggestionsTotal:
+      course.pendingLearningObjectiveSuggestionsTotal || 0,
+    learningObjectivesLoaded: Array.isArray(course.learningObjectives),
+    learningObjectives,
     contentDrafts: courseMetadata.contentDrafts || [],
     createdAt: course.createdAt || nowIso(),
     updatedAt: course.updatedAt || nowIso(),
+  };
+};
+
+const applyLoadedCourseLearningObjectives = (
+  course: TeacherCourse,
+  learningObjectives: ApiLearningObjective[],
+): TeacherCourse => {
+  const normalizedLearningObjectives = learningObjectives.map(
+    normalizeLearningObjective,
+  );
+
+  return {
+    ...course,
+    learningObjectives: normalizedLearningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal: normalizedLearningObjectives.length,
+    learningObjectivesWithoutItemsTotal: normalizedLearningObjectives.filter(
+      (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+    ).length,
+  };
+};
+
+const sortCourseSessions = (sessions: TeacherCourseSession[]) =>
+  [...sessions].sort((left, right) => {
+    const leftModuleOrder =
+      typeof left.moduleDisplayOrder === 'number'
+        ? left.moduleDisplayOrder
+        : Number.MAX_SAFE_INTEGER;
+    const rightModuleOrder =
+      typeof right.moduleDisplayOrder === 'number'
+        ? right.moduleDisplayOrder
+        : Number.MAX_SAFE_INTEGER;
+    if (leftModuleOrder !== rightModuleOrder) {
+      return leftModuleOrder - rightModuleOrder;
+    }
+    const leftModuleTitle = left.moduleTitle?.trim() || '';
+    const rightModuleTitle = right.moduleTitle?.trim() || '';
+    if (leftModuleTitle !== rightModuleTitle) {
+      return leftModuleTitle.localeCompare(rightModuleTitle);
+    }
+    if (left.displayOrder !== right.displayOrder) {
+      return left.displayOrder - right.displayOrder;
+    }
+    if (left.scheduledDate !== right.scheduledDate) {
+      if (!left.scheduledDate) return -1;
+      if (!right.scheduledDate) return 1;
+      return left.scheduledDate.localeCompare(right.scheduledDate);
+    }
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+const sortCourseModules = (modules: TeacherCourseModule[]) =>
+  [...modules].sort((left, right) => {
+    if (left.displayOrder !== right.displayOrder) {
+      return left.displayOrder - right.displayOrder;
+    }
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+    return left.id.localeCompare(right.id);
+  });
+
+const normalizeCourseModule = (
+  module: ApiCourseModule,
+): TeacherCourseModule => ({
+  id: module.id,
+  identifier: module.identifier || getIdSuffix(module.id),
+  title: module.title?.trim() || 'Untitled module',
+  displayOrder:
+    typeof module.displayOrder === 'number' ? module.displayOrder : 0,
+  tenantId: module.tenantId ?? null,
+  createdAt: module.createdAt || nowIso(),
+  updatedAt: module.updatedAt || nowIso(),
+});
+
+const normalizeCourseSession = (
+  session: ApiCourseSession,
+): TeacherCourseSession => {
+  const normalizedModule = session.module
+    ? normalizeCourseModule(session.module)
+    : null;
+
+  return {
+    id: session.id,
+    identifier: session.identifier || getIdSuffix(session.id),
+    moduleId:
+      normalizedModule?.id ||
+      (typeof session.moduleId === 'string' ? session.moduleId : '') ||
+      '',
+    moduleIdentifier:
+      normalizedModule?.identifier ||
+      (typeof session.moduleId === 'string' && session.moduleId
+        ? getIdSuffix(session.moduleId)
+        : undefined),
+    moduleTitle: normalizedModule?.title || undefined,
+    moduleDisplayOrder:
+      typeof normalizedModule?.displayOrder === 'number'
+        ? normalizedModule.displayOrder
+        : undefined,
+    title: session.title?.trim() || 'Untitled session',
+    displayOrder:
+      typeof session.displayOrder === 'number' ? session.displayOrder : 0,
+    scheduledDate: normalizeDateValue(session.scheduledDate),
+    mode: session.mode || 'mixed',
+    itemCount:
+      typeof session.itemCount === 'number'
+        ? session.itemCount
+        : session.items?.length || 0,
+    tenantId: session.tenantId ?? null,
+    items: session.items || [],
+    createdAt: session.createdAt || nowIso(),
+    updatedAt: session.updatedAt || nowIso(),
   };
 };
 
@@ -323,6 +579,20 @@ const getPrimaryAccountId = (user: Pick<ApiIamUser, 'accountId' | 'accounts'>) =
 const buildLearnerIdBySuffix = <T extends { id: string }>(
   users: T[],
 ) => new Map(users.map((user) => [getIdSuffix(user.id), user.id] as const));
+
+const buildPreferredLearnerIdBySuffix = (...groups: string[][]) => {
+  const learnerIdBySuffix = new Map<string, string>();
+
+  groups.forEach((group) => {
+    group.forEach((learnerId) => {
+      const suffix = getIdSuffix(learnerId);
+      if (!suffix || learnerIdBySuffix.has(suffix)) return;
+      learnerIdBySuffix.set(suffix, learnerId);
+    });
+  });
+
+  return learnerIdBySuffix;
+};
 
 const findCanonicalLearnerId = (
   learnerId: string,
@@ -470,6 +740,14 @@ const fetchAllPages = async <T>(endpoint: string): Promise<T[]> => {
   return items;
 };
 
+const getCourseIdentifier = (course: Pick<ApiCourse, 'id' | 'identifier'>) =>
+  course.identifier || getIdSuffix(course.id);
+
+const fetchCourseLearningObjectives = (course: Pick<ApiCourse, 'id' | 'identifier'>) =>
+  fetchAllPages<ApiLearningObjective>(
+    `/courses/${getCourseIdentifier(course)}/learning-objectives`,
+  );
+
 const fetchAllIamUsers = async (): Promise<ApiIamUser[]> => {
   const items: ApiIamUser[] = [];
   let page = 1;
@@ -524,8 +802,78 @@ const loadCatalogSnapshot = async (): Promise<AcademyStudioCatalogSnapshot> => {
 const findCourseIdentifier = (course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>) =>
   course.backendIdentifier || course.id.split('/').pop() || course.id;
 
+const findCourseSessionIdentifier = (
+  session: Pick<TeacherCourseSession, 'id' | 'identifier'>,
+) => session.identifier || getIdSuffix(session.id);
+
 const findCohortIdentifier = (cohort: Pick<TeacherCohort, 'id' | 'backendIdentifier'>) =>
   cohort.backendIdentifier || cohort.id.split('/').pop() || cohort.id;
+
+const normalizeCourseWriteResult = (
+  response: ApiCourse,
+  learningObjectives?: TeacherLearningObjective[],
+): TeacherCourse => {
+  const normalizedCourse = normalizeCourse(response, readMetadata());
+
+  if (!learningObjectives) {
+    return normalizedCourse;
+  }
+
+  return {
+    ...normalizedCourse,
+    learningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal:
+      typeof response.learningObjectivesTotal === 'number'
+        ? response.learningObjectivesTotal
+        : learningObjectives.length,
+    learningObjectivesWithoutItemsTotal:
+      typeof response.learningObjectivesWithoutItemsTotal === 'number'
+        ? response.learningObjectivesWithoutItemsTotal
+        : learningObjectives.filter(
+            (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+          ).length,
+  };
+};
+
+const normalizeCohortWriteResult = (
+  response: ApiCohort,
+  preferredLearnerIds: string[] = [],
+) =>
+  normalizeCohort(
+    response,
+    readMetadata(),
+    buildPreferredLearnerIdBySuffix(
+      preferredLearnerIds,
+      (response.learners || []).map((learner) => learner.id),
+    ),
+  );
+
+const buildLearnerAttachPayload = (learnerIds: string[]) => {
+  const metadata = readMetadata();
+  const uniqueLearnerIds = Array.from(
+    new Map(
+      learnerIds.map((learnerId) => [getIdSuffix(learnerId), learnerId] as const),
+    ).values(),
+  );
+
+  const learners = uniqueLearnerIds.map((learnerId) => {
+    const profile = getLearnerProfileForId(metadata, learnerId);
+
+    return {
+      userId: learnerId,
+      ...(profile.name?.trim() ? { name: profile.name.trim() } : {}),
+      ...(profile.accountId?.trim()
+        ? { accountId: profile.accountId.trim() }
+        : {}),
+    };
+  });
+
+  return {
+    learnerIds: uniqueLearnerIds,
+    ...(learners.length > 0 ? { learners } : {}),
+  };
+};
 
 const buildStudyPlanExamDate = (baseDate = new Date()) => {
   const examDate = new Date(
@@ -817,10 +1165,11 @@ const upsertCourse = async (
         TeacherCourse,
         | 'id'
         | 'backendIdentifier'
-        | 'code'
+        | 'teacherId'
+        | 'curriculumId'
+        | 'locked'
         | 'summary'
         | 'learningObjectives'
-        | 'sourceFiles'
         | 'contentDrafts'
       >
     >,
@@ -832,50 +1181,43 @@ const upsertCourse = async (
       course: {
         ...(course.id ? { id: course.id } : {}),
         title: course.title.trim(),
+        ...(course.summary !== undefined
+          ? { summary: course.summary.trim() }
+          : {}),
+        ...(course.teacherId ? { teacherId: course.teacherId } : {}),
+        ...(course.curriculumId ? { curriculumId: course.curriculumId } : {}),
+        ...(course.locked !== undefined ? { locked: course.locked } : {}),
       },
-      ...(course.learningObjectives
-        ? {
-            learningObjectiveIds: course.learningObjectives.map(
-              (learningObjective) => learningObjective.id,
-            ),
-          }
-        : {}),
+      ...(course.teacherId ? { teacherId: course.teacherId } : {}),
     },
   );
 
-  saveCourseMetadata(response.id, {
-    code: course.code || '',
-    summary: course.summary || '',
-    sourceFiles: course.sourceFiles || [],
-    contentDrafts: course.contentDrafts || [],
-  });
+  if (course.contentDrafts !== undefined) {
+    saveCourseMetadata(response.id, {
+      contentDrafts: course.contentDrafts,
+    });
+  }
 
-  return normalizeCourse(response, readMetadata());
+  return normalizeCourseWriteResult(response, course.learningObjectives);
 };
 
 const upsertCohort = async (
-  cohort: Pick<TeacherCohort, 'title' | 'studentIds' | 'courseIds' | 'courseSelections'> &
+  cohort: Pick<TeacherCohort, 'title'> &
     Partial<
       Pick<
         TeacherCohort,
-        'id' | 'backendIdentifier' | 'term' | 'description' | 'startDate' | 'endDate'
+        | 'id'
+        | 'backendIdentifier'
+        | 'term'
+        | 'description'
+        | 'startDate'
+        | 'endDate'
+        | 'studentIds'
       >
     >,
 ) => {
-  const metadata = readMetadata();
   const startsAt = toRfc3339DateTime(cohort.startDate);
   const endsAt = toRfc3339DateTime(cohort.endDate);
-  const learners = cohort.studentIds.map((studentId) => {
-    const profile = getLearnerProfileForId(metadata, studentId);
-
-    return {
-      userId: studentId,
-      ...(profile.name?.trim() ? { name: profile.name.trim() } : {}),
-      ...(profile.accountId?.trim()
-        ? { accountId: profile.accountId.trim() }
-        : {}),
-    };
-  });
   const response = await apiClient.post<ApiCohort>(
     'TESTS',
     '/cohorts',
@@ -886,10 +1228,6 @@ const upsertCohort = async (
         ...(startsAt ? { startsAt } : {}),
         ...(endsAt ? { endsAt } : {}),
       },
-      learnerIds: cohort.studentIds,
-      learners,
-      courseIds: cohort.courseIds,
-      courseSelections: cohort.courseSelections,
     },
   );
 
@@ -900,11 +1238,186 @@ const upsertCohort = async (
     endDate: normalizeDateValue(cohort.endDate),
   });
 
-  const learnerIdBySuffix = new Map(
-    cohort.studentIds.map((studentId) => [getIdSuffix(studentId), studentId] as const),
+  return normalizeCohortWriteResult(response, cohort.studentIds || []);
+};
+
+const syncCourseLearningObjectives = async (
+  course: TeacherCourse,
+  learningObjectives: TeacherLearningObjective[],
+) => {
+  const desiredLearningObjectives = Array.from(
+    new Map(
+      learningObjectives.map((learningObjective) => [
+        learningObjective.id,
+        learningObjective,
+      ] as const),
+    ).values(),
+  );
+  const currentLearningObjectiveIds = new Set(
+    course.learningObjectives.map((learningObjective) => learningObjective.id),
+  );
+  const desiredLearningObjectiveIds = new Set(
+    desiredLearningObjectives.map((learningObjective) => learningObjective.id),
+  );
+  const learningObjectiveIdsToAdd = desiredLearningObjectives
+    .filter((learningObjective) => !currentLearningObjectiveIds.has(learningObjective.id))
+    .map((learningObjective) => learningObjective.id);
+  const learningObjectiveIdsToRemove = course.learningObjectives
+    .filter((learningObjective) => !desiredLearningObjectiveIds.has(learningObjective.id))
+    .map((learningObjective) => learningObjective.id);
+
+  let latestResponse: ApiCourse | null = null;
+
+  if (learningObjectiveIdsToAdd.length > 0) {
+    latestResponse = await apiClient.post<ApiCourse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives`,
+      {
+        learningObjectiveIds: learningObjectiveIdsToAdd,
+      },
+    );
+  }
+
+  for (const learningObjectiveId of learningObjectiveIdsToRemove) {
+    latestResponse = await apiClient.delete<ApiCourse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives/${encodeURIComponent(
+        getIdSuffix(learningObjectiveId),
+      )}`,
+    );
+  }
+
+  if (latestResponse) {
+    return normalizeCourseWriteResult(latestResponse, desiredLearningObjectives);
+  }
+
+  return {
+    ...course,
+    learningObjectives: desiredLearningObjectives,
+    learningObjectivesLoaded: true,
+    learningObjectivesTotal: desiredLearningObjectives.length,
+    learningObjectivesWithoutItemsTotal: desiredLearningObjectives.filter(
+      (learningObjective) => (learningObjective.itemTotals?.total ?? 0) === 0,
+    ).length,
+  };
+};
+
+const attachCohortLearners = async (
+  cohort: TeacherCohort,
+  learnerIds: string[],
+) => {
+  if (learnerIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/learners`,
+    buildLearnerAttachPayload(learnerIds),
   );
 
-  return normalizeCohort(response, readMetadata(), learnerIdBySuffix);
+  return normalizeCohortWriteResult(response, [...cohort.studentIds, ...learnerIds]);
+};
+
+const removeCohortLearner = async (
+  cohort: TeacherCohort,
+  learnerId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/learners/${encodeURIComponent(
+      getIdSuffix(learnerId),
+    )}`,
+  );
+
+  return normalizeCohortWriteResult(
+    response,
+    cohort.studentIds.filter((studentId) => getIdSuffix(studentId) !== getIdSuffix(learnerId)),
+  );
+};
+
+const attachCohortCourses = async (
+  cohort: TeacherCohort,
+  courseIds: string[],
+) => {
+  if (courseIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses`,
+    {
+      courseIds,
+    },
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const removeCohortCourse = async (
+  cohort: TeacherCohort,
+  courseId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const appendCohortCourseLearningObjectives = async (
+  cohort: TeacherCohort,
+  courseId: string,
+  learningObjectiveIds: string[],
+) => {
+  if (learningObjectiveIds.length === 0) {
+    return cohort;
+  }
+
+  const response = await apiClient.post<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives`,
+    {
+      learningObjectiveIds,
+    },
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const removeCohortCourseLearningObjective = async (
+  cohort: TeacherCohort,
+  courseId: string,
+  learningObjectiveId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives/${encodeURIComponent(getIdSuffix(learningObjectiveId))}`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
+};
+
+const clearCohortCourseLearningObjectives = async (
+  cohort: TeacherCohort,
+  courseId: string,
+) => {
+  const response = await apiClient.delete<ApiCohort>(
+    'TESTS',
+    `/cohorts/${findCohortIdentifier(cohort)}/courses/${encodeURIComponent(
+      getIdSuffix(courseId),
+    )}/learning-objectives`,
+  );
+
+  return normalizeCohortWriteResult(response, cohort.studentIds);
 };
 
 export const academyStudioBackend = {
@@ -913,6 +1426,117 @@ export const academyStudioBackend = {
   loadPagedStudents,
   loadStudentRegistryPage,
   loadStudentRegistrySnapshot,
+
+  loadCourseWithLearningObjectives: async (
+    course: TeacherCourse,
+  ): Promise<TeacherCourse> =>
+    applyLoadedCourseLearningObjectives(
+      course,
+      await fetchCourseLearningObjectives({
+        id: course.id,
+        identifier: course.backendIdentifier,
+      }),
+    ),
+
+  listCourseSessions: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+  ): Promise<TeacherCourseSession[]> => {
+    const response = await apiClient.get<ApiCourseSessionListResponse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions`,
+    );
+
+    return sortCourseSessions(
+      (response.sessions || []).map(normalizeCourseSession),
+    );
+  },
+
+  listCourseModules: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+  ): Promise<TeacherCourseModule[]> => {
+    const response = await apiClient.get<ApiCourseModuleListResponse>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules`,
+    );
+
+    return sortCourseModules(
+      (response.modules || []).map(normalizeCourseModule),
+    );
+  },
+
+  saveCourseModule: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    module: Pick<TeacherCourseModule, 'title' | 'displayOrder'> &
+      Partial<Pick<TeacherCourseModule, 'id' | 'identifier'>>,
+  ): Promise<TeacherCourseModule> => {
+    const response = await apiClient.post<ApiCourseModule>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules`,
+      {
+        module: {
+          ...(module.id ? { id: module.id } : {}),
+          ...(module.identifier ? { identifier: module.identifier } : {}),
+          title: module.title.trim(),
+          displayOrder: module.displayOrder,
+        },
+      },
+    );
+
+    return normalizeCourseModule(response);
+  },
+
+  saveCourseSession: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    session: Pick<
+      TeacherCourseSession,
+      'moduleId' | 'title' | 'displayOrder' | 'scheduledDate' | 'items'
+    > &
+      Partial<Pick<TeacherCourseSession, 'id' | 'identifier'>>,
+  ): Promise<TeacherCourseSession> => {
+    const response = await apiClient.post<ApiCourseSession>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions`,
+      {
+        session: {
+          ...(session.id ? { id: session.id } : {}),
+          ...(session.identifier ? { identifier: session.identifier } : {}),
+          moduleId: session.moduleId,
+          title: session.title.trim(),
+          displayOrder: session.displayOrder,
+          ...(session.scheduledDate
+            ? { scheduledDate: toRfc3339DateTime(session.scheduledDate) }
+            : {}),
+        },
+        itemIds: session.items.map((item) => item.id),
+      },
+    );
+
+    return normalizeCourseSession(response);
+  },
+
+  deleteCourseSession: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    session: Pick<TeacherCourseSession, 'id' | 'identifier'>,
+  ) => {
+    await apiClient.delete<void>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/sessions/${encodeURIComponent(
+        findCourseSessionIdentifier(session),
+      )}`,
+    );
+  },
+
+  deleteCourseModule: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier'>,
+    module: Pick<TeacherCourseModule, 'id' | 'identifier'>,
+  ) => {
+    await apiClient.delete<void>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/modules/${encodeURIComponent(
+        module.identifier || getIdSuffix(module.id),
+      )}`,
+    );
+  },
 
   saveCourse: upsertCourse,
 
@@ -924,42 +1548,57 @@ export const academyStudioBackend = {
     removeCourseMetadata(course.id);
   },
 
-  saveCourseLearningObjectives: async (
-    course: Pick<
-      TeacherCourse,
-      | 'id'
-      | 'backendIdentifier'
-      | 'title'
-      | 'code'
-      | 'summary'
-      | 'sourceFiles'
-      | 'contentDrafts'
-    >,
+  saveCourseLearningObjectives: syncCourseLearningObjectives,
+
+  attachCourseLearningObjectives: async (
+    course: TeacherCourse,
     learningObjectives: TeacherLearningObjective[],
   ) =>
-    upsertCourse({
-      ...course,
-      learningObjectives,
-    }),
+    syncCourseLearningObjectives(course, [
+      ...course.learningObjectives,
+      ...learningObjectives,
+    ]),
 
-  saveCourseContentDraftMetadata: (
-    courseId: string,
-    sourceFile: CourseSourceFile,
-    contentDrafts: CourseContentDraft[],
-  ) => {
-    const currentMetadata = readMetadata().courseMetadata[courseId] || {};
-    const existingSourceFiles = currentMetadata.sourceFiles || [];
+  removeCourseLearningObjective: async (
+    course: TeacherCourse,
+    learningObjectiveId: string,
+  ) =>
+    syncCourseLearningObjectives(
+      course,
+      course.learningObjectives.filter(
+        (learningObjective) => learningObjective.id !== learningObjectiveId,
+      ),
+    ),
 
-    saveCourseMetadata(courseId, {
-      sourceFiles: [
-        sourceFile,
-        ...existingSourceFiles.filter((existing) => existing.id !== sourceFile.id),
-      ],
-      contentDrafts,
-    });
-  },
+  addAllCourseLearningObjectives: async (
+    course: Pick<TeacherCourse, 'id' | 'backendIdentifier' | 'curriculumId'>,
+    filters: {
+      q?: string;
+      organSystemId?: string;
+      topicId?: string;
+      syndromeId?: string;
+    },
+  ): Promise<CourseLearningObjectiveAddAllResult> =>
+    apiClient.post<CourseLearningObjectiveAddAllResult>(
+      'TESTS',
+      `/courses/${findCourseIdentifier(course)}/learning-objectives/add-all`,
+      {
+        ...(filters.q ? { q: filters.q } : {}),
+        ...(filters.organSystemId ? { organSystemId: filters.organSystemId } : {}),
+        ...(filters.topicId ? { topicId: filters.topicId } : {}),
+        ...(filters.syndromeId ? { syndromeId: filters.syndromeId } : {}),
+      },
+    ),
 
   saveCohort: upsertCohort,
+
+  attachCohortLearners,
+  removeCohortLearner,
+  attachCohortCourses,
+  removeCohortCourse,
+  appendCohortCourseLearningObjectives,
+  removeCohortCourseLearningObjective,
+  clearCohortCourseLearningObjectives,
 
   publishCohortStudyPlanTemplate: async (
     cohort: Pick<TeacherCohort, 'id' | 'backendIdentifier'>,

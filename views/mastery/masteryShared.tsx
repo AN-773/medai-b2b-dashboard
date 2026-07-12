@@ -5,12 +5,12 @@ import type {
 import type { TeacherCohort, TeacherCourse } from '@/types/AcademyStudioTypes';
 
 export const formatPercent = (value: number) =>
-  Number.isFinite(value) ? `${Math.round(value * 100)}%` : '—';
+  Number.isFinite(value) ? `${Math.trunc(value * 100)}%` : '—';
 
 export const formatPacing = (value: number) =>
   Number.isFinite(value) ? `${value.toFixed(2)}x` : '—';
 
-export const formatScore = (value: number) => Math.round((value || 0) * 100);
+export const formatScore = (value: number) => Math.trunc((value || 0) * 100);
 
 export const getIdSuffix = (value: string) => value.split('/').pop() || value;
 

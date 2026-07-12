@@ -1,3 +1,5 @@
+import type { BackendApiItem } from './TestsServiceTypes';
+
 export interface TeacherStudent {
   id: string;
   accountId?: string;
@@ -10,6 +12,16 @@ export interface TeacherStudent {
   createdAt: string;
 }
 
+export interface ItemTypeTotals {
+  total: number;
+  byType: {
+    mcq: number;
+    saq: number;
+    flashcard: number;
+    lecture: number;
+  };
+}
+
 export interface TeacherLearningObjective {
   id: string;
   title: string;
@@ -17,6 +29,8 @@ export interface TeacherLearningObjective {
   cognitiveSkill?: string;
   source: 'manual' | 'ai';
   createdAt: string;
+  /** Counts of linked content items, supplied by the backend per objective. */
+  itemTotals?: ItemTypeTotals;
 }
 
 export interface CourseSourceFile {
@@ -36,13 +50,60 @@ export interface TeacherCourse {
   id: string;
   backendIdentifier?: string;
   title: string;
-  code: string;
+  teacherId?: string;
+  tenantId?: string | null;
+  curriculumId?: string | null;
+  locked: boolean;
   summary: string;
+  learningObjectivesTotal?: number;
+  learningObjectivesWithoutItemsTotal?: number;
+  pendingLearningObjectiveSuggestionsTotal?: number;
+  learningObjectivesLoaded?: boolean;
   learningObjectives: TeacherLearningObjective[];
-  sourceFiles: CourseSourceFile[];
   contentDrafts: CourseContentDraft[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TeacherCourseModule {
+  id: string;
+  identifier: string;
+  title: string;
+  displayOrder: number;
+  tenantId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TeacherCourseSessionMode =
+  | 'mcq'
+  | 'saq'
+  | 'lecture'
+  | 'flashcard'
+  | 'mixed';
+
+export interface TeacherCourseSession {
+  id: string;
+  identifier: string;
+  moduleId: string;
+  moduleIdentifier?: string;
+  moduleTitle?: string;
+  moduleDisplayOrder?: number;
+  title: string;
+  displayOrder: number;
+  scheduledDate: string;
+  mode: TeacherCourseSessionMode;
+  itemCount: number;
+  tenantId?: string | null;
+  items: BackendApiItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Legacy prototype-only extension used by the old local Cohort Studio flow.
+export interface TeacherCourseWithSources extends TeacherCourse {
+  sourceFiles: CourseSourceFile[];
+  modules?: CourseContentDraft[];
 }
 
 export interface CohortCourseSelection {
@@ -97,6 +158,6 @@ export interface ImportedStudentRow {
 
 export interface AcademyStudioState {
   students: TeacherStudent[];
-  courses: TeacherCourse[];
+  courses: TeacherCourseWithSources[];
   cohorts: TeacherCohort[];
 }
