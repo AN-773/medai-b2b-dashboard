@@ -3,6 +3,7 @@ import React from 'react';
 export type View =
   | 'DASHBOARD'
   | 'TENANTS'
+  | 'PROMO_CODES'
   | 'STUDY_PLAN_AUDIT'
   | 'WORKBENCH'
   | 'BANK_EXPLORER'
