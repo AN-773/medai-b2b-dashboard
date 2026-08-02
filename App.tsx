@@ -19,7 +19,8 @@ import {
   Workflow,
   Library,
   Share2,
-  Ticket
+  Ticket,
+  BellRing
 } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
@@ -37,6 +38,7 @@ import SidebarContent from './components/SidebarContent';
 import SettingsView from './views/SettingsView';
 import TenantManagementView from './views/TenantManagementView';
 import PromoCodesView from './views/PromoCodesView';
+import NotificationsView from './views/NotificationsView';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
@@ -117,6 +119,7 @@ const DashboardLayout: React.FC = () => {
     const path = location.pathname;
     if (path.startsWith('/tenants')) return 'TENANTS';
     if (path.startsWith('/promo-codes')) return 'PROMO_CODES';
+    if (path.startsWith('/notifications')) return 'NOTIFICATIONS';
     if (path.startsWith('/study-plan-audit')) return 'STUDY_PLAN_AUDIT';
     // if (path === '/' || path === '/dashboard') return 'DASHBOARD';
     if (path.startsWith('/workbench')) return 'WORKBENCH';
@@ -149,6 +152,7 @@ const DashboardLayout: React.FC = () => {
       DASHBOARD: '/dashboard',
       TENANTS: '/tenants',
       PROMO_CODES: '/promo-codes',
+      NOTIFICATIONS: '/notifications',
       STUDY_PLAN_AUDIT: '/study-plan-audit',
       WORKBENCH: '/workbench',
       BANK_EXPLORER: '/bank-explorer',
@@ -198,6 +202,7 @@ const DashboardLayout: React.FC = () => {
       ? [
           { id: 'TENANTS', label: 'Tenant Management', icon: Building2 },
           { id: 'PROMO_CODES', label: 'Promo Codes', icon: Ticket },
+          { id: 'NOTIFICATIONS', label: 'Notifications', icon: BellRing },
           { id: 'STUDY_PLAN_AUDIT', label: 'Study Plan Audit', icon: Workflow },
           { id: 'SETTINGS', label: 'Settings', icon: Settings },
         ]
@@ -313,6 +318,7 @@ const DashboardLayout: React.FC = () => {
               {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}
               <Route path="/tenants" element={isSuperadmin ? <TenantManagementView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/promo-codes" element={isSuperadmin ? <PromoCodesView /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/notifications" element={isSuperadmin ? <NotificationsView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/study-plan-audit" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/study-plan-audit/:studyPlanIdentifier" element={isSuperadmin ? <StudyPlanAuditView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />

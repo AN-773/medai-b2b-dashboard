@@ -1,6 +1,6 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
-export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS';
+export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS' | 'NOTIFICATIONS';
 
 const getBaseUrl = (service: ServiceType): string => {
   switch (service) {
@@ -10,6 +10,8 @@ const getBaseUrl = (service: ServiceType): string => {
       return import.meta.env.VITE_TUTOR_API_URL || 'http://localhost:3000/tutor';
     case 'TESTS':
       return import.meta.env.VITE_TEST_API_URL || 'http://localhost:3000/tests';
+    case 'NOTIFICATIONS':
+      return import.meta.env.VITE_NOTIFICATIONS_API_URL || 'http://localhost:8691';
     default:
       return '';
   }
@@ -23,25 +25,36 @@ type ApiRequestError = Error & {
   status?: number;
 };
 
+/**
+ * A 401 from these services means the dashboard session itself is gone, so we
+ * clear it and bounce to /login. The notification service is excluded: it
+ * rejects tokens for its own reasons (bearer auth not enabled there, caller
+ * lacks the superadmin role), and signing the operator out of the whole
+ * dashboard over that would be wrong.
+ */
+const SESSION_OWNING_SERVICES: ServiceType[] = ['IAM', 'TUTOR', 'TESTS'];
+
 class ApiClient {
-  private async request<T>(
+  private async requestRaw<T>(
     service: ServiceType,
     endpoint: string,
     options: RequestOptions = {}
-  ): Promise<T> {
+  ): Promise<AxiosResponse<T>> {
     const baseUrl = getBaseUrl(service);
     const url = `${baseUrl}${endpoint}`;
     const isFormData =
       typeof FormData !== 'undefined' && options.data instanceof FormData;
 
+    // `headers` must come after `...options`, or spreading options overwrites
+    // the merged headers with the caller's raw ones and drops Content-Type.
     const config: AxiosRequestConfig = {
       url,
       method: options.method || 'GET',
+      ...options,
       headers: {
         ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
-      ...options,
     };
 
     // Handle authentication manually for each request to support dynamic exclusion
@@ -56,13 +69,12 @@ class ApiClient {
     }
 
     try {
-      const response = await axios(config);
-      return response.data;
+      return await axios<T>(config);
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
         if (error.response) {
           // Handle 401 Unauthorized globally if needed
-          if (error.response.status === 401) {
+          if (error.response.status === 401 && SESSION_OWNING_SERVICES.includes(service)) {
             console.warn('Unauthorized access. Token might be invalid or expired.');
             localStorage.removeItem('msai_educator_token');
             window.location.href = '/login';
@@ -86,9 +98,31 @@ class ApiClient {
     }
   }
 
+  private async request<T>(
+    service: ServiceType,
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<T> {
+    const response = await this.requestRaw<T>(service, endpoint, options);
+    return response.data;
+  }
+
   // HTTP Wrapper Methods
   async get<T>(service: ServiceType, endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(service, endpoint, { ...options, method: 'GET' });
+  }
+
+  /**
+   * GET that also exposes response headers, for endpoints that return a bare
+   * array and carry the total match count in `X-Total-Count`.
+   */
+  async getWithHeaders<T>(
+    service: ServiceType,
+    endpoint: string,
+    options?: RequestOptions
+  ): Promise<{ data: T; headers: AxiosResponse<T>['headers'] }> {
+    const response = await this.requestRaw<T>(service, endpoint, { ...options, method: 'GET' });
+    return { data: response.data, headers: response.headers };
   }
 
   async post<T>(service: ServiceType, endpoint: string, body: any, options?: RequestOptions): Promise<T> {

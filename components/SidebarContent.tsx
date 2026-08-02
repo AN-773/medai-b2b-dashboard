@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   LogOut,
   Settings,
+  BellRing,
   Building2,
   Stethoscope,
   Users,
@@ -47,6 +48,7 @@ interface NavSection {
 const SUPERADMIN_NAV: NavSection[] = [
   { item: { view: 'TENANTS', label: 'Tenant Management', icon: Building2 } },
   { item: { view: 'PROMO_CODES', label: 'Promo Codes', icon: Ticket } },
+  { item: { view: 'NOTIFICATIONS', label: 'Notifications', icon: BellRing } },
   { item: { view: 'STUDY_PLAN_AUDIT', label: 'Study Plan Audit', icon: Workflow } },
   { item: { view: 'SETTINGS', label: 'System Settings', icon: Settings } },
 ];
