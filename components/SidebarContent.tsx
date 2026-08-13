@@ -17,6 +17,7 @@ import {
   BarChart3,
   Share2,
   Ticket,
+  Contact,
   PanelLeftClose,
   PanelLeftOpen,
   type LucideIcon,
@@ -48,6 +49,7 @@ interface NavSection {
 const SUPERADMIN_NAV: NavSection[] = [
   { item: { view: 'TENANTS', label: 'Tenant Management', icon: Building2 } },
   { item: { view: 'PROMO_CODES', label: 'Promo Codes', icon: Ticket } },
+  { item: { view: 'TEAM_DIRECTORY', label: 'Team Cards', icon: Contact } },
   { item: { view: 'NOTIFICATIONS', label: 'Notifications', icon: BellRing } },
   { item: { view: 'STUDY_PLAN_AUDIT', label: 'Study Plan Audit', icon: Workflow } },
   { item: { view: 'SETTINGS', label: 'System Settings', icon: Settings } },
