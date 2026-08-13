@@ -1,85 +1,191 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   CalendarClock,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Pencil,
+  Plus,
   Power,
+  QrCode,
   RefreshCw,
+  Search,
   Ticket,
   Users,
+  X,
 } from 'lucide-react';
 import ConfirmationModal from '../ConfirmationModal';
-import { promoCodeService, PromoCode } from '../../services/promoCodeService';
+import PromoCodeQrModal from './PromoCodeQrModal';
+import {
+  promoCodeService,
+  PromoCode,
+  PromoStatus,
+  getPromoStatus,
+} from '../../services/promoCodeService';
 
-type PromoStatus = 'Active' | 'Inactive' | 'Expired' | 'Exhausted';
+const PAGE_SIZE = 24;
 
-const getPromoStatus = (promo: PromoCode): PromoStatus => {
-  if (!promo.active) return 'Inactive';
-  if (promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now()) return 'Expired';
-  if (promo.maxRedemptions > 0 && promo.redemptionCount >= promo.maxRedemptions) return 'Exhausted';
-  return 'Active';
-};
+const CODE_PATTERN = /^[A-Z0-9_-]{3,32}$/;
 
-const statusBadgeClass: Record<PromoStatus, string> = {
-  Active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+const statusPillClass: Record<PromoStatus, string> = {
+  Active: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   Inactive: 'bg-slate-100 text-slate-500 border-slate-200',
-  Expired: 'bg-amber-50 text-amber-700 border-amber-200',
-  Exhausted: 'bg-rose-50 text-rose-700 border-rose-200',
+  Expired: 'bg-amber-50 text-amber-700 border-amber-100',
+  Exhausted: 'bg-rose-50 text-rose-700 border-rose-100',
 };
+
+interface EditorState {
+  code: string;
+  freeDays: string;
+  /** Blank = unlimited, matching the API's `0`. */
+  maxRedemptions: string;
+  /** `datetime-local` value; blank = never expires. */
+  expiresAt: string;
+}
+
+const emptyEditor = (): EditorState => ({
+  code: '',
+  freeDays: '',
+  maxRedemptions: '',
+  expiresAt: '',
+});
+
+/** RFC3339 from the API → the local-time string a `datetime-local` input wants. */
+const toDateTimeLocal = (value: string | null | undefined): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+};
+
+const editorFromPromo = (promo: PromoCode): EditorState => ({
+  code: promo.code,
+  freeDays: String(promo.freeDays),
+  maxRedemptions: promo.maxRedemptions > 0 ? String(promo.maxRedemptions) : '',
+  expiresAt: toDateTimeLocal(promo.expiresAt),
+});
+
+const shortDate = (value: string | null | undefined) =>
+  value
+    ? new Date(value).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '';
+
+const fullDate = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleString() : 'Never expires';
+
+const usageTone = (percent: number) =>
+  percent >= 100 ? 'bg-rose-500' : percent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+
+const label = 'block text-xs font-medium text-slate-600 mb-1.5';
+const field =
+  'w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5';
+const fieldWithIcon = `${field} pl-9`;
+const iconInField = 'absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none';
+const ghostButton =
+  'inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50';
+const primaryButton =
+  'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-slate-900 text-sm font-semibold text-white whitespace-nowrap transition hover:bg-slate-800 disabled:opacity-50';
+const iconButton =
+  'inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50';
 
 const PromoCodeManager: React.FC = () => {
-  const pageSize = 10;
-  const [code, setCode] = useState('');
-  const [freeDays, setFreeDays] = useState('');
-  const [maxRedemptions, setMaxRedemptions] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  /** Non-null while editing an existing code; null means the form creates one. */
+  const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const editorRef = useRef<HTMLFormElement>(null);
+
   const [createdPromo, setCreatedPromo] = useState<PromoCode | null>(null);
-
-  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalCodes, setTotalCodes] = useState(0);
-
   const [pendingToggle, setPendingToggle] = useState<PromoCode | null>(null);
-  const [togglingCode, setTogglingCode] = useState('');
+  const [busyCode, setBusyCode] = useState('');
+  const [qrPromo, setQrPromo] = useState<PromoCode | null>(null);
 
-  const totalPages = Math.max(1, Math.ceil(totalCodes / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const fetchPromoCodes = async (page = currentPage) => {
+  const fetchPromoCodes = async (page = currentPage, query = search) => {
     setIsLoading(true);
     setLoadError('');
 
     try {
-      const response = await promoCodeService.listPromoCodes(page, pageSize);
+      const response = await promoCodeService.listPromoCodes(page, PAGE_SIZE, query);
       setPromoCodes(response.items || []);
-      setTotalCodes(response.total || 0);
+      setTotal(response.total || 0);
       setCurrentPage(response.page || page);
     } catch (error) {
       console.error('Failed to load promo codes:', error);
       setLoadError('Unable to load promo codes right now.');
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
+  // Debounced so typing a code does not fire a request per keystroke. Runs on
+  // mount too, which covers the initial load.
   useEffect(() => {
-    fetchPromoCodes(1);
-  }, []);
+    const timer = window.setTimeout(() => {
+      fetchPromoCodes(1, search);
+    }, search ? 350 : 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // The editor opens above a grid that can be scrolled well out of view, so pull
+  // it into sight rather than leaving the operator wondering what the click did.
+  useEffect(() => {
+    if (editor) {
+      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [editingPromo?.code, editor !== null]);
+
+  const openCreate = () => {
+    setEditor(emptyEditor());
+    setEditingPromo(null);
+    setSubmitError('');
+  };
+
+  const openEdit = (promo: PromoCode) => {
+    setEditor(editorFromPromo(promo));
+    setEditingPromo(promo);
+    setSubmitError('');
+  };
+
+  const closeEditor = () => {
+    setEditor(null);
+    setEditingPromo(null);
+    setSubmitError('');
+  };
+
+  const updateEditor = (patch: Partial<EditorState>) =>
+    setEditor((current) => (current ? { ...current, ...patch } : current));
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!editor) return;
 
-    const normalizedCode = code.trim().toUpperCase();
-    const parsedFreeDays = Number(freeDays);
-    const parsedMaxRedemptions = maxRedemptions ? Number(maxRedemptions) : 0;
+    const normalizedCode = editor.code.trim().toUpperCase();
+    const parsedFreeDays = Number(editor.freeDays);
+    const parsedMaxRedemptions = editor.maxRedemptions.trim()
+      ? Number(editor.maxRedemptions)
+      : 0;
 
-    if (!/^[A-Z0-9_-]{3,32}$/.test(normalizedCode)) {
+    if (!CODE_PATTERN.test(normalizedCode)) {
       setSubmitError('Code must be 3-32 characters using letters, numbers, dashes or underscores.');
       return;
     }
@@ -88,10 +194,14 @@ const PromoCodeManager: React.FC = () => {
       return;
     }
     if (!Number.isInteger(parsedMaxRedemptions) || parsedMaxRedemptions < 0) {
-      setSubmitError('Max uses must be 0 (unlimited) or a positive whole number.');
+      setSubmitError('Max uses must be blank (unlimited) or a positive whole number.');
       return;
     }
-    if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+    // An already-expired code can be edited without touching its expiry, so only
+    // the future rule applies to a date the operator actually changed.
+    const expiryChanged =
+      !editingPromo || editor.expiresAt !== toDateTimeLocal(editingPromo.expiresAt);
+    if (editor.expiresAt && expiryChanged && new Date(editor.expiresAt).getTime() <= Date.now()) {
       setSubmitError('Expiration date must be in the future.');
       return;
     }
@@ -99,26 +209,35 @@ const PromoCodeManager: React.FC = () => {
     setIsSubmitting(true);
     setSubmitError('');
 
-    try {
-      const promo = await promoCodeService.createPromoCode({
-        code: normalizedCode,
-        freeDays: parsedFreeDays,
-        maxRedemptions: parsedMaxRedemptions,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
-      });
+    const expiresAt = editor.expiresAt ? new Date(editor.expiresAt).toISOString() : '';
 
-      setCreatedPromo(promo);
-      setCode('');
-      setFreeDays('');
-      setMaxRedemptions('');
-      setExpiresAt('');
-      fetchPromoCodes(1);
+    try {
+      if (editingPromo) {
+        await promoCodeService.updatePromoCode({
+          code: editingPromo.code,
+          freeDays: parsedFreeDays,
+          maxRedemptions: parsedMaxRedemptions,
+          expiresAt,
+        });
+        closeEditor();
+        await fetchPromoCodes(currentPage, search);
+      } else {
+        const promo = await promoCodeService.createPromoCode({
+          code: normalizedCode,
+          freeDays: parsedFreeDays,
+          maxRedemptions: parsedMaxRedemptions,
+          expiresAt: expiresAt || undefined,
+        });
+        setCreatedPromo(promo);
+        closeEditor();
+        await fetchPromoCodes(1, search);
+      }
     } catch (error: any) {
-      console.error('Failed to create promo code:', error);
+      console.error('Failed to save promo code:', error);
       setSubmitError(
         error?.status === 409
           ? 'A promo code with this code already exists.'
-          : error?.message || 'Promo code creation failed.'
+          : error?.message || 'Saving the promo code failed.'
       );
     } finally {
       setIsSubmitting(false);
@@ -126,347 +245,393 @@ const PromoCodeManager: React.FC = () => {
   };
 
   const handleToggleActive = async (promo: PromoCode) => {
-    setTogglingCode(promo.code);
+    setBusyCode(promo.code);
     setLoadError('');
 
     try {
       await promoCodeService.setPromoCodeActive(promo.code, !promo.active);
-      await fetchPromoCodes(currentPage);
+      await fetchPromoCodes(currentPage, search);
     } catch (error) {
       console.error('Failed to update promo code:', error);
       setLoadError('Unable to update the promo code right now.');
     } finally {
-      setTogglingCode('');
+      setBusyCode('');
+      setPendingToggle(null);
     }
   };
 
-  const formatExpiry = (value: string | null | undefined) =>
-    value ? new Date(value).toLocaleString() : 'Never';
+  const showEmptyState = hasLoadedOnce && !isLoading && promoCodes.length === 0;
 
   return (
-    <div className="flex flex-col h-full bg-white text-slate-900 font-['Inter']">
-      <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4 mb-6">
-        <div>
-          <h3 className="text-lg font-bold">Promo Codes</h3>
-          <p className="text-sm text-slate-500">
-            Create codes that grant free pro days, cap how many people can use them, and set expiry dates.
-          </p>
+    <div className="font-['Inter'] text-slate-900">
+      {/* The page shell already renders the "Promo Codes" heading, so this is a
+          toolbar rather than a second title block. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+        <div className="relative flex-1 min-w-0 max-w-sm">
+          <Search size={15} className={iconInField} />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search codes"
+            className={fieldWithIcon}
+          />
         </div>
 
-        <button
-          type="button"
-          onClick={() => fetchPromoCodes(currentPage)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-          Refresh Codes
-        </button>
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <button
+            type="button"
+            onClick={() => fetchPromoCodes(currentPage, search)}
+            disabled={isLoading}
+            title="Refresh"
+            aria-label="Refresh"
+            className={`${ghostButton} w-10 px-0`}
+          >
+            <RefreshCw size={15} className={isLoading ? 'animate-spin' : undefined} />
+          </button>
+          <button type="button" onClick={openCreate} className={primaryButton}>
+            <Plus size={16} />
+            New code
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)] gap-6 mb-6">
-        <form onSubmit={handleSubmit} className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="px-6 py-5 border-b border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                <Ticket size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">Create Promo Code</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  The code grants free pro days when a user redeems it in the app.
-                </p>
-              </div>
+      <p className="text-sm text-slate-500 mb-6 max-w-2xl">
+        Each code grants free Pro days when redeemed in the app or by scanning its QR code. A
+        printed code is public forever — set a redemption cap and an expiry before it leaves the
+        building.
+      </p>
+
+      {loadError && (
+        <div className="flex items-center gap-2 px-4 py-3 mb-5 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+          <AlertCircle size={16} className="shrink-0" />
+          {loadError}
+        </div>
+      )}
+
+      {/* Right after creating a code is when you actually want the QR. */}
+      {createdPromo && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 mb-5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-900">
+          <CheckCircle2 size={16} className="shrink-0" />
+          <p className="min-w-0">
+            <span className="font-mono font-semibold">{createdPromo.code}</span> is live —{' '}
+            {createdPromo.freeDays} free day{createdPromo.freeDays === 1 ? '' : 's'},{' '}
+            {createdPromo.maxRedemptions > 0
+              ? `${createdPromo.maxRedemptions} redemptions`
+              : 'no redemption cap'}
+            .
+          </p>
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              type="button"
+              onClick={() => setQrPromo(createdPromo)}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-emerald-200 bg-white text-xs font-medium text-emerald-800 transition hover:bg-emerald-50"
+            >
+              <QrCode size={13} />
+              Get QR code
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreatedPromo(null)}
+              aria-label="Dismiss"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-emerald-700 transition hover:bg-emerald-100"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editor && (
+        <form
+          ref={editorRef}
+          onSubmit={handleSubmit}
+          className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(16,24,40,0.06)] overflow-hidden"
+        >
+          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 truncate">
+                {editingPromo ? `Edit ${editingPromo.code}` : 'New promo code'}
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {editingPromo
+                  ? 'The code itself is locked — printed QR codes already point at it.'
+                  : 'Pick the code carefully: it becomes the printed redeem link.'}
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={closeEditor}
+              aria-label="Close editor"
+              className={iconButton}
+            >
+              <X size={18} />
+            </button>
           </div>
 
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="space-y-2">
-                <label
-                  htmlFor="promo-code"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Code
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="promo-code" className={label}>
+                  Code <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
-                  <Ticket size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Ticket size={15} className={iconInField} />
                   <input
                     id="promo-code"
                     type="text"
-                    value={code}
-                    onChange={(event) => setCode(event.target.value.toUpperCase())}
+                    value={editor.code}
+                    disabled={Boolean(editingPromo)}
+                    onChange={(event) => updateEditor({ code: event.target.value.toUpperCase() })}
                     placeholder="WELCOME-30"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
+                    className={`${fieldWithIcon} uppercase disabled:bg-slate-50 disabled:text-slate-500`}
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="promo-free-days"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Free Days
+              <div>
+                <label htmlFor="promo-free-days" className={label}>
+                  Free days <span className="text-rose-500">*</span>
                 </label>
                 <input
                   id="promo-free-days"
                   type="number"
                   min={1}
                   max={3650}
-                  value={freeDays}
-                  onChange={(event) => setFreeDays(event.target.value)}
+                  value={editor.freeDays}
+                  onChange={(event) => updateEditor({ freeDays: event.target.value })}
                   placeholder="30"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className={field}
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="space-y-2">
-                <label
-                  htmlFor="promo-max-uses"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Max Uses <span className="normal-case font-semibold text-slate-400">(blank or 0 = unlimited)</span>
+              <div>
+                <label htmlFor="promo-max-uses" className={label}>
+                  Max uses <span className="text-slate-400 font-normal">· blank = unlimited</span>
                 </label>
                 <div className="relative">
-                  <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Users size={15} className={iconInField} />
                   <input
                     id="promo-max-uses"
                     type="number"
                     min={0}
-                    value={maxRedemptions}
-                    onChange={(event) => setMaxRedemptions(event.target.value)}
+                    value={editor.maxRedemptions}
+                    onChange={(event) => updateEditor({ maxRedemptions: event.target.value })}
                     placeholder="Unlimited"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className={fieldWithIcon}
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="promo-expires"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Expiration Date <span className="normal-case font-semibold text-slate-400">(optional)</span>
+              <div>
+                <label htmlFor="promo-expires" className={label}>
+                  Expires <span className="text-slate-400 font-normal">· blank = never</span>
                 </label>
                 <div className="relative">
-                  <CalendarClock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <CalendarClock size={15} className={iconInField} />
                   <input
                     id="promo-expires"
                     type="datetime-local"
-                    value={expiresAt}
-                    onChange={(event) => setExpiresAt(event.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={editor.expiresAt}
+                    onChange={(event) => updateEditor({ expiresAt: event.target.value })}
+                    className={fieldWithIcon}
                   />
                 </div>
               </div>
             </div>
 
             {submitError && (
-              <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900">
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                <p className="text-sm">{submitError}</p>
+              <div className="flex items-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+                <AlertCircle size={16} className="shrink-0" />
+                {submitError}
               </div>
             )}
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between pt-2">
-              <p className="text-xs text-slate-500">
-                Users redeem codes from the mobile app to unlock free pro days.
-              </p>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Creating Code
-                  </>
-                ) : (
-                  <>
-                    <Ticket size={16} />
-                    Create Promo Code
-                  </>
-                )}
-              </button>
-            </div>
+          <div className="flex items-center gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
+            <button type="submit" disabled={isSubmitting} className={primaryButton}>
+              {isSubmitting && <Loader2 size={15} className="animate-spin" />}
+              {editingPromo ? 'Save changes' : 'Create code'}
+            </button>
+            <button type="button" onClick={closeEditor} className={ghostButton}>
+              Cancel
+            </button>
           </div>
         </form>
+      )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm min-h-[220px]">
-          <div className="flex items-center gap-3 mb-4">
-            <CheckCircle2 size={18} className="text-emerald-600" />
-            <p className="text-sm font-bold text-slate-900">Last Created Code</p>
+      {isLoading && !hasLoadedOnce ? (
+        <div className="flex items-center justify-center py-24 text-slate-400">
+          <Loader2 size={22} className="animate-spin" />
+        </div>
+      ) : showEmptyState ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-16 text-center">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
+            <Ticket size={22} className="text-slate-400" />
           </div>
-
-          {createdPromo ? (
-            <div className="space-y-3 text-sm text-slate-700">
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-900">
-                Promo code created successfully.
-              </div>
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Code</p>
-                <p className="font-mono font-bold">{createdPromo.code}</p>
-              </div>
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Free Days</p>
-                <p>{createdPromo.freeDays}</p>
-              </div>
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Max Uses</p>
-                <p>{createdPromo.maxRedemptions > 0 ? createdPromo.maxRedemptions : 'Unlimited'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Expires</p>
-                <p>{formatExpiry(createdPromo.expiresAt)}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-10">
-              <Ticket size={40} className="text-slate-200 mb-4" />
-              <p className="font-medium text-slate-900">No code created yet</p>
-              <p className="text-sm mt-1 max-w-sm">
-                Create a promo code to share free pro days with users.
-              </p>
-            </div>
+          <p className="mt-4 text-sm font-semibold text-slate-900">
+            {search ? 'No matches' : 'No promo codes yet'}
+          </p>
+          <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">
+            {search
+              ? 'Nothing matched that search. Try a different code.'
+              : 'Create a code to hand out free Pro days, then print its QR code for flyers and handouts.'}
+          </p>
+          {!search && (
+            <button type="button" onClick={openCreate} className={`${primaryButton} mt-5`}>
+              <Plus size={16} />
+              New code
+            </button>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
+          {promoCodes.map((promo) => {
+            const status = getPromoStatus(promo);
+            const isLive = status === 'Active';
+            const isBusy = busyCode === promo.code;
+            const usedPercent =
+              promo.maxRedemptions > 0
+                ? Math.min(100, Math.round((promo.redemptionCount / promo.maxRedemptions) * 100))
+                : null;
 
-      <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900">Promo Code Directory</h4>
-            <p className="text-xs text-slate-500 mt-1">
-              Track usage and deactivate codes at any time.
-            </p>
-          </div>
-          <div className="text-xs font-semibold text-slate-500">
-            {totalCodes} code{totalCodes === 1 ? '' : 's'}
-          </div>
+            return (
+              <div
+                key={promo.id}
+                className={`group relative rounded-2xl border bg-white p-5 transition hover:shadow-[0_4px_16px_rgba(16,24,40,0.08)] ${
+                  isLive ? 'border-slate-200' : 'border-slate-200 bg-slate-50/70'
+                }`}
+              >
+                <div className="flex items-start gap-3.5">
+                  <div
+                    className={`w-11 h-11 rounded-xl shrink-0 flex items-center justify-center ${
+                      isLive
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    <Ticket size={19} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono font-semibold text-slate-900 truncate leading-tight">
+                      {promo.code}
+                    </p>
+                    <p className="text-[13px] text-slate-500 mt-0.5">
+                      {promo.freeDays} free day{promo.freeDays === 1 ? '' : 's'} of Pro
+                    </p>
+                  </div>
+
+                  <span
+                    className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass[status]}`}
+                  >
+                    {status}
+                  </span>
+                </div>
+
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-slate-500">Redemptions</span>
+                    <span className="font-semibold text-slate-700">
+                      {promo.redemptionCount}
+                      {promo.maxRedemptions > 0 ? ` / ${promo.maxRedemptions}` : ' · no cap'}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    {usedPercent !== null && (
+                      <div
+                        className={`h-full rounded-full transition-all ${usageTone(usedPercent)}`}
+                        style={{ width: `${usedPercent}%` }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className={`mt-3 flex items-center gap-1.5 text-xs ${
+                    status === 'Expired' ? 'text-amber-700' : 'text-slate-500'
+                  }`}
+                  title={fullDate(promo.expiresAt)}
+                >
+                  <CalendarClock size={13} className="shrink-0" />
+                  <span className="truncate">
+                    {promo.expiresAt ? `Expires ${shortDate(promo.expiresAt)}` : 'No expiry'}
+                  </span>
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setQrPromo(promo)}
+                    title="QR code"
+                    aria-label={`QR code for ${promo.code}`}
+                    className={iconButton}
+                  >
+                    <QrCode size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(promo)}
+                    title="Edit"
+                    aria-label={`Edit ${promo.code}`}
+                    className={iconButton}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      promo.active ? setPendingToggle(promo) : handleToggleActive(promo)
+                    }
+                    disabled={isBusy}
+                    title={promo.active ? 'Deactivate' : 'Activate'}
+                    aria-label={promo.active ? `Deactivate ${promo.code}` : `Activate ${promo.code}`}
+                    className={iconButton}
+                  >
+                    {isBusy ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Power size={15} />
+                    )}
+                  </button>
+
+                  <span className="ml-auto text-[11px] text-slate-400 truncate">
+                    {promo.created ? `Created ${shortDate(promo.created)}` : ''}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
+      )}
 
-        {loadError && (
-          <div className="mx-6 mt-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900">
-            <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <p className="text-sm">{loadError}</p>
-          </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-white">
-              <tr className="border-b border-slate-200">
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Code</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Free Days</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Uses</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Expires</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    <div className="inline-flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
-                      Loading promo codes
-                    </div>
-                  </td>
-                </tr>
-              ) : promoCodes.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    No promo codes yet. Create your first one above.
-                  </td>
-                </tr>
-              ) : (
-                promoCodes.map((promo) => {
-                  const status = getPromoStatus(promo);
-                  const isToggling = togglingCode === promo.code;
-
-                  return (
-                    <tr key={promo.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-mono font-bold text-slate-900">{promo.code}</p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          Created {promo.created ? new Date(promo.created).toLocaleDateString() : 'recently'}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">{promo.freeDays}</td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {promo.redemptionCount}
-                        {promo.maxRedemptions > 0 ? ` / ${promo.maxRedemptions}` : ' / ∞'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">{formatExpiry(promo.expiresAt)}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass[status]}`}
-                        >
-                          {status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            promo.active ? setPendingToggle(promo) : handleToggleActive(promo)
-                          }
-                          disabled={isToggling}
-                          className={`inline-flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            promo.active
-                              ? 'border-rose-200 text-rose-600 hover:bg-rose-50'
-                              : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {isToggling ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Power size={14} />
-                          )}
-                          {promo.active ? 'Deactivate' : 'Activate'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6">
           <p className="text-xs text-slate-500">
-            Page {currentPage} of {totalPages}
+            Page {currentPage} of {totalPages} · {total} code{total === 1 ? '' : 's'}
           </p>
-
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => fetchPromoCodes(currentPage - 1)}
+              onClick={() => fetchPromoCodes(currentPage - 1, search)}
               disabled={currentPage <= 1 || isLoading}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`${ghostButton} h-9 text-xs`}
             >
-              <ChevronLeft size={14} />
               Previous
             </button>
             <button
               type="button"
-              onClick={() => fetchPromoCodes(currentPage + 1)}
+              onClick={() => fetchPromoCodes(currentPage + 1, search)}
               disabled={currentPage >= totalPages || isLoading}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`${ghostButton} h-9 text-xs`}
             >
               Next
-              <ChevronRight size={14} />
             </button>
           </div>
         </div>
-      </div>
+      )}
+
+      <PromoCodeQrModal promo={qrPromo} onClose={() => setQrPromo(null)} />
 
       <ConfirmationModal
         isOpen={pendingToggle !== null}
@@ -478,12 +643,7 @@ const PromoCodeManager: React.FC = () => {
         }
         confirmLabel="Deactivate"
         variant="warning"
-        onConfirm={() => {
-          if (pendingToggle) {
-            handleToggleActive(pendingToggle);
-          }
-          setPendingToggle(null);
-        }}
+        onConfirm={() => pendingToggle && handleToggleActive(pendingToggle)}
         onCancel={() => setPendingToggle(null)}
       />
     </div>

@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { publicAppUrl } from './publicAppUrl';
 
 // Shapes mirror contracts/team-cards-contract.md (IAM service).
 
@@ -71,15 +72,7 @@ export interface UpdateTeamMemberRequest {
   sortOrder?: number;
 }
 
-/**
- * Where the QR codes point. This is the public Nuxt app, not the dashboard, so it
- * cannot be derived from any of the API base URLs.
- */
-const PUBLIC_APP_URL = (
-  import.meta.env.VITE_PUBLIC_APP_URL || 'https://medicalstudent.ai'
-).replace(/\/+$/, '');
-
-export const teamCardUrl = (slug: string): string => `${PUBLIC_APP_URL}/team/${slug}`;
+export const teamCardUrl = (slug: string): string => publicAppUrl(`/team/${slug}`);
 
 export const teamMemberService = {
   listTeamMembers: async (page = 1, limit = 20, search = ''): Promise<TeamMemberListResponse> => {
