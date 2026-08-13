@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { publicAppUrl } from './publicAppUrl';
 
 // Shapes mirror contracts/promo-codes-contract.md (IAM service).
 
@@ -38,6 +39,28 @@ export interface UpdatePromoCodeRequest {
   /** RFC3339 timestamp, or '' to clear the expiry */
   expiresAt?: string;
 }
+
+/**
+ * Where a scanned promo QR code lands. The app redeems it on the spot for a
+ * signed-in user, and otherwise carries it through signup so the code is applied
+ * in the same request that creates the account.
+ */
+export const promoRedeemUrl = (code: string): string =>
+  publicAppUrl(`/redeem?promo_code=${encodeURIComponent(code.trim().toUpperCase())}`);
+
+export type PromoStatus = 'Active' | 'Inactive' | 'Expired' | 'Exhausted';
+
+/**
+ * Whether a code would actually redeem right now. Lives here rather than in the
+ * manager view because the QR modal has to warn about the same three dead states
+ * before anyone sends the code to a printer.
+ */
+export const getPromoStatus = (promo: PromoCode): PromoStatus => {
+  if (!promo.active) return 'Inactive';
+  if (promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now()) return 'Expired';
+  if (promo.maxRedemptions > 0 && promo.redemptionCount >= promo.maxRedemptions) return 'Exhausted';
+  return 'Active';
+};
 
 export const promoCodeService = {
   listPromoCodes: async (page = 1, limit = 10, search = ''): Promise<PromoCodeListResponse> => {

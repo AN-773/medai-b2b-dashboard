@@ -74,6 +74,34 @@ Responses: `200` with the updated `PromoCode`; `404` unknown code.
 
 `{ "code": "WELCOME-30" }` → `200 { "freeDays": 30, "expires": "..." }`.
 Grants an `active` subscription with plan `promo` on the caller's account
-(local only — never synced to RevenueCat). Errors: `404` unknown code,
-`410` inactive/expired/exhausted, `409` already redeemed by this account or
-the account has an active paid subscription.
+(local only — never synced to RevenueCat).
+
+Failures answer with `{ "message": "...", "reason": "..." }`. The `reason` is the
+stable value to branch on — two very different failures share `409`:
+
+| Status | `reason` | Meaning |
+| --- | --- | --- |
+| 404 | `invalid` | No such code |
+| 410 | `inactive` | Code deactivated |
+| 410 | `expired` | Past `expiresAt` |
+| 410 | `exhausted` | Hit `maxRedemptions` |
+| 409 | `already_redeemed` | This account already used this code |
+| 409 | `already_subscribed` | Account has an active paid subscription |
+
+`already_subscribed` is refused deliberately: RevenueCat owns a paid
+subscription's expiry and would overwrite a local grant on its next webhook, and
+nothing server-side can stop the store from billing. The redemption is **not**
+counted in that case, so the code stays usable once the paid subscription lapses.
+The app never suggests cancelling to redeem.
+
+## Redemption by QR code
+
+Printed codes point at `{VITE_PUBLIC_APP_URL}/redeem?promo_code=<CODE>` — built by
+`promoRedeemUrl()` in `services/promoCodeService.ts`, rendered by
+`components/settings/PromoCodeQrModal.tsx`. The app redeems on the spot for a
+signed-in user; otherwise it carries the code into signup, where IAM redeems it in
+the same request that creates the account (`promoCode` query param on `/login` and
+`/authorize`) so the first token already carries the entitlement.
+
+Because a printed code is public and copyable forever, codes distributed this way
+should always set `maxRedemptions` and usually `expiresAt`.

@@ -4,6 +4,7 @@ export type View =
   | 'DASHBOARD'
   | 'TENANTS'
   | 'PROMO_CODES'
+  | 'TEAM_DIRECTORY'
   | 'NOTIFICATIONS'
   | 'STUDY_PLAN_AUDIT'
   | 'WORKBENCH'
