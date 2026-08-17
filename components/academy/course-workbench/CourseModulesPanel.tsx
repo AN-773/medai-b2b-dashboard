@@ -350,6 +350,9 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
   );
   const [previewItem, setPreviewItem] = useState<SessionEligibleItem | null>(null);
   const activeCourseIdRef = useRef(course.id);
+  // Objectives with a picker fetch in flight. Tracked in a ref (not state) so the
+  // lazy-load effect can re-run freely without cancelling or re-issuing requests.
+  const inFlightObjectiveIdsRef = useRef<Set<string>>(new Set());
   const loadRequestIdRef = useRef(0);
   const moduleSaveRequestIdRef = useRef(0);
   const moduleDeleteRequestIdRef = useRef(0);
@@ -566,6 +569,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
     moduleDeleteRequestIdRef.current += 1;
     sessionSaveRequestIdRef.current += 1;
     sessionDeleteRequestIdRef.current += 1;
+    inFlightObjectiveIdsRef.current = new Set();
     setModules([]);
     setSessions([]);
     setEligibleItems([]);
@@ -916,7 +920,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       (objectiveId) =>
         objectiveById.has(objectiveId) &&
         !loadedObjectiveIds.has(objectiveId) &&
-        !loadingObjectiveIds.has(objectiveId),
+        !inFlightObjectiveIdsRef.current.has(objectiveId),
     );
 
     if (objectiveIdsToLoad.length === 0) {
@@ -935,7 +939,10 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       return;
     }
 
-    let cancelled = false;
+    const requestCourseId = course.id;
+    objectiveIdsToLoad.forEach((objectiveId) =>
+      inFlightObjectiveIdsRef.current.add(objectiveId),
+    );
     setLoadError(null);
     setLoadingObjectiveIds((current) => {
       const next = new Set(current);
@@ -945,7 +952,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
 
     void listObjectiveItemsInBatches(objectivesToLoad)
       .then((fetchedItems) => {
-        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        if (activeCourseIdRef.current !== requestCourseId) return;
         setEligibleItems((current) =>
           hydrateEligibleItems(sessions, [...current, ...fetchedItems]),
         );
@@ -957,7 +964,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       })
       .catch((error) => {
         console.error('Failed to load course items for the modules picker:', error);
-        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        if (activeCourseIdRef.current !== requestCourseId) return;
         setLoadError(
           error instanceof Error
             ? error.message
@@ -965,24 +972,22 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
         );
       })
       .finally(() => {
-        if (cancelled || activeCourseIdRef.current !== course.id) return;
+        objectiveIdsToLoad.forEach((objectiveId) =>
+          inFlightObjectiveIdsRef.current.delete(objectiveId),
+        );
+        if (activeCourseIdRef.current !== requestCourseId) return;
         setLoadingObjectiveIds((current) => {
           const next = new Set(current);
           objectiveIdsToLoad.forEach((objectiveId) => next.delete(objectiveId));
           return next;
         });
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     course.id,
     editorMode,
     groupedVisibleItems,
     hydrateEligibleItems,
     loadedObjectiveIds,
-    loadingObjectiveIds,
     objectiveById,
     objectivePriorityIds,
     selectedObjectiveIds,

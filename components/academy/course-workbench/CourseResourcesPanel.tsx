@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
   ChevronLeft,
   ChevronRight,
   File as FileIcon,
@@ -16,11 +17,13 @@ import {
   RefreshCw,
   Trash2,
   UploadCloud,
+  X,
 } from 'lucide-react';
 import type { TeacherCourse } from '@/types/AcademyStudioTypes';
 import { courseResourceService } from '@/services/courseResourceService';
 import type { CourseResource } from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
+import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import { SectionLabel } from './shared';
 
@@ -33,6 +36,30 @@ type ApiRequestError = Error & {
 };
 
 const PAGE_SIZE = 25;
+
+/**
+ * Videos go straight to blob storage, so the ceiling is what a teacher can
+ * realistically push over a campus uplink rather than a backend limit. The
+ * Tests service enforces the same cap (COURSE_RESOURCE_MAX_UPLOAD_BYTES);
+ * checking here as well means nobody waits out an hour-long upload to be told
+ * no at the end.
+ */
+const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
+const MAX_VIDEO_SIZE_LABEL = '2 GB';
+
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi'];
+
+type UploadItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'canceled';
+
+interface UploadItem {
+  key: string;
+  fileName: string;
+  fileSize: number;
+  isVideo: boolean;
+  status: UploadItemStatus;
+  percent: number;
+  error?: string;
+}
 
 const getStatus = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error
@@ -97,16 +124,23 @@ const fileTypeLabel = (value: string) => {
   return trimmed.includes('/') ? trimmed.split('/')[1].toUpperCase() : trimmed;
 };
 
+const extensionOf = (fileName: string) =>
+  (fileName.split('.').pop() || '').toLowerCase();
+
+const isVideoFile = (file: File) =>
+  file.type.toLowerCase().startsWith('video/') ||
+  VIDEO_EXTENSIONS.includes(extensionOf(file.name));
+
 const iconForResource = (resource: CourseResource) => {
   const type = (resource.fileType || '').toLowerCase();
-  const ext = (resource.fileName.split('.').pop() || '').toLowerCase();
+  const ext = extensionOf(resource.fileName);
   const has = (...needles: string[]) =>
     needles.some((needle) => type.includes(needle) || ext === needle);
 
   if (has('pdf')) return FileText;
   if (type.startsWith('image/') || has('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'))
     return FileImage;
-  if (type.startsWith('video/') || has('mp4', 'mov', 'webm', 'mkv'))
+  if (type.startsWith('video/') || has(...VIDEO_EXTENSIONS))
     return FileVideo;
   if (type.startsWith('audio/') || has('mp3', 'wav', 'm4a', 'ogg'))
     return FileAudio;
@@ -126,6 +160,8 @@ const identifierFor = (resource: CourseResource) =>
 const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelRequestedRef = useRef(false);
   const courseIdentifier = useMemo(
     () => course.backendIdentifier || resourceIdentifier(course.id),
     [course.backendIdentifier, course.id],
@@ -141,9 +177,9 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
   );
   const [deletingResourceId, setDeletingResourceId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSize = useMemo(
@@ -179,48 +215,138 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     setResources([]);
     setTotal(0);
     setLoadError(null);
-    setUploadError(null);
     setDeleteError(null);
     setStatusMessage(null);
+    setUploadQueue([]);
   }, [course.id]);
 
   useEffect(() => {
     void loadResources(page);
   }, [loadResources, page]);
 
+  // A video upload can outlast the teacher's patience with the tab, and closing
+  // it mid-transfer throws away everything sent so far.
+  useEffect(() => {
+    if (!isUploading) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isUploading]);
+
+  const updateUploadItem = useCallback(
+    (key: string, patch: Partial<UploadItem>) => {
+      setUploadQueue((current) =>
+        current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+      );
+    },
+    [],
+  );
+
   const uploadFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0 || isUploading) return;
 
-      setIsUploading(true);
-      setUploadError(null);
+      const queue: UploadItem[] = files.map((file, index) => {
+        const isVideo = isVideoFile(file);
+        const tooLarge = isVideo && file.size > MAX_VIDEO_BYTES;
+        return {
+          key: `${index}-${file.name}-${file.size}-${file.lastModified}`,
+          fileName: file.name,
+          fileSize: file.size,
+          isVideo,
+          status: tooLarge ? 'error' : 'pending',
+          percent: 0,
+          error: tooLarge
+            ? `This video is ${formatFileSize(file.size)} — the limit is ${MAX_VIDEO_SIZE_LABEL}. Compress it or split it into shorter clips.`
+            : undefined,
+        };
+      });
+
+      cancelRequestedRef.current = false;
+      setUploadQueue(queue);
       setDeleteError(null);
       setStatusMessage(null);
+      setIsUploading(true);
 
-      try {
-        const uploaded = await courseResourceService.uploadTeacherCourseResources(
-          courseIdentifier,
-          files,
-        );
+      let uploadedCount = 0;
+      let lastUploadedName = '';
+
+      // One file at a time: each upload already parallelises its own blocks, and
+      // a failure part-way leaves the files that already landed untouched.
+      for (let index = 0; index < files.length; index += 1) {
+        const item = queue[index];
+        if (item.status === 'error') continue;
+
+        if (cancelRequestedRef.current) {
+          updateUploadItem(item.key, { status: 'canceled' });
+          continue;
+        }
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+        updateUploadItem(item.key, { status: 'uploading', percent: 0 });
+
+        try {
+          const uploaded = await courseResourceService.uploadTeacherCourseResource(
+            courseIdentifier,
+            files[index],
+            {
+              signal: controller.signal,
+              onProgress: (percent) => updateUploadItem(item.key, { percent }),
+            },
+          );
+          uploadedCount += 1;
+          lastUploadedName = uploaded[0]?.fileName || item.fileName;
+          updateUploadItem(item.key, { status: 'done', percent: 100 });
+        } catch (error) {
+          if (controller.signal.aborted || error instanceof BlobUploadAbortedError) {
+            updateUploadItem(item.key, { status: 'canceled' });
+          } else {
+            updateUploadItem(item.key, {
+              status: 'error',
+              error: getUploadErrorMessage(error),
+            });
+          }
+        } finally {
+          abortRef.current = null;
+        }
+      }
+
+      cancelRequestedRef.current = false;
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      // Finished rows would only repeat what the table below now shows, so keep
+      // just the ones the teacher still has to deal with.
+      setUploadQueue((current) =>
+        current.filter(
+          (item) => item.status === 'error' || item.status === 'canceled',
+        ),
+      );
+
+      if (uploadedCount > 0) {
         setStatusMessage(
-          uploaded.length === 1
-            ? `“${uploaded[0].fileName}” is now available to learners.`
-            : `${uploaded.length} files are now available to learners.`,
+          uploadedCount === 1
+            ? `“${lastUploadedName}” is now available to learners.`
+            : `${uploadedCount} files are now available to learners.`,
         );
         if (page === 1) {
           await loadResources(1);
         } else {
           setPage(1);
         }
-      } catch (error) {
-        setUploadError(getUploadErrorMessage(error));
-      } finally {
-        setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     },
-    [courseIdentifier, isUploading, loadResources, page],
+    [courseIdentifier, isUploading, loadResources, page, updateUploadItem],
   );
+
+  const cancelUploads = () => {
+    cancelRequestedRef.current = true;
+    abortRef.current?.abort();
+  };
 
   const openFilePicker = () => {
     if (isUploading) return;
@@ -265,7 +391,6 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     setResourceToDelete(null);
     setDeletingResourceId(identifier);
     setDeleteError(null);
-    setUploadError(null);
     setStatusMessage(null);
 
     try {
@@ -376,22 +501,101 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                   : 'Drag files here, or click to browse'}
             </p>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-              PDFs, slides, handouts, and other documents. Uploads start right
-              away — no publish step.
+              PDFs, slides, handouts, and lecture videos (MP4, MOV, WebM — up to{' '}
+              {MAX_VIDEO_SIZE_LABEL}). Uploads start right away — no publish
+              step.
             </p>
           </div>
         </div>
+
+        {/* Upload queue — one row per file, so a long video shows real progress */}
+        {uploadQueue.length > 0 && (
+          <div className="mt-3 space-y-2 rounded-[1.25rem] border border-slate-200 bg-white p-3">
+            {uploadQueue.map((item) => {
+              const Icon =
+                item.status === 'done'
+                  ? Check
+                  : item.status === 'error'
+                    ? AlertTriangle
+                    : item.isVideo
+                      ? FileVideo
+                      : FileIcon;
+              return (
+                <div key={item.key} className="rounded-xl bg-slate-50 px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                        item.status === 'done'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : item.status === 'error'
+                            ? 'bg-rose-100 text-rose-600'
+                            : 'bg-white text-slate-500'
+                      }`}
+                    >
+                      <Icon size={15} />
+                    </div>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
+                      {item.fileName}
+                    </p>
+                    <p className="flex-shrink-0 text-xs font-black tabular-nums text-slate-500">
+                      {item.status === 'uploading'
+                        ? `${item.percent}%`
+                        : item.status === 'pending'
+                          ? 'Queued'
+                          : item.status === 'canceled'
+                            ? 'Canceled'
+                            : formatFileSize(item.fileSize)}
+                    </p>
+                    {item.status === 'uploading' && (
+                      <button
+                        type="button"
+                        onClick={cancelUploads}
+                        title="Cancel upload"
+                        className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-rose-200 hover:text-rose-600"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    {!isUploading &&
+                      (item.status === 'error' || item.status === 'canceled') && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUploadQueue((current) =>
+                              current.filter((entry) => entry.key !== item.key),
+                            )
+                          }
+                          title="Dismiss"
+                          className="flex-shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                  </div>
+
+                  {item.status === 'uploading' && (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] transition-[width] duration-200"
+                        style={{ width: `${item.percent}%` }}
+                      />
+                    </div>
+                  )}
+                  {item.error && (
+                    <p className="mt-1.5 text-xs font-medium leading-5 text-rose-600">
+                      {item.error}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {statusMessage && (
           <p className="mt-3 text-sm font-semibold text-emerald-700">
             {statusMessage}
           </p>
-        )}
-        {uploadError && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
-            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
-            <p className="font-medium">{uploadError}</p>
-          </div>
         )}
         {deleteError && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
@@ -440,8 +644,8 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                 No files yet
               </p>
               <p className="mt-2 max-w-md text-xs font-medium leading-5 text-slate-500">
-                Add the readings, slides, and handouts learners should be able to
-                open from this course.
+                Add the readings, slides, handouts, and lecture videos learners
+                should be able to open from this course.
               </p>
             </div>
           ) : (
