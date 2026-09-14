@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
-export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS' | 'NOTIFICATIONS';
+export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS' | 'NOTIFICATIONS' | 'AGENT_V2';
 
 const getBaseUrl = (service: ServiceType): string => {
   switch (service) {
@@ -12,6 +12,13 @@ const getBaseUrl = (service: ServiceType): string => {
       return import.meta.env.VITE_TEST_API_URL || 'http://localhost:3000/tests';
     case 'NOTIFICATIONS':
       return import.meta.env.VITE_NOTIFICATIONS_API_URL || 'http://localhost:8691';
+    // No localhost default, unlike every service above, because the agent is
+    // optional. `agentV2Service.isConfigured()` reads the same variable to
+    // decide whether the knowledge-base half of course resources exists at all,
+    // and a default here would make it always look configured and then fail at
+    // request time instead of at the feature check.
+    case 'AGENT_V2':
+      return import.meta.env.VITE_AGENT_V2_API_URL || '';
     default:
       return '';
   }
@@ -31,6 +38,13 @@ type ApiRequestError = Error & {
  * rejects tokens for its own reasons (bearer auth not enabled there, caller
  * lacks the superadmin role), and signing the operator out of the whole
  * dashboard over that would be wrong.
+ *
+ * The agent is excluded for a sharper version of the same reason: it verifies
+ * tokens against its own configured IAM issuer and audience, so a deployment
+ * pointed at a different IAM than this dashboard answers 401 to a session that
+ * is perfectly valid here. Signing the teacher out because the tutor backend is
+ * misconfigured would make one service's deployment error look like an expired
+ * session.
  */
 const SESSION_OWNING_SERVICES: ServiceType[] = ['IAM', 'TUTOR', 'TESTS'];
 

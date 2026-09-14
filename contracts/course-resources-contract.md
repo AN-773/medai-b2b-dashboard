@@ -3,9 +3,12 @@
 Service: **TESTS** (`VITE_TEST_API_URL`)
 Consumer: `services/courseResourceService.ts`, `components/academy/course-workbench/CourseResourcesPanel.tsx`
 
-Course resources are the learner-visible files attached to a course — readings, slides,
-handouts, and lecture videos. They surface to learners through every study plan whose
-`sourceCourseId` is that course.
+Course resources are the learner-visible files attached to a course — readings, slides
+and handouts. They surface to learners through every study plan whose `sourceCourseId`
+is that course.
+
+The service itself takes any file up to 2 GiB, and older resources include lecture
+videos. What the **dashboard** now offers is narrower — see *Limits* below.
 
 `{identifier}` is the course slug: the last path segment of the backend's absolute `id`
 URL. Use `resourceIdentifier()` to derive it.
@@ -135,9 +138,25 @@ or play back a resource it uploaded.
 
 ---
 
-## Server-side limits
+## Limits — the store's, and the narrower ones the dashboard applies
 
 `COURSE_RESOURCE_MAX_UPLOAD_BYTES` caps a single resource, defaulting to 2 GiB. It is
 enforced twice: against the declared `fileSize` before a URL is signed, and against the
-blob's actual size at commit. The dashboard mirrors the 2 GB figure for videos in
-`CourseResourcesPanel.tsx` so oversized files are rejected before the upload starts.
+blob's actual size at commit. The multipart fallback applies no MIME allowlist.
+
+**The dashboard is deliberately stricter than both**, and the reason is not in this
+service. A course resource is only useful if a learner's tutor can read it, which means
+it has to be ingestible by the agent — and that pipeline takes a fixed set of document
+formats and nothing over 150 MiB. See `contracts/agent-v2-contract.md`.
+
+So `CourseResourcesPanel.tsx` refuses, before any transfer starts:
+
+- anything over **150 MB**, not 2 GB;
+- anything outside the agent's published `corpus` format list — which excludes
+  **video and audio entirely**. The format half is skipped when the agent is not
+  configured or cannot be reached, because a guessed allowlist would hide files the
+  parser reads; the size half always applies.
+
+This service still accepts what it always did. Resources uploaded before the narrowing
+— lecture recordings included — are untouched: still listed, still downloadable, still
+attached to their study plans. Only new uploads are bounded.

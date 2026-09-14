@@ -21,6 +21,15 @@ import {
 } from 'lucide-react';
 import type { TeacherCourse } from '@/types/AcademyStudioTypes';
 import { courseResourceService } from '@/services/courseResourceService';
+import {
+  AGENT_MAX_UPLOAD_BYTES,
+  AGENT_MAX_UPLOAD_SIZE_LABEL,
+  formatSuffixLabels,
+  getCorpusUploadFormats,
+  isAcceptedUpload,
+  uploadAcceptAttribute,
+} from '@/services/agentV2Service';
+import type { AcceptedUploadFormat } from '@/services/agentV2Service';
 import type { CourseResource } from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
@@ -38,15 +47,31 @@ type ApiRequestError = Error & {
 const PAGE_SIZE = 25;
 
 /**
- * Videos go straight to blob storage, so the ceiling is what a teacher can
- * realistically push over a campus uplink rather than a backend limit. The
- * Tests service enforces the same cap (COURSE_RESOURCE_MAX_UPLOAD_BYTES);
- * checking here as well means nobody waits out an hour-long upload to be told
- * no at the end.
+ * What a course resource may be is now what the tutor agent can read.
+ *
+ * The store behind this panel would take anything — the Tests service applies
+ * no MIME allowlist and its own ceiling was gigabyte-scale, sized for a lecture
+ * video pushed over a campus uplink. What it could not do is make any of it
+ * *searchable*: a file becomes answerable by a learner's tutor only by being
+ * ingested into a knowledge base, and that pipeline parses a specific set of
+ * document formats and refuses anything over 150 MiB.
+ *
+ * The gap between those two was the defect. A teacher could upload a 2 GB
+ * lecture recording, see it listed, and have every learner's tutor unable to
+ * quote a word of it — a success on screen and a file the product cannot use.
+ * So the picker is bounded by the pipeline rather than by the store, both ways:
+ * {@link AGENT_MAX_UPLOAD_BYTES} for the size, and the agent's own published
+ * format list for the type.
+ *
+ * **This is a narrowing, and video is what it removes.** Recordings already
+ * uploaded are untouched and still listed, downloadable and attached to their
+ * study plans; what changes is that a new one is refused here rather than
+ * accepted into a dead end. Making them searchable is a transcription step
+ * nobody has built, and until it exists this refusal is the honest answer.
+ *
+ * Checking here rather than leaving it to the backend means nobody waits out a
+ * long upload to be told no at the end.
  */
-const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
-const MAX_VIDEO_SIZE_LABEL = '2 GB';
-
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi'];
 
 type UploadItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'canceled';
@@ -131,6 +156,40 @@ const isVideoFile = (file: File) =>
   file.type.toLowerCase().startsWith('video/') ||
   VIDEO_EXTENSIONS.includes(extensionOf(file.name));
 
+/**
+ * Why this file cannot be a course resource, or `null` if it can.
+ *
+ * `accepted` is `null` when the agent could not be asked what it reads — no
+ * deployment configured, or the call failed. The type check is then skipped
+ * entirely rather than run against a guess: refusing a PDF because a format
+ * list did not load would be a worse failure than accepting a file the upload
+ * later answers `415` for. The size check still runs, because that number is
+ * known without asking.
+ */
+const rejectionFor = (
+  file: File,
+  accepted: readonly AcceptedUploadFormat[] | null,
+): string | null => {
+  if (accepted !== null && !isAcceptedUpload(file, accepted)) {
+    const kinds = formatSuffixLabels(accepted).join(', ');
+    if (isVideoFile(file)) {
+      return `Recordings can’t be added as course resources — a learner’s tutor can’t read one. Upload the slides or a transcript instead (${kinds}).`;
+    }
+    // A name with no dot has no extension to name back at the teacher, and
+    // `extensionOf` would hand back the whole filename for one.
+    const dot = file.name.lastIndexOf('.');
+    const kind =
+      dot > 0 ? `${file.name.slice(dot + 1).toUpperCase()} files aren’t` : 'That file isn’t';
+    return `${kind} something a learner’s tutor can read. Accepted: ${kinds}.`;
+  }
+
+  if (file.size > AGENT_MAX_UPLOAD_BYTES) {
+    return `This file is ${formatFileSize(file.size)} — the limit is ${AGENT_MAX_UPLOAD_SIZE_LABEL}. Split it into parts, or compress the images inside it.`;
+  }
+
+  return null;
+};
+
 const iconForResource = (resource: CourseResource) => {
   const type = (resource.fileType || '').toLowerCase();
   const ext = extensionOf(resource.fileName);
@@ -180,6 +239,14 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  /**
+   * What the tutor agent will ingest. `null` until it answers, and permanently
+   * `null` where there is no agent — see `rejectionFor` on why that is not the
+   * same as an empty list.
+   */
+  const [acceptedFormats, setAcceptedFormats] = useState<
+    AcceptedUploadFormat[] | null
+  >(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSize = useMemo(
@@ -224,7 +291,16 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     void loadResources(page);
   }, [loadResources, page]);
 
-  // A video upload can outlast the teacher's patience with the tab, and closing
+  // Asked once per mount rather than per course: the answer is a fact about the
+  // deployment's parser, not about this course, and it does not change while a
+  // teacher moves between courses in the workbench.
+  useEffect(() => {
+    const controller = new AbortController();
+    void getCorpusUploadFormats({ signal: controller.signal }).then(setAcceptedFormats);
+    return () => controller.abort();
+  }, []);
+
+  // A large upload can outlast the teacher's patience with the tab, and closing
   // it mid-transfer throws away everything sent so far.
   useEffect(() => {
     if (!isUploading) return;
@@ -250,18 +326,18 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       if (files.length === 0 || isUploading) return;
 
       const queue: UploadItem[] = files.map((file, index) => {
-        const isVideo = isVideoFile(file);
-        const tooLarge = isVideo && file.size > MAX_VIDEO_BYTES;
+        // Type before size, because it is the more useful thing to be told:
+        // a teacher whose 900 MB recording is refused for both reasons is not
+        // helped by "compress it", and the extension is what they can act on.
+        const rejection = rejectionFor(file, acceptedFormats);
         return {
           key: `${index}-${file.name}-${file.size}-${file.lastModified}`,
           fileName: file.name,
           fileSize: file.size,
-          isVideo,
-          status: tooLarge ? 'error' : 'pending',
+          isVideo: isVideoFile(file),
+          status: rejection ? 'error' : 'pending',
           percent: 0,
-          error: tooLarge
-            ? `This video is ${formatFileSize(file.size)} — the limit is ${MAX_VIDEO_SIZE_LABEL}. Compress it or split it into shorter clips.`
-            : undefined,
+          error: rejection ?? undefined,
         };
       });
 
@@ -340,7 +416,14 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         }
       }
     },
-    [courseIdentifier, isUploading, loadResources, page, updateUploadItem],
+    [
+      acceptedFormats,
+      courseIdentifier,
+      isUploading,
+      loadResources,
+      page,
+      updateUploadItem,
+    ],
   );
 
   const cancelUploads = () => {
@@ -452,6 +535,13 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           ref={fileInputRef}
           type="file"
           multiple
+          // Omitted entirely when the agent could not be asked, rather than set
+          // to a guessed list: an `accept` built from nothing would hide files
+          // the parser reads. A drop is checked by `rejectionFor` either way —
+          // this attribute only makes the browser's own picker agree with it.
+          {...(acceptedFormats
+            ? { accept: uploadAcceptAttribute(acceptedFormats) }
+            : {})}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -501,9 +591,10 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                   : 'Drag files here, or click to browse'}
             </p>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-              PDFs, slides, handouts, and lecture videos (MP4, MOV, WebM — up to{' '}
-              {MAX_VIDEO_SIZE_LABEL}). Uploads start right away — no publish
-              step.
+              {acceptedFormats
+                ? `Readings, slides and handouts — ${formatSuffixLabels(acceptedFormats).join(', ')}, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`
+                : `Readings, slides and handouts, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`}{' '}
+              Uploads start right away — no publish step.
             </p>
           </div>
         </div>

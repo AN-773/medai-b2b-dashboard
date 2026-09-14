@@ -12,6 +12,7 @@ This repo keeps frontend-facing API contracts in `contracts/`. They are the **so
 
 | Contract | Covers | Main consumers |
 |----------|--------|----------------|
+| `contracts/agent-v2-contract.md` | Tutor agent (AGENT_V2): published upload formats and the ingestion ceiling that bound what a course resource may be. Optional service — gated on `agentV2Service.isConfigured()` | `services/agentV2Service.ts`, `components/academy/course-workbench/CourseResourcesPanel.tsx` |
 | `contracts/course-ai-contract.md` | AI content factory: AI-drafted MCQ/SAQ/flashcard/lecture items per learning objective (TESTS service) | `services/courseAIService.ts`, `services/courseStudioService.ts` |
 | `contracts/course-resources-contract.md` | Learner-visible course files: direct-to-storage upload (mint/commit), multipart fallback, listing, delete (TESTS service) | `services/courseResourceService.ts`, `utils/blockBlobUpload.ts` |
 | `contracts/curriculum-api-contract.md` | Curriculum grouping and curriculum links on organ systems, learning objectives, courses | `services/curriculumService.ts` |
