@@ -4,6 +4,7 @@ import { uploadFileToBlobUrl } from '@/utils/blockBlobUpload';
 import type {
   CourseResource,
   CourseResourceDownloadResponse,
+  CourseResourceKnowledgeBaseSyncResponse,
   CourseResourceListResponse,
   CourseResourceUploadURLResponse,
   ListCourseResourcesParams,
@@ -129,6 +130,32 @@ export const courseResourceService = {
     );
 
     return response.resources ?? [];
+  },
+
+  /**
+   * Asks the Tests service to (re)send this course's resources to the tutor
+   * (Contract T2): anything `not_synced` or `failed`, plus study plans not yet
+   * linked. Idempotent, and it only queues — statuses move on later reads.
+   *
+   * `'unsupported'` for 404 and 501: the Tests service has no agent configured,
+   * or predates the route. Either way the caller should stop offering the
+   * action rather than show an error. Any other failure throws.
+   */
+  syncTeacherCourseResourcesToTutor: async (
+    courseIdentifier: string,
+  ): Promise<'accepted' | 'unsupported'> => {
+    try {
+      await apiClient.post<CourseResourceKnowledgeBaseSyncResponse>(
+        'TESTS',
+        `/courses/${resourceIdentifier(courseIdentifier)}/resources/knowledge-base/sync`,
+        undefined,
+      );
+      return 'accepted';
+    } catch (error) {
+      const status = statusOf(error);
+      if (status === 404 || status === 501) return 'unsupported';
+      throw error;
+    }
   },
 
   deleteTeacherCourseResource: async (
