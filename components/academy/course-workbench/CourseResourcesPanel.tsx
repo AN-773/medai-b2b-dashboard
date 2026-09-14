@@ -15,6 +15,7 @@ import {
   Loader2,
   Presentation,
   RefreshCw,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
@@ -30,7 +31,11 @@ import {
   uploadAcceptAttribute,
 } from '@/services/agentV2Service';
 import type { AcceptedUploadFormat } from '@/services/agentV2Service';
-import type { CourseResource } from '@/types/CourseResourceTypes';
+import { readCourseResourceKnowledgeBase } from '@/types/CourseResourceTypes';
+import type {
+  CourseResource,
+  CourseResourceKnowledgeBase,
+} from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
 import ConfirmationModal from '@/components/ConfirmationModal';
@@ -216,6 +221,123 @@ const resourceKey = (resource: CourseResource) =>
 const identifierFor = (resource: CourseResource) =>
   resource.identifier || resourceIdentifier(resource.id);
 
+/*
+ * The tutor column (contracts/course-resources-contract.md, Contracts T1–T3).
+ *
+ * The Tests service ingests each eligible resource once per course into the
+ * knowledge base a learner's tutor searches, and reports where each file stands
+ * on `CourseResource.knowledgeBase`. The key is absent when Tests has no agent
+ * configured, and then none of this renders: the grid, the header and the copy
+ * stay exactly as they were before the feature.
+ */
+
+/** Grid columns without, and with, the tutor column. Written out in full for Tailwind. */
+const RESOURCE_GRID_COLUMNS = 'grid-cols-[minmax(0,1.8fr)_120px_110px_190px_110px]';
+const RESOURCE_GRID_COLUMNS_WITH_TUTOR =
+  'grid-cols-[minmax(0,1.8fr)_120px_110px_170px_190px_110px]';
+
+/**
+ * Indexing is minutes, not seconds, so a slow poll is enough — and it only runs
+ * while a visible row says `processing`. It gives up after twenty minutes: a
+ * file still indexing by then is stuck or very large, and a tab left open all
+ * afternoon should not keep asking.
+ */
+const KNOWLEDGE_BASE_POLL_INTERVAL_MS = 15_000;
+const KNOWLEDGE_BASE_POLL_LIMIT_MS = 20 * 60_000;
+
+/**
+ * A `failed` row's error code as a sentence a teacher can act on. Codes are
+ * agent-v2's document parse codes, plus `agent_unreachable` and
+ * `invalid_upload` from the Tests service; anything else gets the generic line.
+ */
+const tutorFailureSentence = (errorCode: string | null): string => {
+  switch (errorCode) {
+    case 'agent_unreachable':
+      return 'Couldn’t reach the tutor. Try Sync to tutor.';
+    case 'unsupported_media_type':
+      return 'The tutor can’t read this file’s format.';
+    case 'document_too_large':
+      return `Too large for the tutor (${AGENT_MAX_UPLOAD_SIZE_LABEL}).`;
+    case 'malformed_document':
+      return 'The tutor couldn’t open this file — it may be damaged or password-protected.';
+    case 'invalid_upload':
+      return 'The file reached the tutor empty, so nothing was indexed.';
+    case 'parse_timeout':
+    case 'parse_failed':
+      return 'The tutor couldn’t finish reading this file. Try Sync to tutor.';
+    default:
+      return 'The tutor couldn’t index this file. Try Sync to tutor.';
+  }
+};
+
+const getSyncErrorMessage = (error: unknown) => {
+  const status = getStatus(error);
+  if (status === 500) {
+    return 'Couldn’t send files to the tutor right now — try again in a moment.';
+  }
+  return error instanceof Error ? error.message : 'Couldn’t send files to the tutor.';
+};
+
+const TUTOR_CHIP_BASE =
+  'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold leading-4';
+
+/**
+ * One row's tutor status. Renders nothing for `null` — no `knowledgeBase`, or a
+ * status this build does not know, which must never read as an error.
+ */
+const TutorStatusChip: React.FC<{ knowledgeBase: CourseResourceKnowledgeBase | null }> = ({
+  knowledgeBase,
+}) => {
+  if (!knowledgeBase) return null;
+
+  switch (knowledgeBase.status) {
+    case 'not_synced':
+      return (
+        <span className={`${TUTOR_CHIP_BASE} bg-slate-100 text-slate-600`}>
+          Not sent to tutor
+        </span>
+      );
+    case 'processing':
+      return (
+        <span className={`${TUTOR_CHIP_BASE} bg-sky-50 text-sky-700`}>
+          <Loader2 size={11} className="flex-shrink-0 animate-spin" />
+          Indexing
+        </span>
+      );
+    case 'ready':
+      return (
+        <span className={`${TUTOR_CHIP_BASE} bg-emerald-50 text-emerald-700`}>
+          <Check size={11} className="flex-shrink-0" />
+          Ready for tutor
+        </span>
+      );
+    case 'failed': {
+      const sentence = tutorFailureSentence(knowledgeBase.errorCode);
+      return (
+        <div className="min-w-0" title={sentence}>
+          <span className={`${TUTOR_CHIP_BASE} bg-rose-50 text-rose-700`}>
+            <AlertTriangle size={11} className="flex-shrink-0" />
+            Indexing failed
+          </span>
+          <p className="mt-1 text-[11px] font-medium leading-4 text-rose-600">
+            {sentence}
+          </p>
+        </div>
+      );
+    }
+    case 'ineligible':
+      return (
+        <span className={`${TUTOR_CHIP_BASE} bg-amber-50 text-amber-800`}>
+          {knowledgeBase.reason === 'size'
+            ? `Too large for the tutor (${AGENT_MAX_UPLOAD_SIZE_LABEL})`
+            : 'Tutor can’t read this type'}
+        </span>
+      );
+    default:
+      return null;
+  }
+};
+
 const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
@@ -248,34 +370,86 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     AcceptedUploadFormat[] | null
   >(null);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  /**
+   * Set once the Tests service answers that it cannot sync (no agent, or no
+   * route). Kept for the life of the panel rather than per course, because it
+   * is a fact about the deployment.
+   */
+  const [syncUnsupported, setSyncUnsupported] = useState(false);
+  /** The 20-minute polling budget ran out while something was still indexing. */
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const pollStartedAtRef = useRef<number | null>(null);
+  /** Whose answer applies: only the most recent list request writes rows. */
+  const latestLoadRef = useRef(0);
+  /** Whose finish clears the spinner: only the most recent foreground request. */
+  const latestForegroundLoadRef = useRef(0);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSize = useMemo(
     () => resources.reduce((sum, resource) => sum + (resource.fileSize || 0), 0),
     [resources],
   );
 
+  const tutorStatuses = useMemo(
+    () => resources.map((resource) => readCourseResourceKnowledgeBase(resource)?.status),
+    [resources],
+  );
+  // The key's presence, not a recognised status, decides the column: absent
+  // means Tests has no agent, and then the table is exactly what it was.
+  const showTutorColumn = useMemo(
+    () => resources.some((resource) => resource.knowledgeBase != null),
+    [resources],
+  );
+  const hasProcessing = tutorStatuses.includes('processing');
+  const needsSync = tutorStatuses.some(
+    (status) => status === 'not_synced' || status === 'failed',
+  );
+
+  /**
+   * `background` is the tutor-status poll: it neither shows the loading state
+   * nor clears the table when it fails, because the rows it would replace are
+   * still true — only their tutor status may be a little stale.
+   */
   const loadResources = useCallback(
-    async (pageToLoad: number) => {
-      setIsLoading(true);
+    async (pageToLoad: number, options: { background?: boolean } = {}) => {
+      const background = options.background ?? false;
+      latestLoadRef.current += 1;
+      const loadId = latestLoadRef.current;
+      if (!background) {
+        latestForegroundLoadRef.current = loadId;
+        setIsLoading(true);
+      }
       try {
         const response = await courseResourceService.listTeacherCourseResources(
           courseIdentifier,
           { page: pageToLoad, limit: PAGE_SIZE },
         );
+        if (loadId !== latestLoadRef.current) return;
         setResources(response.resources ?? []);
         setTotal(response.total ?? 0);
         setPage(response.page ?? pageToLoad);
         setLoadError(null);
       } catch (error) {
+        if (background || loadId !== latestLoadRef.current) return;
         setResources([]);
         setTotal(0);
         setLoadError(getListErrorMessage(error));
       } finally {
-        setIsLoading(false);
+        if (!background && loadId === latestForegroundLoadRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [courseIdentifier],
   );
+
+  /** Starts the polling budget afresh — after an upload, a sync or a Refresh. */
+  const restartTutorPolling = useCallback(() => {
+    pollStartedAtRef.current = null;
+    setPollTimedOut(false);
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -283,6 +457,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     setTotal(0);
     setLoadError(null);
     setDeleteError(null);
+    setSyncError(null);
     setStatusMessage(null);
     setUploadQueue([]);
   }, [course.id]);
@@ -290,6 +465,35 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
   useEffect(() => {
     void loadResources(page);
   }, [loadResources, page]);
+
+  // A different page or course is a different set of rows to wait on.
+  useEffect(() => {
+    restartTutorPolling();
+  }, [course.id, page, restartTutorPolling]);
+
+  // Poll while a visible row is indexing. Re-armed after every list answer
+  // (`resources` changes), so one timer is live at a time; cleared on unmount,
+  // on page or course change, while a foreground load runs, once nothing is
+  // processing, and when the 20-minute budget runs out.
+  useEffect(() => {
+    if (!hasProcessing) {
+      pollStartedAtRef.current = null;
+      setPollTimedOut(false);
+      return;
+    }
+    if (pollTimedOut || isLoading) return;
+
+    if (pollStartedAtRef.current === null) pollStartedAtRef.current = Date.now();
+    const startedAt = pollStartedAtRef.current;
+    const timer = window.setTimeout(() => {
+      if (Date.now() - startedAt >= KNOWLEDGE_BASE_POLL_LIMIT_MS) {
+        setPollTimedOut(true);
+        return;
+      }
+      void loadResources(page, { background: true });
+    }, KNOWLEDGE_BASE_POLL_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasProcessing, isLoading, loadResources, page, pollTimedOut, resources]);
 
   // Asked once per mount rather than per course: the answer is a fact about the
   // deployment's parser, not about this course, and it does not change while a
@@ -349,6 +553,10 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
 
       let uploadedCount = 0;
       let lastUploadedName = '';
+      // Whether the Tests service said the tutor will index what landed. Only
+      // then does the success copy mention the tutor — and not for a file Tests
+      // already reported it cannot send, which its row chip explains instead.
+      let tutorWillIndex = false;
 
       // One file at a time: each upload already parallelises its own blocks, and
       // a failure part-way leaves the files that already landed untouched.
@@ -376,6 +584,12 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           );
           uploadedCount += 1;
           lastUploadedName = uploaded[0]?.fileName || item.fileName;
+          const uploadedTutorState = uploaded[0]
+            ? readCourseResourceKnowledgeBase(uploaded[0])
+            : null;
+          if (uploadedTutorState && uploadedTutorState.status !== 'ineligible') {
+            tutorWillIndex = true;
+          }
           updateUploadItem(item.key, { status: 'done', percent: 100 });
         } catch (error) {
           if (controller.signal.aborted || error instanceof BlobUploadAbortedError) {
@@ -404,11 +618,18 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       );
 
       if (uploadedCount > 0) {
+        const single = uploadedCount === 1;
+        const available = single
+          ? `“${lastUploadedName}” is available to learners.`
+          : `${uploadedCount} files are available to learners.`;
         setStatusMessage(
-          uploadedCount === 1
-            ? `“${lastUploadedName}” is now available to learners.`
-            : `${uploadedCount} files are now available to learners.`,
+          tutorWillIndex
+            ? `${available} Their tutor can use ${single ? 'it' : 'them'} once indexing finishes.`
+            : single
+              ? `“${lastUploadedName}” is now available to learners.`
+              : `${uploadedCount} files are now available to learners.`,
         );
+        restartTutorPolling();
         if (page === 1) {
           await loadResources(1);
         } else {
@@ -422,6 +643,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       isUploading,
       loadResources,
       page,
+      restartTutorPolling,
       updateUploadItem,
     ],
   );
@@ -498,6 +720,53 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     }
   };
 
+  const refreshResources = () => {
+    restartTutorPolling();
+    void loadResources(page);
+  };
+
+  /**
+   * Contract T2. Only queues work on the Tests side, so the reload afterwards
+   * shows statuses moving rather than finished; polling picks up from there.
+   */
+  const syncToTutor = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncError(null);
+    setStatusMessage(null);
+    try {
+      const result =
+        await courseResourceService.syncTeacherCourseResourcesToTutor(courseIdentifier);
+      if (result === 'unsupported') {
+        setSyncUnsupported(true);
+        return;
+      }
+      setStatusMessage(
+        'Sending this course’s files to the tutor. Their status updates as indexing finishes.',
+      );
+      restartTutorPolling();
+      await loadResources(page);
+    } catch (error) {
+      setSyncError(getSyncErrorMessage(error));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const showSyncButton = !syncUnsupported && needsSync;
+
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={refreshResources}
+      disabled={isLoading}
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
+      Refresh
+    </button>
+  );
+
   return (
     <div className="space-y-7">
       {/* Header */}
@@ -518,15 +787,29 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void loadResources(page)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
-          Refresh
-        </button>
+        {/* The wrapper exists only with the sync action, so a deployment with no
+            tutor keeps the header's markup exactly as it was. */}
+        {showSyncButton ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void syncToTutor()}
+              disabled={isSyncing || isLoading}
+              title="Send files that haven't reached the tutor, or failed to, and link this course's study plans"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#1BD183]/40 bg-[#1BD183]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 transition hover:border-[#1BD183] hover:bg-[#1BD183]/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              Sync to tutor
+            </button>
+            {refreshButton}
+          </div>
+        ) : (
+          refreshButton
+        )}
       </div>
 
       {/* Upload drop zone */}
@@ -694,6 +977,12 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
             <p className="font-medium">{deleteError}</p>
           </div>
         )}
+        {syncError && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+            <p className="font-medium">{syncError}</p>
+          </div>
+        )}
       </div>
 
       {/* Attached files */}
@@ -703,6 +992,11 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           {total > 0 && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-500">
               {total}
+            </span>
+          )}
+          {pollTimedOut && hasProcessing && (
+            <span className="text-xs font-medium text-slate-500">
+              Still indexing — Refresh to check
             </span>
           )}
         </div>
@@ -735,17 +1029,22 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                 No files yet
               </p>
               <p className="mt-2 max-w-md text-xs font-medium leading-5 text-slate-500">
-                Add the readings, slides, handouts, and lecture videos learners
-                should be able to open from this course.
+                Add the readings, slides and handouts learners should be able to
+                open from this course.
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[680px]">
-                <div className="grid grid-cols-[minmax(0,1.8fr)_120px_110px_190px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              <div className={showTutorColumn ? 'min-w-[860px]' : 'min-w-[680px]'}>
+                <div
+                  className={`grid ${
+                    showTutorColumn ? RESOURCE_GRID_COLUMNS_WITH_TUTOR : RESOURCE_GRID_COLUMNS
+                  } gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400`}
+                >
                   <p>File</p>
                   <p>Type</p>
                   <p>Size</p>
+                  {showTutorColumn && <p>Tutor</p>}
                   <p>Added</p>
                   <p className="text-right">Action</p>
                 </div>
@@ -757,7 +1056,11 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                     return (
                       <div
                         key={resourceKey(resource)}
-                        className="grid grid-cols-[minmax(0,1.8fr)_120px_110px_190px_110px] items-center gap-4 px-5 py-4"
+                        className={`grid ${
+                          showTutorColumn
+                            ? RESOURCE_GRID_COLUMNS_WITH_TUTOR
+                            : RESOURCE_GRID_COLUMNS
+                        } items-center gap-4 px-5 py-4`}
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
@@ -773,6 +1076,13 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                         <p className="text-sm font-medium text-slate-600">
                           {formatFileSize(resource.fileSize)}
                         </p>
+                        {showTutorColumn && (
+                          <div className="min-w-0">
+                            <TutorStatusChip
+                              knowledgeBase={readCourseResourceKnowledgeBase(resource)}
+                            />
+                          </div>
+                        )}
                         <p className="text-sm font-medium text-slate-600">
                           {formatTimestamp(resource.createdAt)}
                         </p>
@@ -842,7 +1152,11 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         title="Remove file"
         message={
           resourceToDelete
-            ? `Remove “${resourceToDelete.fileName}”? Learners will no longer see it in study plans linked to this course. This can’t be undone.`
+            ? `Remove “${resourceToDelete.fileName}”? Learners will no longer see it in study plans linked to this course. This can’t be undone.${
+                resourceToDelete.knowledgeBase != null
+                  ? ' Their tutor will stop using it from their next question.'
+                  : ''
+              }`
             : ''
         }
         confirmLabel="Remove file"
