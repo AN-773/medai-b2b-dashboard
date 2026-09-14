@@ -10,6 +10,12 @@ is that course.
 The service itself takes any file up to 2 GiB, and older resources include lecture
 videos. What the **dashboard** now offers is narrower — see *Limits* below.
 
+When the Tests service has a tutor agent configured, each eligible resource is also
+ingested **once per course** into a shared knowledge base that the tutor can search in
+every cohort-generated study plan for that course — see *Tutor knowledge base* below.
+The Tests service does that work itself; the dashboard uploads once, to Tests, and never
+talks to the agent about a resource.
+
 `{identifier}` is the course slug: the last path segment of the backend's absolute `id`
 URL. Use `resourceIdentifier()` to derive it.
 
@@ -77,7 +83,9 @@ Without it the browser request fails before it reaches Azure.
 ```
 
 Responds `201` with the same `{ resources: CourseResource[] }` shape as the multipart
-endpoint, containing the one resource.
+endpoint, containing the one resource — carrying `knowledgeBase` (`processing` or
+`ineligible`) when Tests has an agent configured (Contract T1). The `201` never waits on
+the agent.
 
 | Status | Meaning |
 |--------|---------|
@@ -120,6 +128,110 @@ or play back a resource it uploaded.
 
 ---
 
+## Tutor knowledge base
+
+Provider: the Tests service. Consumer: this dashboard. Credential: the Tests session
+token, as for every route above. Which of this exists is decided by the **Tests
+service's** configuration (`AGENT_V2_API_URL`), not by `VITE_AGENT_V2_API_URL` here.
+
+Each eligible resource is ingested **once per course** — not once per learner — into a
+knowledge base owned by the principal `/courses/<courseIdentifier>`, and read by the
+tutor in **cohort-generated study plans** for that course. `/courses/<courseIdentifier>`
+(for the course) and `/users/<ksuid>` (for a learner) are Tests-service conventions for
+the ids it sends the agent; the dashboard never sends or parses either.
+
+### Contract T1 — `CourseResource.knowledgeBase`
+
+An additive field on every `CourseResource` returned by:
+
+- `GET /courses/{identifier}/resources` (200 `{ resources, total, page }`)
+- `POST /courses/{identifier}/resources/commit` (201 `{ resources: [...] }`)
+- the multipart `POST /courses/{identifier}/resources` (201 `{ resources: [...] }`)
+
+```ts
+knowledgeBase?: {
+  status: 'not_synced' | 'ineligible' | 'processing' | 'ready' | 'failed';
+  reason: 'format' | 'size' | null;   // set only for 'ineligible'
+  errorCode: string | null;           // set only for 'failed': agent-v2's errorCode, or 'agent_unreachable'
+  updatedAt: string | null;           // ISO 8601; null for 'not_synced'
+}
+```
+
+**Absent means the feature is off; `not_synced` means not yet sent.**
+
+| On the wire | Meaning |
+|-------------|---------|
+| key absent | Tests has no agent configured. The dashboard renders exactly as it did before this field existed. |
+| `not_synced` | Configured, but this resource has no ingestion record yet (uploaded before the feature, not yet backfilled). The course-level sync (T2) fixes it. |
+| `ineligible` | Will never be sent. `reason: 'format'` — not one of the agent's `corpus` formats; `reason: 'size'` — over 150 MiB. |
+| `processing` | Being sent or indexed. |
+| `ready` | Filed and indexed in the course collection (see T3). |
+| `failed` | Ingestion failed; `errorCode` says why. T2 retries it. |
+
+Internal → wire mapping (Tests keeps a richer state machine and projects it):
+
+| Internal state | Wire `status` |
+|----------------|---------------|
+| no row | `not_synced` |
+| `ineligible` | `ineligible` |
+| `queued`, `uploading`, `pending` | `processing` |
+| `ready` | `ready` |
+| `failed` | `failed` |
+| `removing`, `removed` | never returned — deleted resources are not listed |
+
+A client must treat a `status` it does not recognise as "show nothing about the tutor",
+never as an error (`readCourseResourceKnowledgeBase` in `types/CourseResourceTypes.ts`).
+
+The learner-facing `GET /study-plans/{identifier}/resources` carries **no** such field.
+
+**Eligibility rule** (applied by Tests): the file's media type or suffix is in agent-v2's
+published `corpus` formats (`GET /v1/documents/formats`) **and** its size is ≤ 150 MiB
+(157,286,400 bytes). The picker applies the same rule from the same source before
+upload, but **the server check is authoritative** — in particular when the picker could
+not load the formats and let a file through.
+
+### Contract T2 — `POST /courses/{identifier}/resources/knowledge-base/sync`
+
+Teacher-triggered, course-level repair. No request body. Scoped like the other resource
+writes (tenant + teacher of the course).
+
+```jsonc
+// 202
+{
+  "courseId": "…",
+  "queuedResources": 3,   // resources queued for ingestion
+  "queuedLinks": 12       // study-plan links / reader grants queued
+}
+```
+
+| Status | Meaning | Dashboard |
+|--------|---------|-----------|
+| `202` | Queued. Idempotent — calling it twice queues nothing new. | `'accepted'`; reload the list |
+| `404` `{ "error": "course not found" }` | Course unknown (or a Tests release without the route) | `'unsupported'`; hide the action |
+| `501` `{ "error": "knowledge base sync is not configured" }` | Tests has no agent configured | `'unsupported'`; hide the action |
+
+Effect: enqueue ingestion for every non-deleted resource with no record or a `failed`
+one, and link + reader reconcile for every non-deleted cohort-generated study plan of
+this course that is not yet linked. Consumer: `syncTeacherCourseResourcesToTutor` in
+`services/courseResourceService.ts`.
+
+### Contract T3 — behavioural guarantees
+
+- **Commit `201` and `DELETE` `204` never wait on the agent.** An agent outage never fails
+  an upload or a delete; ingestion runs afterwards, so an upload answers with
+  `processing` (or `ineligible`), not `ready`.
+- **`DELETE` unfiles asynchronously.** The learner's tutor stops finding the file from
+  their next question.
+- **`ready` means filed and indexed in the course collection**, and reachable **only**
+  through cohort-generated study plans for the course — not through a manually created
+  plan that names the course as `sourceCourseId`.
+- **Once per course.** A resource is ingested once however many learners read it.
+- **No promise about removal from a cohort.** Dashboard copy must not say that removing
+  a learner or a course from a cohort takes the tutor's access away until the product
+  owner has ruled on the matching behaviour for downloads.
+
+---
+
 ## `CourseResource`
 
 ```ts
@@ -133,6 +245,7 @@ or play back a resource it uploaded.
   fileSize: number;      // bytes
   createdAt: string;     // ISO 8601
   updatedAt: string;
+  knowledgeBase?: CourseResourceKnowledgeBase; // Contract T1; absent when Tests has no agent
 }
 ```
 
@@ -156,6 +269,14 @@ So `CourseResourcesPanel.tsx` refuses, before any transfer starts:
   **video and audio entirely**. The format half is skipped when the agent is not
   configured or cannot be reached, because a guessed allowlist would hide files the
   parser reads; the size half always applies.
+
+The picker's check is a convenience. When Tests has an agent configured it applies the
+same eligibility rule itself and is **authoritative** (Contract T1): a file that slipped
+past the picker is stored as a course resource and reported `ineligible`.
+
+`DELETE /courses/{identifier}/resources/{resourceIdentifier}` still answers `204`
+without waiting on the agent; unfiling from the course knowledge base happens
+afterwards (Contract T3).
 
 This service still accepts what it always did. Resources uploaded before the narrowing
 — lecture recordings included — are untouched: still listed, still downloadable, still
