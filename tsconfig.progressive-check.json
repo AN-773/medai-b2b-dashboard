@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "vite-env.d.ts",
+    "components/academy/course-workbench/CourseResourcesPanel.tsx",
+    "tests/progressive-files.test.ts"
+  ]
+}

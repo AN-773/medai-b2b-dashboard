@@ -30,7 +30,7 @@ const HoverTooltip: React.FC<HoverTooltipProps> = ({
   delay = 500,
 }) => {
   const triggerRef = useRef<HTMLSpanElement>(null);
-  const timeoutRef = useRef<number>();
+  const timeoutRef = useRef<number | undefined>(undefined);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   const show = useCallback(() => {

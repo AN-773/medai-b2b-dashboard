@@ -154,10 +154,17 @@ knowledgeBase?: {
   reason: 'format' | 'size' | null;   // set only for 'ineligible'
   errorCode: string | null;           // set only for 'failed': agent-v2's errorCode, or 'agent_unreachable'
   updatedAt: string | null;           // ISO 8601; null for 'not_synced'
+  processing?: DocumentProcessing;   // additive progressive contract; see ../docs/PROGRESSIVE-FILES.md
 }
 ```
 
 **Absent means the feature is off; `not_synced` means not yet sent.**
+
+Progressive processing adds optional `knowledgeBase.processing`; legacy status values
+and optionality stay unchanged. `ready` can now coexist with running, failed, or
+cancelled enrichment. Text availability and terminal processing are separate facts.
+The full shared DTO, teacher retry/cancel response, `/local` prefix/auth conventions,
+and dashboard reconciliation rules are documented in [PROGRESSIVE-FILES.md](../docs/PROGRESSIVE-FILES.md).
 
 | On the wire | Meaning |
 |-------------|---------|
@@ -209,6 +216,9 @@ writes (tenant + teacher of the course).
 | `202` | Queued. Idempotent — calling it twice queues nothing new. | `'accepted'`; reload the list |
 | `404` `{ "error": "course not found" }` | Course unknown (or a Tests release without the route) | `'unsupported'`; hide the action |
 | `501` `{ "error": "knowledge base sync is not configured" }` | Tests has no agent configured | `'unsupported'`; hide the action |
+
+Progressive extension: Sync also retries eligible unfinished enrichment on its existing
+document, without reuploading usable text. Acceptance does not certify completion.
 
 Effect: enqueue ingestion for every non-deleted resource with no record or a `failed`
 one, and link + reader reconcile for every non-deleted cohort-generated study plan of

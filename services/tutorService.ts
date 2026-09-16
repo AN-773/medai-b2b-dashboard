@@ -1,9 +1,11 @@
 import { apiClient } from './apiClient';
-import { CurriculumObjective, StudentMastery, LectureMetrics, LectureAsset } from '../types';
+import type { StudentMastery, LectureAsset } from '../types';
 
 export const tutorService = {
-  getCurriculumObjectives: async (): Promise<CurriculumObjective[]> => {
-    return apiClient.get<CurriculumObjective[]>('TUTOR', '/curriculum/objectives');
+  // Legacy endpoints have no response DTO/consumer in this repository. Keep the
+  // transport available, but require future callers to validate its response.
+  getCurriculumObjectives: async (): Promise<unknown> => {
+    return apiClient.get<unknown>('TUTOR', '/curriculum/objectives');
   },
 
   getStudentMastery: async (studentId?: string): Promise<StudentMastery[]> => {
@@ -15,7 +17,7 @@ export const tutorService = {
     return apiClient.get<LectureAsset[]>('TUTOR', '/lectures');
   },
   
-  getLectureMetrics: async (lectureId: string): Promise<LectureMetrics> => {
-      return apiClient.get<LectureMetrics>('TUTOR', `/lectures/${lectureId}/metrics`);
+  getLectureMetrics: async (lectureId: string): Promise<unknown> => {
+      return apiClient.get<unknown>('TUTOR', `/lectures/${lectureId}/metrics`);
   }
 };

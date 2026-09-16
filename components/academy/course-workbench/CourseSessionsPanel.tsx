@@ -40,6 +40,8 @@ import { inputClass, SectionLabel, StatTile } from './shared';
 
 interface CourseSessionsPanelProps {
   course: TeacherCourse;
+  /** Tests requires explicit module ownership; never infer it from the course. */
+  moduleId: TeacherCourseSession['moduleId'];
 }
 
 interface SessionEligibleItem extends BackendApiItem {
@@ -220,7 +222,7 @@ const listObjectiveItems = async (
   );
 };
 
-const CourseSessionsPanel: React.FC<CourseSessionsPanelProps> = ({ course }) => {
+const CourseSessionsPanel: React.FC<CourseSessionsPanelProps> = ({ course, moduleId }) => {
   const [sessions, setSessions] = useState<TeacherCourseSession[]>([]);
   const [eligibleItems, setEligibleItems] = useState<SessionEligibleItem[]>([]);
   const [form, setForm] = useState<SessionEditorState>(buildEmptyForm(1));
@@ -568,6 +570,7 @@ const CourseSessionsPanel: React.FC<CourseSessionsPanelProps> = ({ course }) => 
 
     try {
       const saved = await academyStudioBackend.saveCourseSession(course, {
+        moduleId,
         id: form.id,
         identifier: form.identifier,
         title: trimmedTitle,

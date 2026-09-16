@@ -8,7 +8,8 @@ import SubTopicGrid from '../components/curriculum/SubTopicGrid';
 import ObjectiveList from '../components/curriculum/ObjectiveList';
 import LinkedItemsPanel from '../components/curriculum/LinkedItemsPanel';
 import ImportLearningObjectivesModal from '../components/curriculum/ImportLearningObjectivesModal';
-import { LearningObjective, Taxonomy, View } from '../types';
+import { Taxonomy, View } from '../types';
+import type { LearningObjective } from '../types/TestsServiceTypes';
 
 interface CurriculumHealthViewProps {
   onNavigate?: (view: View, context?: Partial<Taxonomy> | null) => void;
@@ -71,14 +72,12 @@ const CurriculumHealthView: React.FC<CurriculumHealthViewProps> = ({ onNavigate 
   }, [activeTopicId, activeSubTopicId, activeSystemId, activeSubjectId]);
 
   const handleCreateLinkedItem = (obj: LearningObjective, redirectTo?: string) => {
-    const context: Partial<Taxonomy> | any = {
+    const context: Partial<Taxonomy> & Record<string, unknown> = {
       questionId: 'new',
       organSystemId: activeSystemId,
       topicId: activeTopicId,
       syndromeId: activeSubTopicId,
-      subTopicId: obj.subTopic,
       learningObjectiveId: obj.id,
-      bloomLevel: obj.bloomLevel,
       cognitiveSkillId: obj.cognitiveSkillId || '',
       exam: obj.exam || '',
     };

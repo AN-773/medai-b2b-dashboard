@@ -1,3 +1,5 @@
+import type { DocumentProcessing } from './DocumentProcessing';
+
 /**
  * Where a course resource stands with the learner's tutor, as the Tests service
  * projects it (contracts/course-resources-contract.md, Contract T1).
@@ -23,6 +25,9 @@ export interface CourseResourceKnowledgeBase {
   errorCode: string | null;
   /** ISO 8601; `null` for `not_synced`. */
   updatedAt: string | null;
+  /** Absent on legacy documents. Text can be ready while enrichment continues. */
+  processing?: DocumentProcessing;
+  [key: string]: unknown;
 }
 
 export interface CourseResource {
@@ -76,6 +81,7 @@ export const readCourseResourceKnowledgeBase = (
   const errorCode = record['errorCode'];
   const updatedAt = record['updatedAt'];
   return {
+    ...record,
     status: status as CourseResourceKnowledgeBaseStatus,
     reason: reason === 'format' || reason === 'size' ? reason : null,
     errorCode: typeof errorCode === 'string' && errorCode !== '' ? errorCode : null,
@@ -88,6 +94,13 @@ export interface CourseResourceKnowledgeBaseSyncResponse {
   courseId: string;
   queuedResources: number;
   queuedLinks: number;
+}
+
+/** Tests teacher retry/cancel routes: HTTP 202, latest persisted snapshot. */
+export interface CourseResourceKnowledgeProcessingResponse {
+  courseId: string;
+  resourceId: string;
+  knowledgeBase: CourseResourceKnowledgeBase;
 }
 
 export interface CourseResourceListResponse {

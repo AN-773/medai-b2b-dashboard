@@ -1,0 +1,4 @@
+# Vite's existing esbuild dependency validates its platform binary at install time.
+# Project-local approval; all other dependency build scripts remain unapproved.
+allowBuilds:
+  esbuild: true

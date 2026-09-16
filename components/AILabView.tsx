@@ -6,12 +6,18 @@ import {
   Target, Activity, Sliders, Layout, Stethoscope, Microscope,
   Dna, ArrowRight, CheckCircle
 } from 'lucide-react';
-import { BackendItem, BloomsLevel } from '../types';
+import { BackendItem, BloomsLevel, Taxonomy } from '../types';
 import { MOCK_ITEMS } from '../constants';
 
 interface AILabViewProps {
   onSaveNew: (item: BackendItem) => void;
 }
+
+// A synthesis seed is a question excerpt, not a persisted/publishable item.
+type SynthesisSeed = Pick<BackendItem, 'id' | 'type' | 'stem' | 'options'> & {
+  taxonomy: Pick<Taxonomy, 'bloomLevel'> &
+    Partial<Pick<Taxonomy, 'organSystemId' | 'disciplineId'>>;
+};
 
 const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
   const [prompt, setPrompt] = useState("");
@@ -26,7 +32,7 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
     explanation: 'The ECG findings of ST-elevation in leads II, III, and aVF indicate an inferior myocardial infarction (MI), which is typically caused by occlusion of the right coronary artery. Anterior MI would show changes in leads V1-V4, while lateral MI would affect leads I, aVL, V5, and V6.'
 
   });
-  const [selectedItem, setSelectedItem] = useState<BackendItem | null>({
+  const [selectedItem, setSelectedItem] = useState<SynthesisSeed | null>({
     id: 'LAB-BASE-001',
     type: 'MCQ',
     stem: 'A 45-year-old male presents with chest pain and shortness of breath. His ECG shows ST-elevation in leads II, III, and aVF. What is the most likely diagnosis?',

@@ -1,10 +1,12 @@
 import { apiClient } from './apiClient';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { uploadFileToBlobUrl } from '@/utils/blockBlobUpload';
+import type { CourseResourceProcessingAction } from '@/types/DocumentProcessing';
 import type {
   CourseResource,
   CourseResourceDownloadResponse,
   CourseResourceKnowledgeBaseSyncResponse,
+  CourseResourceKnowledgeProcessingResponse,
   CourseResourceListResponse,
   CourseResourceUploadURLResponse,
   ListCourseResourcesParams,
@@ -31,10 +33,12 @@ export const courseResourceService = {
   listTeacherCourseResources: async (
     courseIdentifier: string,
     params: ListCourseResourcesParams = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<CourseResourceListResponse> =>
     apiClient.get<CourseResourceListResponse>(
       'TESTS',
       `/courses/${resourceIdentifier(courseIdentifier)}/resources?${buildListQuery(params)}`,
+      { signal: options.signal, timeout: 30_000 },
     ),
 
   /**
@@ -143,12 +147,14 @@ export const courseResourceService = {
    */
   syncTeacherCourseResourcesToTutor: async (
     courseIdentifier: string,
+    options: { signal?: AbortSignal } = {},
   ): Promise<'accepted' | 'unsupported'> => {
     try {
       await apiClient.post<CourseResourceKnowledgeBaseSyncResponse>(
         'TESTS',
         `/courses/${resourceIdentifier(courseIdentifier)}/resources/knowledge-base/sync`,
         undefined,
+        { signal: options.signal, timeout: 30_000 },
       );
       return 'accepted';
     } catch (error) {
@@ -156,6 +162,24 @@ export const courseResourceService = {
       if (status === 404 || status === 501) return 'unsupported';
       throw error;
     }
+  },
+
+  /** Tests owns authorization and the agent credential. Acknowledgment is not completion.
+   * The Tests base URL includes its deployment prefix (normally /local).
+   * Do not prepend /local again or send the browser directly to the agent.
+   */
+  requestTeacherCourseResourceProcessing: async (
+    courseIdentifier: string,
+    courseResourceIdentifier: string,
+    action: CourseResourceProcessingAction,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CourseResourceKnowledgeProcessingResponse> => {
+    return apiClient.post<CourseResourceKnowledgeProcessingResponse>(
+      'TESTS',
+      `/courses/${encodeURIComponent(resourceIdentifier(courseIdentifier))}/resources/${encodeURIComponent(resourceIdentifier(courseResourceIdentifier))}/knowledge-base/${action}`,
+      undefined,
+      { signal: options.signal, timeout: 30_000 },
+    );
   },
 
   deleteTeacherCourseResource: async (

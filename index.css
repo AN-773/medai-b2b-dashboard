@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Course resources sit beside a sidebar: respond to panel width, not viewport. */
+.course-resources-panel { container-type: inline-size; }
+.course-resources-header { display: none; }
+.course-resources-wide { grid-column: span 2 / span 2; }
+.course-resources-panel :is(button, [role="button"]):focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 3px;
+}
+.course-resources-panel progress {
+  appearance: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+.course-resources-panel progress::-webkit-progress-bar { background: #e2e8f0; }
+.course-resources-panel progress::-webkit-progress-value { background: #0284c7; }
+.course-resources-panel progress::-moz-progress-bar { background: #0284c7; }
+@container (min-width: 1050px) {
+  .course-resources-header { display: grid; }
+  .course-resources-grid { grid-template-columns: minmax(0, 1.8fr) 100px 80px 150px 110px; }
+  .course-resources-grid-with-tutor { grid-template-columns: minmax(0, 1.3fr) 80px 70px minmax(240px, 1.5fr) 130px 110px; }
+  .course-resources-wide { grid-column: auto; }
+  .course-resources-mobile-label { display: none; }
+}
+
 @layer base {
   body {
     font-family: 'Inter', sans-serif;

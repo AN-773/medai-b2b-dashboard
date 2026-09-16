@@ -2,9 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Database, X, ClipboardCheck, ExternalLink, Plus, Sparkles, Loader2 } from 'lucide-react';
-import { LearningObjective } from '@/types';
 import { testsService } from '@/services/testsService';
-import { BackendApiItem } from '@/types/TestsServiceTypes';
+import { BackendApiItem, LearningObjective } from '@/types/TestsServiceTypes';
 
 
 interface LinkedItemsPanelProps {
@@ -64,7 +63,7 @@ const LinkedItemsPanel: React.FC<LinkedItemsPanelProps> = ({ objective, onClose,
                Linked Repository Items
              </h3>
              <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed line-clamp-2">
-               "{objective.text}"
+               "{objective.title}"
              </p>
            </div>
            <button 
