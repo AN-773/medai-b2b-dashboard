@@ -139,8 +139,25 @@ const formatTimestamp = (value: string) => {
   }).format(date);
 };
 
-const fileTypeLabel = (value: string) => {
-  const trimmed = value.trim();
+const FILE_TYPE_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'text/plain': 'TXT',
+  'text/csv': 'CSV',
+  'text/markdown': 'MD',
+};
+
+const fileTypeLabel = (value: string, fileName: string) => {
+  const trimmed = value.split(';')[0].trim();
+  const knownLabel = FILE_TYPE_LABELS[trimmed.toLowerCase()];
+  if (knownLabel) return knownLabel;
+  const extension = /\.([a-z0-9]{1,10})$/i.exec(fileName)?.[1];
+  if (extension) return extension.toUpperCase();
   if (!trimmed) return 'File';
   return trimmed.includes('/') ? trimmed.split('/')[1].toUpperCase() : trimmed;
 };
@@ -892,15 +909,15 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                           <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 ${textUnavailable ? 'text-slate-300' : 'text-slate-500'}`}>
                             <Icon size={16} />
                           </div>
-                          <p className={`break-words text-sm font-semibold ${textUnavailable ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                          <p title={resource.fileName} className={`min-w-0 break-words text-sm font-semibold ${textUnavailable ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                             {resource.fileName}
                           </p>
                         </div>
-                        <p className="text-sm font-medium text-slate-600">
+                        <p title={resource.fileType} className="min-w-0 break-words text-sm font-medium text-slate-600">
                           <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Type:</span>
-                          {fileTypeLabel(resource.fileType)}
+                          {fileTypeLabel(resource.fileType, resource.fileName)}
                         </p>
-                        <p className="text-sm font-medium text-slate-600">
+                        <p className="whitespace-nowrap text-sm font-medium text-slate-600">
                           <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Size:</span>
                           {formatFileSize(resource.fileSize)}
                         </p>
@@ -909,7 +926,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                             <ResourceProcessingStatus resource={resource} />
                           </div>
                         )}
-                        <p className="text-sm font-medium text-slate-600">
+                        <p className="min-w-0 break-words text-sm font-medium text-slate-600">
                           <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Added:</span>
                           {formatTimestamp(resource.createdAt)}
                         </p>

@@ -23,7 +23,7 @@
 @container (min-width: 1050px) {
   .course-resources-header { display: grid; }
   .course-resources-grid { grid-template-columns: minmax(0, 1.8fr) 100px 80px 150px 110px; }
-  .course-resources-grid-with-tutor { grid-template-columns: minmax(0, 1.3fr) 80px 70px minmax(240px, 1.5fr) 130px 110px; }
+  .course-resources-grid-with-tutor { grid-template-columns: minmax(0, 2fr) 80px 70px minmax(0, 1fr) 150px 110px; }
   .course-resources-wide { grid-column: auto; }
   .course-resources-mobile-label { display: none; }
 }
