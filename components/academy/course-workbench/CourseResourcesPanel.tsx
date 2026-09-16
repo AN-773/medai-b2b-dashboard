@@ -32,16 +32,13 @@ import {
 } from '@/services/agentV2Service';
 import type { AcceptedUploadFormat } from '@/services/agentV2Service';
 import { readCourseResourceKnowledgeBase } from '@/types/CourseResourceTypes';
-import type {
-  CourseResource,
-  CourseResourceKnowledgeBase,
-} from '@/types/CourseResourceTypes';
+import type { CourseResource } from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import { SectionLabel } from './shared';
 import { useProgressiveCourseResources } from '@/hooks/useProgressiveCourseResources';
-import { needsCourseSync, readProcessing, shouldPollResource } from '@/utils/documentProcessing';
+import { isTextReady, needsCourseSync, shouldPollResource } from '@/utils/documentProcessing';
 import { ResourceProcessingStatus } from './ResourceProcessingStatus';
 
 interface CourseResourcesPanelProps {
@@ -229,97 +226,12 @@ const identifierFor = (resource: CourseResource) =>
 const RESOURCE_GRID_COLUMNS = 'course-resources-grid';
 const RESOURCE_GRID_COLUMNS_WITH_TUTOR = 'course-resources-grid-with-tutor';
 
-/**
- * A `failed` row's error code as a sentence a teacher can act on. Codes are
- * agent-v2's document parse codes, plus `agent_unreachable` and
- * `invalid_upload` from the Tests service; anything else gets the generic line.
- */
-const tutorFailureSentence = (errorCode: string | null): string => {
-  switch (errorCode) {
-    case 'agent_unreachable':
-      return 'Couldn’t reach the tutor. Try Sync to tutor.';
-    case 'unsupported_media_type':
-      return 'The tutor can’t read this file’s format.';
-    case 'document_too_large':
-      return `Too large for the tutor (${AGENT_MAX_UPLOAD_SIZE_LABEL}).`;
-    case 'malformed_document':
-      return 'The tutor couldn’t open this file — it may be damaged or password-protected.';
-    case 'invalid_upload':
-      return 'The file reached the tutor empty, so nothing was indexed.';
-    case 'parse_timeout':
-    case 'parse_failed':
-      return 'The tutor couldn’t finish reading this file. Try Sync to tutor.';
-    default:
-      return 'The tutor couldn’t index this file. Try Sync to tutor.';
-  }
-};
-
 const getSyncErrorMessage = (error: unknown) => {
   const status = getStatus(error);
   if (status === 500) {
     return 'Couldn’t send files to the tutor right now — try again in a moment.';
   }
   return error instanceof Error ? error.message : 'Couldn’t send files to the tutor.';
-};
-
-const TUTOR_CHIP_BASE =
-  'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold leading-4';
-
-/**
- * One row's tutor status. Renders nothing for `null` — no `knowledgeBase`, or a
- * status this build does not know, which must never read as an error.
- */
-const TutorStatusChip: React.FC<{ knowledgeBase: CourseResourceKnowledgeBase | null }> = ({
-  knowledgeBase,
-}) => {
-  if (!knowledgeBase) return null;
-
-  switch (knowledgeBase.status) {
-    case 'not_synced':
-      return (
-        <span className={`${TUTOR_CHIP_BASE} bg-slate-100 text-slate-600`}>
-          Not sent to tutor
-        </span>
-      );
-    case 'processing':
-      return (
-        <span className={`${TUTOR_CHIP_BASE} bg-sky-50 text-sky-700`}>
-          <Loader2 size={11} className="flex-shrink-0 animate-spin" />
-          Indexing
-        </span>
-      );
-    case 'ready':
-      return (
-        <span className={`${TUTOR_CHIP_BASE} bg-emerald-50 text-emerald-700`}>
-          <Check size={11} className="flex-shrink-0" />
-          Ready for tutor
-        </span>
-      );
-    case 'failed': {
-      const sentence = tutorFailureSentence(knowledgeBase.errorCode);
-      return (
-        <div className="min-w-0" title={sentence}>
-          <span className={`${TUTOR_CHIP_BASE} bg-rose-50 text-rose-700`}>
-            <AlertTriangle size={11} className="flex-shrink-0" />
-            Indexing failed
-          </span>
-          <p className="mt-1 text-[11px] font-medium leading-4 text-rose-600">
-            {sentence}
-          </p>
-        </div>
-      );
-    }
-    case 'ineligible':
-      return (
-        <span className={`${TUTOR_CHIP_BASE} bg-amber-50 text-amber-800`}>
-          {knowledgeBase.reason === 'size'
-            ? `Too large for the tutor (${AGENT_MAX_UPLOAD_SIZE_LABEL})`
-            : 'Tutor can’t read this type'}
-        </span>
-      );
-    default:
-      return null;
-  }
 };
 
 const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => {
@@ -332,7 +244,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     [course.backendIdentifier, course.id],
   );
   const [page, setPage] = useState(1);
-  const { resources, total, isLoading, loadError, connectionStale, lastCheckedAt, refresh, expectUpdate, acceptAction, recoverAction } =
+  const { resources, total, isLoading, loadError, connectionStale, refresh, expectUpdate } =
     useProgressiveCourseResources(courseIdentifier, page, PAGE_SIZE);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -526,7 +438,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           : `${uploadedCount} files are available to learners.`;
         setStatusMessage(
           tutorWillIndex
-            ? `${available} Their tutor can use ${single ? 'it' : 'them'} once indexing finishes.`
+            ? `${available} Processing will continue automatically.`
             : single
               ? `“${lastUploadedName}” is now available to learners.`
               : `${uploadedCount} files are now available to learners.`,
@@ -644,7 +556,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         return;
       }
       setStatusMessage(
-        'Sync requested for this course. Text already indexed stays usable; unfinished structure and images continue to show their own progress.',
+        'Processing requested. Files will update automatically.',
       );
       resources.filter(needsCourseSync).forEach(expectUpdate);
       await loadResources(page);
@@ -702,7 +614,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
               type="button"
               onClick={() => void syncToTutor()}
               disabled={isSyncing || isLoading}
-              title="Sync missing files, retry eligible unfinished enrichment, and link this course’s study plans"
+              title="Start or retry processing for course files"
               className="inline-flex items-center gap-2 rounded-lg border border-[#1BD183]/40 bg-[#1BD183]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 transition hover:border-[#1BD183] hover:bg-[#1BD183]/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSyncing ? (
@@ -710,7 +622,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
               ) : (
                 <Sparkles size={14} />
               )}
-              Sync to tutor
+              Process files
             </button>
             {refreshButton}
           </div>
@@ -903,19 +815,14 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           )}
           {hasProcessing && (
             <span className="text-xs font-medium text-slate-500">
-              Processing continues · updates automatically
+              Processing files…
             </span>
           )}
         </div>
 
-        {showTutorColumn && <p className="mt-2 text-xs leading-5 text-slate-600">
-          Text ready to chat does not mean enrichment is finished. Progress counts apply to the named stage, not the whole file.
-          {totalPages > 1 && ' Statuses shown are for this page; Sync applies to the entire course.'}
-        </p>}
         <div role="status" aria-live="polite">
           {connectionStale && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Connection stale — couldn’t refresh file status. Last known results are shown; this does not mean processing failed.
-            {lastCheckedAt && ` Last checked ${new Date(lastCheckedAt).toLocaleTimeString()}.`} Reconnecting automatically when this page is visible and online.
+            Reconnecting to check progress…
           </p>}
         </div>
 
@@ -962,7 +869,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                   <p>File</p>
                   <p>Type</p>
                   <p>Size</p>
-                  {showTutorColumn && <p>Tutor</p>}
+                  {showTutorColumn && <p>Status</p>}
                   <p>Added</p>
                   <p className="text-right">Action</p>
                 </div>
@@ -971,6 +878,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                     const Icon = iconForResource(resource);
                     const identifier = identifierFor(resource);
                     const isDeleting = deletingResourceId === identifier;
+                    const textUnavailable = resource.knowledgeBase != null && !isTextReady(resource.knowledgeBase);
                     return (
                       <div
                         key={resourceKey(resource)}
@@ -978,13 +886,13 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                           showTutorColumn
                             ? RESOURCE_GRID_COLUMNS_WITH_TUTOR
                             : RESOURCE_GRID_COLUMNS
-                        } items-center gap-4 px-5 py-4`}
+                        } items-center gap-4 px-5 py-4 ${textUnavailable ? 'bg-slate-50/70' : ''}`}
                       >
                         <div className="course-resources-wide flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 ${textUnavailable ? 'text-slate-300' : 'text-slate-500'}`}>
                             <Icon size={16} />
                           </div>
-                          <p className="break-words text-sm font-semibold text-slate-900">
+                          <p className={`break-words text-sm font-semibold ${textUnavailable ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                             {resource.fileName}
                           </p>
                         </div>
@@ -998,16 +906,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                         </p>
                         {showTutorColumn && (
                           <div className="course-resources-wide min-w-0">
-                            {resource.knowledgeBase?.processing != null ? <ResourceProcessingStatus
-                              key={`${identifier}:${readProcessing(resource.knowledgeBase.processing)?.runId ?? 'unknown'}`}
-                              courseIdentifier={courseIdentifier}
-                              resource={resource}
-                              disabled={isSyncing || isDeleting}
-                              onAccepted={acceptAction}
-                              onActionError={recoverAction}
-                            /> : <TutorStatusChip
-                              knowledgeBase={readCourseResourceKnowledgeBase(resource)}
-                            />}
+                            <ResourceProcessingStatus resource={resource} />
                           </div>
                         )}
                         <p className="text-sm font-medium text-slate-600">
