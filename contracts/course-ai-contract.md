@@ -472,7 +472,7 @@ Save user edits to the draft. **Full replace**, validated against the current da
 { "plan": { "modules": [ ... ], "warnings": [] }, "version": 3 }
 ```
 
-- `200` -> `ModulePlanDraft` with `version` incremented. Send that version with the next edit or accept.
+- `200` -> `ModulePlanDraft` with `version` incremented. Send that version with the next edit or accept. The server renumbers module and session `order` from array position (1-based) before storing, so array order is authoritative and the returned plan carries the normalized values; accept creates modules and sessions in that order.
 - `400` -> `ModulePlanValidationErrorResponse`: the plan is malformed (no modules, a module without sessions, a session without items, an item used twice, a blank or over-long title, an item entry with neither or both ids).
 - `409` -> `ModulePlanConflictResponse`:
   - `reason: 'stale_version'`: the draft was saved elsewhere since it was read; `version` is the current one. Refetch the job and re-apply.
