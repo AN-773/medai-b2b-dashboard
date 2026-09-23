@@ -15,8 +15,29 @@ export type CourseUploadStatus =
   | 'completed'
   | 'failed';
 
-/** Known processing stages, mirrored from the study-plan upload pipeline. */
-export type CourseUploadStage = 'extracting_chunks' | 'extracting_los';
+/**
+ * Known processing stages, mirrored from the study-plan upload pipeline.
+ * `generating_brief` (course uploads only) runs after `extracting_los`.
+ */
+export type CourseUploadStage =
+  | 'extracting_chunks'
+  | 'extracting_los'
+  | 'generating_brief';
+
+/** Per-file brief status. `null` on uploads that predate the brief step. */
+export type CourseUploadBriefStatus =
+  | 'pending'
+  | 'completed'
+  | 'failed'
+  | 'skipped';
+
+export type CourseUploadBriefContentType =
+  | 'lecture'
+  | 'guideline'
+  | 'textbook_chapter'
+  | 'slides'
+  | 'notes'
+  | 'other';
 
 export interface CourseUploadProgress {
   stage?: CourseUploadStage | string;
@@ -39,6 +60,13 @@ export interface CourseUpload {
   createdAt?: string;
   updatedAt?: string;
   pendingLearningObjectiveSuggestionsTotal?: number;
+  /** AI summary of the file (120-250 words); new uploads only. */
+  brief?: string | null;
+  /** Up to 15 short topics from the brief. */
+  briefTopics?: string[] | null;
+  briefContentType?: CourseUploadBriefContentType | null;
+  /** `null` for uploads that predate the brief step. A failed brief never fails the upload. */
+  briefStatus?: CourseUploadBriefStatus | null;
 }
 
 export type SuggestionStatus = 'pending' | 'accepted' | 'rejected';
