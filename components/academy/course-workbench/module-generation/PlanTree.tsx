@@ -104,6 +104,7 @@ const InlineTitle: React.FC<{
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <input
           autoFocus
+          onFocus={(event) => event.target.select()}
           value={draft}
           aria-label={label}
           maxLength={MAX_PLAN_TITLE_LENGTH + 20}

@@ -88,7 +88,6 @@ export const useModuleGenerationJob = ({
       active = false;
     };
     // Only on mount: later changes come from this hook itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const start = useCallback(
