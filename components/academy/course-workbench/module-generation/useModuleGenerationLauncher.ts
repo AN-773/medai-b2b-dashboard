@@ -12,7 +12,20 @@ import { getCourseObjectiveCount } from '../shared';
 import type { CreateWithAIButtonProps } from './CreateWithAIButton';
 import type { ModuleGenerationBannerProps } from './ModuleGenerationBanner';
 import type { ModuleGenerationWizardProps } from './ModuleGenerationWizard';
-import { isJobOpen, isJobRunning } from './planUtils';
+import { isJobOpen, isJobRunning, jobIdentifierOf } from './planUtils';
+
+const sameBannerState = (
+  left: CourseGenerationJob | null,
+  right: CourseGenerationJob | null,
+) =>
+  left === right ||
+  (left !== null &&
+    right !== null &&
+    jobIdentifierOf(left) === jobIdentifierOf(right) &&
+    left.status === right.status &&
+    (left.stage ?? null) === (right.stage ?? null) &&
+    (left.reviewState ?? null) === (right.reviewState ?? null) &&
+    (left.cancelRequestedAt ?? null) === (right.cancelRequestedAt ?? null));
 
 /** Banner poll interval while a job is queued or processing (contract: 15 s). */
 export const BANNER_POLL_MS = 15000;
@@ -46,16 +59,22 @@ export const useModuleGenerationLauncher = (
   const onAcceptedRef = useRef(onAccepted);
   onAcceptedRef.current = onAccepted;
 
+  /** Skip the state update (and a panel re-render) when nothing the banner shows changed. */
+  const updateOpenJob = useCallback((job: CourseGenerationJob | null) => {
+    const next = job && isJobOpen(job) ? job : null;
+    setOpenJob((current) => (sameBannerState(current, next) ? current : next));
+  }, []);
+
   const refreshOpenJob = useCallback(async () => {
     const requested = courseIdentifier;
     try {
       const job = await moduleGenerationService.getOpenJob(requested);
-      if (courseRef.current === requested) setOpenJob(job && isJobOpen(job) ? job : null);
+      if (courseRef.current === requested) updateOpenJob(job);
     } catch {
       // No banner is better than an error on a tab the teacher came to for
       // something else; the button still works.
     }
-  }, [courseIdentifier]);
+  }, [courseIdentifier, updateOpenJob]);
 
   const loadUploads = useCallback(async () => {
     const requested = courseIdentifier;
@@ -99,9 +118,10 @@ export const useModuleGenerationLauncher = (
     void refreshOpenJob();
   }, [refreshOpenJob]);
 
-  const handleJobChange = useCallback((job: CourseGenerationJob | null) => {
-    setOpenJob(job && isJobOpen(job) ? job : null);
-  }, []);
+  const handleJobChange = useCallback(
+    (job: CourseGenerationJob | null) => updateOpenJob(job),
+    [updateOpenJob],
+  );
 
   const handleAccepted = useCallback(() => {
     void onAcceptedRef.current();

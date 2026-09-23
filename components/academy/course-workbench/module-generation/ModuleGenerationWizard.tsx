@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Activity,
@@ -17,7 +17,7 @@ import type { AcceptModulePlanResponse } from '@/types/ModuleGenerationTypes';
 import OptionsStep from './OptionsStep';
 import ProgressStep from './ProgressStep';
 import ReviewStep from './ReviewStep';
-import { wizardStepForJob, type WizardStep } from './planUtils';
+import { jobIdentifierOf, wizardStepForJob, type WizardStep } from './planUtils';
 import { useModuleGenerationJob } from './useModuleGenerationJob';
 
 export interface ModuleGenerationWizardProps {
@@ -83,6 +83,76 @@ const Stepper: React.FC<{ step: WizardStep }> = ({ step }) => {
   );
 };
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** True when no other overlay (confirmation, item preview) sits above the wizard. */
+const isTopOverlay = (dialog: HTMLElement) => {
+  const root = dialog.closest('body > *');
+  const overlays = Array.from(document.body.children).filter(
+    (element) =>
+      element instanceof HTMLElement &&
+      element.getAttribute('role') !== 'tooltip' &&
+      getComputedStyle(element).position === 'fixed',
+  );
+  return overlays[overlays.length - 1] === root;
+};
+
+/**
+ * Initial focus, Escape to close and a Tab focus trap for the wizard. Both
+ * are ignored while a nested overlay is open, and Escape is left to text
+ * fields (it cancels an inline rename).
+ */
+const useDialogFocus = (onClose: () => void) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || !isTopOverlay(dialog)) return;
+      if (event.key === 'Escape') {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select')) return;
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (element) => element.offsetParent !== null,
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === dialog || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previous && document.contains(previous)) previous.focus();
+    };
+  }, []);
+
+  return dialogRef;
+};
+
 const WizardDialog: React.FC<Omit<ModuleGenerationWizardProps, 'isOpen'>> = ({
   courseIdentifier,
   courseTitle,
@@ -97,9 +167,11 @@ const WizardDialog: React.FC<Omit<ModuleGenerationWizardProps, 'isOpen'>> = ({
   const jobState = useModuleGenerationJob({ courseIdentifier, initialJob, onJobChange });
   const [accepted, setAccepted] = useState<AcceptModulePlanResponse | null>(null);
   const { job } = jobState;
+  const dialogRef = useDialogFocus(onClose);
 
   const step: WizardStep = accepted ? 'done' : wizardStepForJob(job);
   const loadFailed = !job && Boolean(initialJob) && !jobState.isLoading && Boolean(jobState.error);
+  const showLoading = jobState.isLoading || (!accepted && jobState.awaitingDraft);
 
   const handleAccepted = (response: AcceptModulePlanResponse) => {
     setAccepted(response);
@@ -113,7 +185,30 @@ const WizardDialog: React.FC<Omit<ModuleGenerationWizardProps, 'isOpen'>> = ({
   };
 
   let body: React.ReactNode;
-  if (jobState.isLoading || loadFailed) {
+  if (!accepted && jobState.draftUnavailable) {
+    body = (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center text-sm font-semibold text-slate-500">
+        <AlertTriangle size={20} className="text-amber-500" />
+        The job finished, but its draft is not available yet.
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => void jobState.refetch()}
+            className="rounded-xl bg-[#16324F] px-4 py-2 text-sm font-black text-white hover:bg-[#1B3E62]"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  } else if (showLoading || loadFailed) {
     body = (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-sm font-semibold text-slate-500">
         {loadFailed ? (
@@ -190,7 +285,7 @@ const WizardDialog: React.FC<Omit<ModuleGenerationWizardProps, 'isOpen'>> = ({
   } else if (step === 'review' && job) {
     body = (
       <ReviewStep
-        key={job.identifier}
+        key={jobIdentifierOf(job)}
         job={job}
         uploads={uploads}
         objectiveTitles={objectiveTitles}
@@ -217,10 +312,12 @@ const WizardDialog: React.FC<Omit<ModuleGenerationWizardProps, 'isOpen'>> = ({
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="module-generation-title"
-        className="relative flex h-full max-h-[920px] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] bg-slate-50 shadow-2xl animate-in zoom-in-95 fade-in duration-300"
+        tabIndex={-1}
+        className="relative outline-none flex h-full max-h-[920px] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] bg-slate-50 shadow-2xl animate-in zoom-in-95 fade-in duration-300"
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex min-w-0 items-center gap-3">

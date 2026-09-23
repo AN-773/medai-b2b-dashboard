@@ -12,12 +12,28 @@ import type {
   ModulePlanIssue,
 } from '@/types/ModuleGenerationTypes';
 import type { CourseGenerationJob } from '@/types/CourseAITypes';
-import { normalizePlan, validateModulePlan } from './planUtils';
+import {
+  describeStrippedMetadata,
+  jobIdentifierOf,
+  normalizePlan,
+  stripStaleMetadata,
+  validateModulePlan,
+} from './planUtils';
 
 /** Edits are saved this long after the last change. */
 const AUTOSAVE_DELAY_MS = 1200;
 
 export type PlanSaveState = 'saved' | 'dirty' | 'saving' | 'invalid' | 'error';
+
+/**
+ * Saves still running after the review step unmounted (the wizard closed with
+ * pending edits), by job identifier. Reopening the job waits for them so it
+ * never reads a draft older than the one being written.
+ */
+const pendingCloseSaves = new Map<string, Promise<void>>();
+
+export const waitForPendingPlanSave = (jobIdentifier: string) =>
+  pendingCloseSaves.get(jobIdentifier) ?? Promise.resolve();
 
 interface UseModulePlanEditorArgs {
   job: ModuleGenerationJob;
@@ -32,9 +48,11 @@ interface UseModulePlanEditorArgs {
  * (optimistic concurrency on `version`), plus accept and discard.
  *
  * - `stale_version` (409): the draft changed elsewhere; reload it and say so.
- * - `stale_ids` (409, from save or accept): keep the ids so the tree can
- *   highlight the affected sessions and items; removing them clears it.
- * - `400`: keep the server's `issues` next to the local validation.
+ * - `stale_ids` (409, from save or accept): stale learning objective and file
+ *   ids are metadata, so they are stripped automatically (with a notice);
+ *   stale item refs stay highlighted for the teacher to remove.
+ * - `400`: keep the server's `issues` next to the local validation until the
+ *   next edit (their paths go stale as soon as the tree changes).
  */
 export const useModulePlanEditor = ({
   job,
@@ -42,13 +60,15 @@ export const useModulePlanEditor = ({
   onAccepted,
   onDiscarded,
 }: UseModulePlanEditorArgs) => {
-  const jobIdentifier = job.identifier;
+  const jobIdentifier = jobIdentifierOf(job);
   const [plan, setPlanState] = useState<ModulePlan>(() =>
     normalizePlan(job.plan ?? { modules: [] }),
   );
   const [saveState, setSaveState] = useState<PlanSaveState>('saved');
   const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
   const [staleIds, setStaleIds] = useState<Set<string>>(() => new Set());
+  /** What was stripped automatically after a `stale_ids` 409; kept apart from `message`. */
+  const [strippedNotice, setStrippedNotice] = useState<string | null>(null);
   const [serverIssues, setServerIssues] = useState<ModulePlanIssue[]>([]);
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
@@ -59,11 +79,35 @@ export const useModulePlanEditor = ({
   const savingRef = useRef<Promise<boolean> | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
   const mountedRef = useRef(true);
+  const flushRef = useRef<() => Promise<boolean>>(async () => true);
 
   const callbacksRef = useRef({ onJobReloaded, onAccepted, onDiscarded });
   callbacksRef.current = { onJobReloaded, onAccepted, onDiscarded };
 
   const localIssues = useMemo(() => validateModulePlan(plan), [plan]);
+
+  const scheduleSave = useCallback(() => {
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => void flushRef.current(), AUTOSAVE_DELAY_MS);
+  }, []);
+
+  /** Apply a new plan locally, mark it dirty and (by default) schedule a save. */
+  const applyLocal = useCallback(
+    (next: ModulePlan, { save = true }: { save?: boolean } = {}) => {
+      planRef.current = next;
+      dirtyRef.current = true;
+      setPlanState(next);
+      setServerIssues([]);
+      window.clearTimeout(timerRef.current);
+      if (validateModulePlan(next).length > 0) {
+        setSaveState('invalid');
+        return;
+      }
+      setSaveState('dirty');
+      if (save) scheduleSave();
+    },
+    [scheduleSave],
+  );
 
   const replacePlan = useCallback((next: ModulePlan, version: number | null | undefined) => {
     const normalized = normalizePlan(next);
@@ -107,15 +151,35 @@ export const useModulePlanEditor = ({
         return true;
       }
       if (conflict?.reason === 'stale_ids') {
-        setStaleIds(new Set(conflict.staleIds ?? []));
+        const stale = new Set(conflict.staleIds ?? []);
+        setStaleIds(stale);
         setServerIssues(conflict.issues ?? []);
-        setMessage({
-          tone: 'error',
-          text:
+        const stripped = stripStaleMetadata(planRef.current, stale);
+        const staleItemsLeft = planRef.current.modules.some((module) =>
+          module.sessions.some((session) =>
+            session.items.some((ref) => stale.has(ref.itemId ?? ref.itemSuggestionId ?? '')),
+          ),
+        );
+        if (stripped.removed.length > 0) {
+          setStrippedNotice(
+            `Some learning objectives or files in this draft no longer exist, so we removed them from the sessions: ${describeStrippedMetadata(stripped.removed)}.`,
+          );
+          // Saving is pointless while stale items remain (it would 409 again);
+          // the save after the teacher removes them includes this change.
+          applyLocal(stripped.plan, { save: !staleItemsLeft });
+        }
+        if (staleItemsLeft) {
+          setMessage({
+            tone: 'error',
+            text: `${action === 'accept' ? 'Nothing was created. ' : ''}Some items were deleted or rejected since the draft was made. Remove the highlighted items, then accept again.`,
+          });
+        } else {
+          setMessage(
             action === 'accept'
-              ? 'Nothing was created: some items or objectives in this draft were deleted or rejected since it was made. Remove the highlighted items or sessions, then accept again.'
-              : 'Some items or objectives in this draft were deleted or rejected since it was made. Remove the highlighted items or sessions to save.',
-        });
+              ? { tone: 'info', text: 'Nothing was created yet. Accept again once the draft is saved.' }
+              : null,
+          );
+        }
         return true;
       }
       if (conflict?.reason === 'not_awaiting_review') {
@@ -131,7 +195,7 @@ export const useModulePlanEditor = ({
       }
       return false;
     },
-    [reload],
+    [applyLocal, reload],
   );
 
   const flush = useCallback(async (): Promise<boolean> => {
@@ -156,14 +220,13 @@ export const useModulePlanEditor = ({
         });
         versionRef.current = draft.version;
         if (!mountedRef.current) return true;
-        setServerIssues([]);
         setMessage((current) => (current?.tone === 'error' ? null : current));
         setSaveState(dirtyRef.current ? 'dirty' : 'saved');
         return true;
       } catch (error) {
-        if (!mountedRef.current) return false;
-        // The edit is still unsaved unless a reload replaced it.
+        // The edit is still unsaved unless a reload replaces it.
         dirtyRef.current = true;
+        if (!mountedRef.current) return false;
         const handled = await handlePlanError(error, 'save');
         if (!handled) {
           setMessage({
@@ -171,44 +234,42 @@ export const useModulePlanEditor = ({
             text: moduleGenerationErrorMessage(error, 'Could not save your changes.'),
           });
         }
-        setSaveState(dirtyRef.current ? 'error' : 'saved');
+        setSaveState((current) =>
+          current === 'dirty' || current === 'invalid' ? current : dirtyRef.current ? 'error' : 'saved',
+        );
         return false;
       }
     })();
     savingRef.current = request;
     const ok = await request;
     savingRef.current = null;
-    if (ok && dirtyRef.current && mountedRef.current) {
-      timerRef.current = window.setTimeout(() => void flush(), AUTOSAVE_DELAY_MS);
-    }
+    if (ok && dirtyRef.current && mountedRef.current) scheduleSave();
     return ok;
-  }, [handlePlanError, jobIdentifier]);
+  }, [handlePlanError, jobIdentifier, scheduleSave]);
+  flushRef.current = flush;
 
   /** Apply an edit locally and schedule a save. */
   const edit = useCallback(
     (update: (current: ModulePlan) => ModulePlan) => {
       const next = update(planRef.current);
       if (next === planRef.current) return;
-      planRef.current = next;
-      dirtyRef.current = true;
-      setPlanState(next);
-      window.clearTimeout(timerRef.current);
-      if (validateModulePlan(next).length > 0) {
-        setSaveState('invalid');
-        return;
-      }
-      setSaveState('dirty');
-      timerRef.current = window.setTimeout(() => void flush(), AUTOSAVE_DELAY_MS);
+      applyLocal(next);
     },
-    [flush],
+    [applyLocal],
   );
 
   const accept = useCallback(async () => {
-    setMessage(null);
-    const saved = await flush();
-    if (!saved) return;
+    // Lock the tree first so no edit can slip in between the save and accept.
     setIsAccepting(true);
+    setMessage(null);
     try {
+      // Save until nothing is pending: an edit committed while a save was in
+      // flight (e.g. a title input blurring) marks the draft dirty again.
+      do {
+        const saved = await flush();
+        if (!saved || !mountedRef.current) return;
+      } while (dirtyRef.current);
+
       const response = await moduleGenerationService.accept(jobIdentifier, {
         version: versionRef.current,
       });
@@ -251,17 +312,32 @@ export const useModulePlanEditor = ({
     }
   }, [handlePlanError, jobIdentifier]);
 
-  // Best-effort save of pending edits when the wizard closes.
+  // When the wizard closes with pending edits, let any in-flight save settle,
+  // then save what is still dirty with the version at that point.
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       window.clearTimeout(timerRef.current);
-      if (dirtyRef.current && validateModulePlan(planRef.current).length === 0) {
-        void moduleGenerationService
-          .updatePlan(jobIdentifier, { plan: planRef.current, version: versionRef.current })
-          .catch(() => undefined);
-      }
+      const inFlight = savingRef.current;
+      if (!inFlight && !dirtyRef.current) return;
+      const closeSave = (async () => {
+        if (inFlight) await inFlight.catch(() => false);
+        if (!dirtyRef.current || validateModulePlan(planRef.current).length > 0) return;
+        dirtyRef.current = false;
+        try {
+          const draft = await moduleGenerationService.updatePlan(jobIdentifier, {
+            plan: planRef.current,
+            version: versionRef.current,
+          });
+          versionRef.current = draft.version;
+        } catch {
+          // Best effort: the wizard is closed and the draft on the server is intact.
+        }
+      })().finally(() => {
+        if (pendingCloseSaves.get(jobIdentifier) === closeSave) pendingCloseSaves.delete(jobIdentifier);
+      });
+      pendingCloseSaves.set(jobIdentifier, closeSave);
     };
   }, [jobIdentifier]);
 
@@ -270,6 +346,8 @@ export const useModulePlanEditor = ({
     saveState,
     message,
     dismissMessage: () => setMessage(null),
+    strippedNotice,
+    dismissStrippedNotice: () => setStrippedNotice(null),
     staleIds,
     localIssues,
     serverIssues,

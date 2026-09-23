@@ -192,6 +192,24 @@ const ReviewStep: React.FC<ReviewStepProps> = ({
             </div>
           )}
 
+          {editor.strippedNotice && (
+            <div
+              role="status"
+              className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800"
+            >
+              <Info size={16} className="mt-0.5 flex-shrink-0" />
+              <span className="min-w-0 flex-1">{editor.strippedNotice}</span>
+              <button
+                type="button"
+                onClick={editor.dismissStrippedNotice}
+                title="Dismiss"
+                className="flex-shrink-0 opacity-60 transition hover:opacity-100"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {editor.message && (
             <div
               role="alert"

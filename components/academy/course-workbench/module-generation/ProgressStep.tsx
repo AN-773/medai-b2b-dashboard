@@ -118,10 +118,11 @@ const ProgressStep: React.FC<ProgressStepProps> = ({
   const running = isJobRunning(job);
   const cancelRequested = Boolean(job.cancelRequestedAt) && running;
 
+  const lastSeq = events.length > 0 ? events[events.length - 1].seq : 0;
   useEffect(() => {
     const feed = feedRef.current;
     if (feed) feed.scrollTop = feed.scrollHeight;
-  }, [events.length]);
+  }, [lastSeq]);
 
   const headline = running
     ? cancelRequested

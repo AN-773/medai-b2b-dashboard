@@ -5,6 +5,7 @@
  */
 
 import type { CourseGenerationJob } from '@/types/CourseAITypes';
+import { identifierOf } from '@/utils/resourceId';
 import type {
   ModulePlan,
   ModulePlanIssue,
@@ -33,6 +34,20 @@ export const isJobAwaitingReview = (job: JobLifecycle | null | undefined) =>
 /** Matches the server's `open=true` filter. */
 export const isJobOpen = (job: JobLifecycle | null | undefined) =>
   isJobRunning(job) || isJobAwaitingReview(job);
+
+/** Job route identifier: `identifier`, or the last path segment of `id`. */
+export const jobIdentifierOf = (job: Pick<CourseGenerationJob, 'id' | 'identifier'>) =>
+  identifierOf(job);
+
+/**
+ * A `completed` job whose draft has not been returned yet: no `reviewState`,
+ * or awaiting review without a `plan`. Refetch instead of opening Review.
+ */
+export const isJobDraftIncomplete = (
+  job: (JobLifecycle & { plan?: ModulePlan | null }) | null | undefined,
+) =>
+  job?.status === 'completed' &&
+  (!job.reviewState || (job.reviewState === 'awaiting_review' && !job.plan));
 
 export type WizardStep = 'options' | 'progress' | 'review' | 'done';
 
@@ -293,7 +308,78 @@ export const moveItem = (
   }));
 };
 
-export const countPlan = (plan: ModulePlan | null | undefined) => {
+/** Stale ids a session carries as metadata (objectives and source files). */
+export const staleSessionMetadataIds = (session: ModulePlanSession, staleIds: Set<string>) => ({
+  objectives: (session.learningObjectiveIds ?? []).filter((id) => staleIds.has(id)),
+  files: (session.sourceFileIds ?? []).filter((id) => staleIds.has(id)),
+});
+
+const withoutIds = (ids: string[] | undefined, drop: Set<string>) =>
+  ids ? ids.filter((id) => !drop.has(id)) : ids;
+
+/** Drop every stale reference (items, objectives, files) from one session. */
+export const removeStaleFromSession = (
+  plan: ModulePlan,
+  mi: number,
+  si: number,
+  staleIds: Set<string>,
+): ModulePlan =>
+  updateSession(plan, mi, si, (session) => ({
+    ...session,
+    items: session.items.filter((ref) => !staleIds.has(refId(ref))),
+    learningObjectiveIds: withoutIds(session.learningObjectiveIds, staleIds),
+    sourceFileIds: withoutIds(session.sourceFileIds, staleIds),
+  }));
+
+export interface StrippedSessionMetadata {
+  session: string;
+  objectives: number;
+  files: number;
+}
+
+/**
+ * Remove stale learning objective and source file ids from every session.
+ * They are metadata only (accept stores titles, order and items), so this is
+ * safe to do automatically; stale item refs are left for the teacher.
+ */
+export const stripStaleMetadata = (
+  plan: ModulePlan,
+  staleIds: Set<string>,
+): { plan: ModulePlan; removed: StrippedSessionMetadata[] } => {
+  const removed: StrippedSessionMetadata[] = [];
+  const modules = plan.modules.map((module) => ({
+    ...module,
+    sessions: module.sessions.map((session) => {
+      const stale = staleSessionMetadataIds(session, staleIds);
+      if (stale.objectives.length === 0 && stale.files.length === 0) return session;
+      removed.push({
+        session: session.title,
+        objectives: stale.objectives.length,
+        files: stale.files.length,
+      });
+      return {
+        ...session,
+        learningObjectiveIds: withoutIds(session.learningObjectiveIds, staleIds),
+        sourceFileIds: withoutIds(session.sourceFileIds, staleIds),
+      };
+    }),
+  }));
+  return { plan: removed.length > 0 ? { ...plan, modules } : plan, removed };
+};
+
+/** "2 objectives and 1 file from “Session A”; 1 objective from “Session B”". */
+export const describeStrippedMetadata = (removed: StrippedSessionMetadata[]) =>
+  removed
+    .map(({ session, objectives, files }) => {
+      const parts = [
+        objectives > 0 ? `${objectives} objective${objectives === 1 ? '' : 's'}` : '',
+        files > 0 ? `${files} file${files === 1 ? '' : 's'}` : '',
+      ].filter(Boolean);
+      return `${parts.join(' and ')} from “${session || 'Untitled session'}”`;
+    })
+    .join('; ');
+
+export const countPlan =(plan: ModulePlan | null | undefined) => {
   const modules = plan?.modules ?? [];
   const sessions = modules.reduce((sum, module) => sum + module.sessions.length, 0);
   const items = modules.reduce(

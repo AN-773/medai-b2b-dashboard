@@ -10,11 +10,16 @@ import type {
   ModuleGenerationJob,
   ModuleGenerationOptions,
 } from '@/types/ModuleGenerationTypes';
-import { isJobRunning } from './planUtils';
+import { isJobDraftIncomplete, isJobRunning, jobIdentifierOf } from './planUtils';
+import { waitForPendingPlanSave } from './useModulePlanEditor';
 
 /** Progress feed poll interval (contract: ~3 s while the Progress step is visible). */
 export const PROGRESS_POLL_MS = 3000;
-const MAX_EVENTS_KEPT = 300;
+/** Contract maximum per events request; pages are fetched until one is short. */
+const EVENTS_PAGE_LIMIT = 500;
+const MAX_EVENTS_KEPT = 1000;
+/** Delay before re-reading a completed job whose draft was not returned yet. */
+const INCOMPLETE_DRAFT_RETRY_MS = 1500;
 
 interface UseModuleGenerationJobArgs {
   courseIdentifier: string;
@@ -43,33 +48,44 @@ export const useModuleGenerationJob = ({
   const [isLoading, setIsLoading] = useState(Boolean(initialJob));
   const [isStarting, setIsStarting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRefetchingDraft, setIsRefetchingDraft] = useState(false);
+  const [retriedDraftFor, setRetriedDraftFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const jobIdentifierRef = useRef<string | null>(initialJob?.identifier ?? null);
+  const jobIdentifierRef = useRef<string | null>(null);
   const lastSeqRef = useRef(0);
   const onJobChangeRef = useRef(onJobChange);
   onJobChangeRef.current = onJobChange;
 
-  const applyJob = useCallback((next: ModuleGenerationJob | null) => {
-    if (next?.identifier !== jobIdentifierRef.current) {
-      jobIdentifierRef.current = next?.identifier ?? null;
-      lastSeqRef.current = 0;
-      setEvents([]);
-    }
-    setJob(next);
-    onJobChangeRef.current?.(next);
+  /** Point the hook at another job (or none), dropping the old feed. */
+  const switchJob = useCallback((identifier: string | null) => {
+    if (identifier === jobIdentifierRef.current) return;
+    jobIdentifierRef.current = identifier;
+    lastSeqRef.current = 0;
+    setEvents([]);
   }, []);
+
+  const applyJob = useCallback(
+    (next: ModuleGenerationJob | null) => {
+      switchJob(next ? jobIdentifierOf(next) : null);
+      setJob(next);
+      onJobChangeRef.current?.(next);
+    },
+    [switchJob],
+  );
 
   const loadJob = useCallback(
     async (jobIdentifier: string) => {
-      jobIdentifierRef.current = jobIdentifier;
+      switchJob(jobIdentifier);
+      // A save from a review step that just closed must land first.
+      await waitForPendingPlanSave(jobIdentifier);
       const detail = await moduleGenerationService.getJob(jobIdentifier);
       if (jobIdentifierRef.current !== jobIdentifier) return null;
       applyJob(detail);
       return detail;
     },
-    [applyJob],
+    [applyJob, switchJob],
   );
 
   // Resume the job the wizard was opened with.
@@ -77,7 +93,7 @@ export const useModuleGenerationJob = ({
     if (!initialJob) return;
     let active = true;
     setIsLoading(true);
-    loadJob(initialJob.identifier)
+    loadJob(jobIdentifierOf(initialJob))
       .catch((loadError) => {
         if (active) setError(moduleGenerationErrorMessage(loadError, 'Could not load the generation job.'));
       })
@@ -97,7 +113,7 @@ export const useModuleGenerationJob = ({
       setNotice(null);
       try {
         const created = await moduleGenerationService.startGeneration(courseIdentifier, options);
-        await loadJob(created.identifier);
+        await loadJob(jobIdentifierOf(created));
       } catch (startError) {
         const openJob = openJobFromConflict(startError);
         if (openJob) {
@@ -105,7 +121,7 @@ export const useModuleGenerationJob = ({
             'This course already has an AI draft in progress or awaiting review, so we opened it instead.',
           );
           try {
-            await loadJob(openJob.identifier);
+            await loadJob(jobIdentifierOf(openJob));
           } catch (loadError) {
             setError(moduleGenerationErrorMessage(loadError, 'Could not load the open job.'));
           }
@@ -143,8 +159,33 @@ export const useModuleGenerationJob = ({
     applyJob(null);
   }, [applyJob]);
 
+  /** Re-read the current job (e.g. a completed job whose draft was missing). */
+  const refetch = useCallback(async () => {
+    const identifier = jobIdentifierRef.current;
+    if (!identifier) return;
+    setIsRefetchingDraft(true);
+    try {
+      await loadJob(identifier);
+    } catch (loadError) {
+      setError(moduleGenerationErrorMessage(loadError, 'Could not load the draft.'));
+    } finally {
+      setIsRefetchingDraft(false);
+    }
+  }, [loadJob]);
+
   const running = isJobRunning(job);
-  const jobIdentifier = job?.identifier ?? null;
+  const jobIdentifier = job ? jobIdentifierOf(job) : null;
+  const draftIncomplete = isJobDraftIncomplete(job);
+
+  // A completed job without its draft (or review state): refetch once.
+  useEffect(() => {
+    if (!draftIncomplete || !jobIdentifier || retriedDraftFor === jobIdentifier) return;
+    const timer = window.setTimeout(() => {
+      setRetriedDraftFor(jobIdentifier);
+      void refetch();
+    }, INCOMPLETE_DRAFT_RETRY_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftIncomplete, jobIdentifier, refetch, retriedDraftFor]);
 
   // Progress polling: the detail (status / stage) and the event feed. Runs one
   // round for a finished job so its end-state feed is shown too.
@@ -153,16 +194,30 @@ export const useModuleGenerationJob = ({
     let cancelled = false;
     let timer: number | undefined;
 
+    const fetchNewEvents = async () => {
+      const fetched: ModuleGenerationEvent[] = [];
+      let afterSeq = lastSeqRef.current;
+      // Page until a short page, so a long run never hides its last events.
+      for (;;) {
+        const page = await moduleGenerationService.listEvents(jobIdentifier, {
+          afterSeq,
+          limit: EVENTS_PAGE_LIMIT,
+        });
+        fetched.push(...page.items);
+        if (page.items.length > 0) afterSeq = page.lastSeq;
+        if (cancelled || page.items.length < EVENTS_PAGE_LIMIT) break;
+      }
+      return { fetched, afterSeq };
+    };
+
     const tick = async () => {
       try {
         const detail = running ? await moduleGenerationService.getJob(jobIdentifier) : null;
-        const page = await moduleGenerationService.listEvents(jobIdentifier, {
-          afterSeq: lastSeqRef.current,
-        });
+        const { fetched, afterSeq } = await fetchNewEvents();
         if (cancelled || jobIdentifierRef.current !== jobIdentifier) return;
-        if (page.items.length > 0) {
-          lastSeqRef.current = page.lastSeq;
-          setEvents((current) => [...current, ...page.items].slice(-MAX_EVENTS_KEPT));
+        if (fetched.length > 0) {
+          lastSeqRef.current = afterSeq;
+          setEvents((current) => [...current, ...fetched].slice(-MAX_EVENTS_KEPT));
         }
         if (detail) applyJob(detail);
         if (detail && !isJobRunning(detail)) return;
@@ -185,14 +240,20 @@ export const useModuleGenerationJob = ({
     isLoading,
     isStarting,
     isCancelling,
+    /** Completed, but the draft has not arrived yet: show loading, not Review. */
+    awaitingDraft:
+      draftIncomplete && (retriedDraftFor !== jobIdentifier || isRefetchingDraft),
+    /** Still no draft after the retry. */
+    draftUnavailable:
+      draftIncomplete && retriedDraftFor === jobIdentifier && !isRefetchingDraft,
     error,
     notice,
     setNotice,
     start,
     cancel,
     reset,
+    refetch,
     /** Replace the job after the review step reloaded or changed it. */
     applyJob,
-    reload: loadJob,
   };
 };

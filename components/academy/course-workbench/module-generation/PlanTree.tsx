@@ -38,6 +38,7 @@ import {
   moveSession,
   parseIssuePath,
   refId,
+  removeStaleFromSession,
   renameModule,
   renameSession,
   sessionDependencyIds,
@@ -476,8 +477,18 @@ const PlanTree: React.FC<PlanTreeProps> = ({
                 </span>
               ))}
               {stale && (
-                <span className="flex items-center gap-1 font-black text-rose-600">
-                  <AlertTriangle size={11} /> Needs attention
+                <span className="flex items-center gap-2 font-black text-rose-600">
+                  <span className="flex items-center gap-1">
+                    <AlertTriangle size={11} /> Needs attention
+                  </span>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onEdit((current) => removeStaleFromSession(current, mi, si, staleIds))}
+                    className="rounded-md border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    Remove stale references
+                  </button>
                 </span>
               )}
             </div>

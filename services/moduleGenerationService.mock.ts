@@ -50,7 +50,7 @@ export const MODULE_GENERATION_MOCK_SCENARIOS: {
 }[] = [
   { value: 'success', label: 'Success (≈20 s)' },
   { value: 'fail', label: 'Fails while planning' },
-  { value: 'stale_ids_on_accept', label: 'Accept returns 409 staleIds once' },
+  { value: 'stale_ids_on_accept', label: 'Accept returns 409 staleIds once (2 items, 1 objective)' },
   { value: 'stale_version_on_save', label: 'First save returns 409 stale_version' },
   { value: 'open_draft_conflict', label: 'Generate returns 409 (draft already open)' },
 ];
@@ -807,9 +807,9 @@ export const moduleGenerationServiceMock: ModuleGenerationService = {
     const plan = job.plan!;
     if (job.staleIdsArmed) {
       // Something was deleted between drafting and accepting: one existing
-      // item and one drafted item.
+      // item, one drafted item and one learning objective.
       job.staleIdsArmed = false;
-      job.staleIds = new Set([itemId(8), suggestionIdFor(job.identifier, 's6')]);
+      job.staleIds = new Set([itemId(8), suggestionIdFor(job.identifier, 's6'), loId(6)]);
       job.suggestions = job.suggestions.map((suggestion) =>
         job.staleIds.has(suggestion.id) ? { ...suggestion, status: 'rejected' } : suggestion,
       );
