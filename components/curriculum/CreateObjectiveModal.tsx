@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { X, FileText, Loader2, ChevronDown, Sparkles, CheckCircle2, Save, AlertCircle } from 'lucide-react';
-import { OrganSystem, CognitiveSkill, Discipline, Topic, Syndrome, GeneratedObjective, Subject } from '@/types/TestsServiceTypes';
+import { Check, CheckCircle2, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { OrganSystem, Discipline, Topic, Syndrome, GeneratedObjective, Subject } from '@/types/TestsServiceTypes';
 import { useGlobal } from '@/contexts/GlobalContext';
 import { testsService } from '@/services/testsService';
-import MultiSearchableSelect from '../MultiSearchableSelect';
-import SearchableSelect from '../SearchableSelect';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Drawer,
+  Field,
+  InlineAlert,
+  SegmentedControl,
+  Select,
+  Spinner,
+  Textarea,
+} from '@/components/ui';
+import MultiSelectList from '@/components/academy/course-workbench/objectives/MultiSelectList';
 
 interface CreateObjectiveModalProps {
   isOpen: boolean;
@@ -37,6 +47,15 @@ interface CreateObjectiveModalProps {
 
 const BLOOM_LEVELS = ['Remember', 'Understand', 'Apply', 'Analyze'] as const;
 
+const FORM_ID = 'curriculum-objective-form';
+
+const sameIds = (left: string[], right: string[]) =>
+  [...left].sort().join('|') === [...right].sort().join('|');
+
+/**
+ * Create or edit a curriculum learning objective — written by hand or drafted
+ * with AI. A drawer, since the form is long and the list behind stays useful.
+ */
 const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
   isOpen,
   onClose,
@@ -70,6 +89,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false);
 
   // Cascade hierarchy state (for edit mode)
   const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
@@ -174,6 +194,7 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
     setSelectedDisciplines([]);
     setSelectedSubjectId('');
     setError(null);
+    setIsDiscardOpen(false);
     // Reset cascade state
     setSelectedOrganSystemId('');
     setSelectedTopicId('');
@@ -378,494 +399,476 @@ const CreateObjectiveModal: React.FC<CreateObjectiveModalProps> = ({
 
   const topicName = subTopic?.title || topic.title;
   const canGenerate = selectedBloom && selectedDisciplineId;
+  const isEdit = Boolean(initialData);
+  const isBusy = isSubmitting || isGenerating || isSavingGen;
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={handleClose}
-      />
+  const isEditDirty = initialData
+    ? title !== (initialData.title || '') ||
+      selectedSyndromeId !== (initialData.syndromeId || subTopic?.id || '') ||
+      selectedCognitiveSkillId !== (initialData.cognitiveSkillId || '') ||
+      selectedSubjectId !== (initialData.subjectId || '') ||
+      !sameIds(selectedDisciplines, initialData.disciplines || [])
+    : false;
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-2 border-b border-slate-100 flex-shrink-0">
-          <div className="flex flex-col gap-4 w-full">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1BA6D1] to-[#1BD183] flex items-center justify-center shadow-lg">
-                  <Sparkles size={20} className="text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-900">
-                    {initialData ? 'Edit Objective' : 'Objective Definition'}
-                  </h2>
-                  <p className="text-sm text-slate-500 font-medium">
-                    {topicName}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                disabled={isSubmitting || isGenerating || isSavingGen}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50 self-start"
-              >
-                <X size={20} className="text-slate-400" />
-              </button>
-            </div>
-            
-            {/* Tabs */}
-            {!initialData && (
-              <div className="flex items-center gap-4 mt-2">
-                <button
-                  onClick={() => setActiveTab('manual')}
-                  className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
-                    activeTab === 'manual'
-                      ? 'border-[#1BD183] text-[#1BD183]'
-                      : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Manual Entry
-                </button>
-                <button
-                  onClick={() => setActiveTab('generate')}
-                  className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${
-                    activeTab === 'generate'
-                      ? 'border-[#1BD183] text-[#1BD183]'
-                      : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  AI Generate
-                </button>
-              </div>
-            )}
+  // Anything typed or generated that closing would throw away.
+  const hasUnsavedWork = isEdit
+    ? isEditDirty
+    : Boolean(
+        title.trim() || additionalContext.trim() || (generatedObjective && !isSavedGen),
+      );
+
+  const requestClose = () => {
+    if (isBusy) return;
+    if (hasUnsavedWork) {
+      setIsDiscardOpen(true);
+      return;
+    }
+    handleClose();
+  };
+
+  const placementPath = [organSystemName, topic.title, subTopic?.title]
+    .filter((part): part is string => Boolean(part))
+    .join(' › ');
+
+  const canSubmitManual = Boolean(
+    title.trim() && selectedSyndromeId && selectedCognitiveSkillId && (!isEdit || isEditDirty),
+  );
+
+  const footerHint =
+    activeTab === 'manual'
+      ? !title.trim()
+        ? 'Write the objective to continue'
+        : !selectedSyndromeId
+          ? 'Choose a subtopic to continue'
+          : !selectedCognitiveSkillId
+            ? 'Choose a cognitive skill to continue'
+            : isEdit
+              ? isEditDirty
+                ? 'Unsaved changes'
+                : 'No changes'
+              : 'Ready to create'
+      : isSavedGen
+        ? `Saved to ${topicName}`
+        : generatedObjective
+          ? 'Review and edit the draft before saving'
+          : 'Generate a draft, then review it';
+
+  const renderPlacement = () => {
+    if (initialData) {
+      return (
+        <section className="space-y-4 border-t border-stone-100 pt-5">
+          <div>
+            <h3 className="text-sm font-medium text-stone-900">Placement</h3>
+            <p className="mt-0.5 text-[13px] text-stone-500">
+              Move the objective by choosing another subtopic.
+            </p>
           </div>
-        </div>
-
-        {/* Form Body Container */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar relative p-6">
-          {error && (
-            <div className={`mb-6 p-4 border rounded-xl flex items-start gap-3 ${
-              activeTab === 'generate' 
-                ? 'bg-rose-50 border-rose-200 text-rose-600' 
-                : 'bg-red-50 border-red-200 text-red-600'
-            }`}>
-              <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
-          )}
-
-          {/* Manual Tab Content */}
-          {activeTab === 'manual' && (
-            <form id="manual-form" onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="objective-title"
-                    className="block text-sm font-bold text-slate-700"
-                  >
-                    Objective Definition <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    id="objective-title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Explain the pathophysiology of..."
-                    disabled={isSubmitting}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50 min-h-[100px] resize-none"
-                    autoFocus
-                  />
-                </div>
-
-                {/* Subtopic selection: cascading hierarchy when editing, simple select when creating */}
-                {initialData ? (
-                  <>
-                    {/* Organ System */}
-                    <div className="space-y-2">
-                      <label htmlFor="organ-system" className="block text-sm font-bold text-slate-700">
-                        Organ System <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <select
-                          id="organ-system"
-                          value={selectedOrganSystemId}
-                          onChange={(e) => handleOrganSystemChange(e.target.value)}
-                          disabled={isSubmitting || isLoadingOrganSystems}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                        >
-                          <option value="" disabled>
-                            {isLoadingOrganSystems ? 'Loading...' : 'Select an Organ System'}
-                          </option>
-                          {organSystems.map((os) => (
-                            <option key={os.id} value={os.id}>{os.title}</option>
-                          ))}
-                        </select>
-                        {isLoadingOrganSystems ? (
-                          <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
-                        ) : (
-                          <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Topic */}
-                    {selectedOrganSystemId && (
-                      <div className="space-y-2">
-                        <label htmlFor="cascade-topic" className="block text-sm font-bold text-slate-700">
-                          Topic <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <select
-                            id="cascade-topic"
-                            value={selectedTopicId}
-                            onChange={(e) => handleTopicChange(e.target.value)}
-                            disabled={isSubmitting || isLoadingCascadeTopics}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                          >
-                            <option value="" disabled>
-                              {isLoadingCascadeTopics ? 'Loading...' : 'Select a Topic'}
-                            </option>
-                            {cascadeTopics.map((t) => (
-                              <option key={t.id} value={t.id}>{t.title}</option>
-                            ))}
-                          </select>
-                          {isLoadingCascadeTopics ? (
-                            <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
-                          ) : (
-                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Subtopic / Syndrome */}
-                    {selectedTopicId && (
-                      <div className="space-y-2">
-                        <label htmlFor="cascade-subtopic" className="block text-sm font-bold text-slate-700">
-                          Subtopic <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <select
-                            id="cascade-subtopic"
-                            value={selectedSyndromeId}
-                            onChange={(e) => setSelectedSyndromeId(e.target.value)}
-                            disabled={isSubmitting || isLoadingCascadeSyndromes}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                          >
-                            <option value="" disabled>
-                              {isLoadingCascadeSyndromes ? 'Loading...' : 'Select a Subtopic'}
-                            </option>
-                            {cascadeSyndromes.map((syn) => (
-                              <option key={syn.id} value={syn.id}>{syn.title}</option>
-                            ))}
-                          </select>
-                          {isLoadingCascadeSyndromes ? (
-                            <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
-                          ) : (
-                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="subtopic"
-                      className="block text-sm font-bold text-slate-700"
-                    >
-                      Subtopic <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="subtopic"
-                        value={selectedSyndromeId}
-                        onChange={(e) => setSelectedSyndromeId(e.target.value)}
-                        disabled={isSubmitting || !!subTopic}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                      >
-                        <option value="" disabled>
-                          Select a Subtopic
-                        </option>
-                        {availableSyndromes.map((syn) => (
-                          <option key={syn.id} value={syn.id}>
-                            {syn.title}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown
-                        size={16}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label
-                    htmlFor="subject"
-                    className="block text-sm font-bold text-slate-700"
-                  >
-                    Subject
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="subject"
-                      value={selectedSubjectId}
-                      onChange={(e) => setSelectedSubjectId(e.target.value)}
-                      disabled={isSubmitting || isLoadingSubjects}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                    >
-                      <option value="">Select a Subject (Optional)</option>
-                      {subjects.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.title}
-                        </option>
-                      ))}
-                    </select>
-                    {isLoadingSubjects ? (
-                      <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
-                    ) : (
-                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label
-                    htmlFor="cognitive-skill"
-                    className="block text-sm font-bold text-slate-700"
-                  >
-                    Cognitive Skill (Bloom's) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="cognitive-skill"
-                      value={selectedCognitiveSkillId}
-                      onChange={(e) => setSelectedCognitiveSkillId(e.target.value)}
-                      disabled={isSubmitting}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                    >
-                      <option value="" disabled>
-                        Select a Cognitive Skill
-                      </option>
-                      {cognitiveSkills?.map((skill) => (
-                        <option key={skill.id} value={skill.id}>
-                          {skill.title}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      size={16}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                    />
-                  </div>
-                </div>
-
-
-
-                <div className="space-y-2">
-                  <MultiSearchableSelect
-                    label="Disciplines"
-                    options={disciplines.map(d => ({ id: d.id, name: d.title }))}
-                    values={selectedDisciplines}
-                    onChange={setSelectedDisciplines}
-                    placeholder={isLoadingDisciplines ? "Loading disciplines..." : "Select disciplines..."}
-                    disabled={isSubmitting || isLoadingDisciplines}
-                  />
-                </div>
-              </div>
-            </form>
-          )}
-
-          {/* AI Generation Tab Content */}
-          {activeTab === 'generate' && (
-            <div>
-              {!generatedObjective && !isGenerating && (
-                <div className="space-y-5">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
-                      Bloom Level <span className="text-rose-400">*</span>
-                    </label>
-                    <SearchableSelect
-                      options={BLOOM_LEVELS.map((level) => ({ id: level, name: level }))}
-                      value={selectedBloom}
-                      onChange={setSelectedBloom}
-                      placeholder="Select a Bloom Level..."
-                      allOption={{ id: '', name: 'Select a Bloom Level...' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                      Discipline <span className="text-rose-400">*</span>
-                    </label>
-                    <SearchableSelect
-                      options={disciplines.map((d) => ({ id: d.id, name: d.title }))}
-                      value={selectedDisciplineId}
-                      onChange={setSelectedDisciplineId}
-                      placeholder="Select a discipline..."
-                      allOption={{ id: '', name: 'Select a discipline...' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                      Additional Context
-                    </label>
-                    <textarea
-                      value={additionalContext}
-                      onChange={(e) => setAdditionalContext(e.target.value)}
-                      placeholder="Add specific focus areas..."
-                      className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl min-h-[80px] resize-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all"
-                    />
-                  </div>
-
-                  <button
-                    disabled={!canGenerate || isGenerating}
-                    onClick={handleGenerate}
-                    className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:shadow-lg hover:shadow-[#1BD183]/20 transition-all active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <Sparkles size={18} /> Generate Objective
-                  </button>
-                </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Organ system">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={selectedOrganSystemId}
+                  onChange={(e) => handleOrganSystemChange(e.target.value)}
+                  disabled={isSubmitting || isLoadingOrganSystems}
+                >
+                  <option value="" disabled>
+                    {isLoadingOrganSystems ? 'Loading…' : 'Select an organ system'}
+                  </option>
+                  {organSystems.map((os) => (
+                    <option key={os.id} value={os.id}>{os.title}</option>
+                  ))}
+                </Select>
               )}
-
-              {/* Loading State */}
-              {isGenerating && (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1BA6D1] to-[#1BD183] flex items-center justify-center shadow-lg mb-6 animate-pulse">
-                    <Sparkles size={28} className="text-white" />
-                  </div>
-                  <p className="text-sm font-bold text-slate-700 mb-2">Generating Learning Objective...</p>
-                  <p className="text-xs text-slate-400">This may take up to 30 seconds</p>
-                  <Loader2 size={24} className="animate-spin text-[#1BD183] mt-4" />
-                </div>
+            </Field>
+            <Field label="Topic">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={selectedTopicId}
+                  onChange={(e) => handleTopicChange(e.target.value)}
+                  disabled={isSubmitting || !selectedOrganSystemId || isLoadingCascadeTopics}
+                >
+                  <option value="" disabled>
+                    {isLoadingCascadeTopics ? 'Loading…' : 'Select a topic'}
+                  </option>
+                  {cascadeTopics.map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </Select>
               )}
+            </Field>
+            <Field label="Subtopic">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={selectedSyndromeId}
+                  onChange={(e) => setSelectedSyndromeId(e.target.value)}
+                  disabled={isSubmitting || !selectedTopicId || isLoadingCascadeSyndromes}
+                >
+                  <option value="" disabled>
+                    {isLoadingCascadeSyndromes ? 'Loading…' : 'Select a subtopic'}
+                  </option>
+                  {cascadeSyndromes.map((syn) => (
+                    <option key={syn.id} value={syn.id}>{syn.title}</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
+        </section>
+      );
+    }
 
-              {/* Generated Result */}
-              {generatedObjective && !isGenerating && (
-                <div className="space-y-4 pt-2">
-                  <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                    <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border-slate-200 rounded-md text-[9px] font-black uppercase tracking-widest border">
-                        {generatedObjective.bloom_level}
-                      </span>
-                      <span className="text-[9px] font-medium text-slate-400">
-                        {generatedObjective.competency}
-                      </span>
-                      {generatedObjective.usmle_subtopic && (
-                        <>
-                          <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                          <span className="text-[9px] font-medium text-slate-400">
-                            {generatedObjective.usmle_subtopic}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <div className="px-5 py-5">
-                      <textarea
-                        value={generatedObjective.title}
-                        onChange={(e) => setGeneratedObjective({ ...generatedObjective, title: e.target.value })}
-                        disabled={isSavingGen || isSavedGen}
-                        className="w-full text-sm text-slate-800 leading-relaxed bg-transparent border-0 focus:ring-0 p-0 resize-none min-h-[60px]"
-                      />
-                    </div>
-                  </div>
+    // Creating inside a subtopic: the placement is fixed (shown in the header).
+    if (subTopic) return null;
 
-                  {isSavedGen && (
-                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 animate-in fade-in zoom-in-95">
-                      <CheckCircle2 size={18} className="text-emerald-500" />
-                      <p className="text-emerald-700 text-sm font-bold">
-                        Objective saved successfully!
-                      </p>
-                    </div>
-                  )}
-                </div>
+    return (
+      <Field label="Subtopic">
+        {(id) => (
+          <Select
+            id={id}
+            value={selectedSyndromeId}
+            onChange={(e) => setSelectedSyndromeId(e.target.value)}
+            disabled={isSubmitting}
+          >
+            <option value="" disabled>
+              Select a subtopic
+            </option>
+            {availableSyndromes.map((syn) => (
+              <option key={syn.id} value={syn.id}>
+                {syn.title}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+    );
+  };
+
+  const renderManual = () => (
+    <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Objective">
+        {(id) => (
+          <Textarea
+            id={id}
+            rows={4}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Explain the pathophysiology of acute coronary syndrome"
+            disabled={isSubmitting}
+          />
+        )}
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Cognitive skill" description="Bloom’s taxonomy level.">
+          {(id) => (
+            <Select
+              id={id}
+              value={selectedCognitiveSkillId}
+              onChange={(e) => setSelectedCognitiveSkillId(e.target.value)}
+              disabled={isSubmitting}
+            >
+              <option value="" disabled>
+                Select a cognitive skill
+              </option>
+              {cognitiveSkills?.map((skill) => (
+                <option key={skill.id} value={skill.id}>
+                  {skill.title}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <Field label="Subject" hint="Optional">
+          {(id) => (
+            <Select
+              id={id}
+              value={selectedSubjectId}
+              onChange={(e) => setSelectedSubjectId(e.target.value)}
+              disabled={isSubmitting || isLoadingSubjects}
+            >
+              <option value="">{isLoadingSubjects ? 'Loading subjects…' : 'No subject'}</option>
+              {subjects.map((sub) => (
+                <option key={sub.id} value={sub.id}>
+                  {sub.title}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+
+      <Field label="Disciplines" hint="Optional">
+        {(id) => (
+          <MultiSelectList
+            id={id}
+            options={disciplines.map((d) => ({ id: d.id, name: d.title }))}
+            values={selectedDisciplines}
+            onChange={setSelectedDisciplines}
+            placeholder="Search disciplines"
+            emptyLabel={isLoadingDisciplines ? 'Loading disciplines…' : 'No disciplines available'}
+            disabled={isSubmitting || isLoadingDisciplines}
+          />
+        )}
+      </Field>
+
+      {renderPlacement()}
+    </form>
+  );
+
+  const renderGenerate = () => {
+    if (isGenerating) {
+      return (
+        <Spinner
+          label="Drafting your objective… this can take up to 30 seconds."
+          className="py-14"
+        />
+      );
+    }
+
+    if (generatedObjective) {
+      return (
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-xl border border-stone-200 shadow-card transition focus-within:border-brand-500 focus-within:ring-[3px] focus-within:ring-brand-500/15">
+            <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 bg-stone-50 px-4 py-2">
+              <Badge tone="violet">AI draft</Badge>
+              <Badge>{generatedObjective.bloom_level}</Badge>
+              {generatedObjective.competency && (
+                <span className="text-xs text-stone-500">{generatedObjective.competency}</span>
+              )}
+              {generatedObjective.usmle_subtopic && (
+                <span className="text-xs text-stone-500">· {generatedObjective.usmle_subtopic}</span>
               )}
             </div>
-          )}
-        </div>
+            <textarea
+              aria-label="Generated objective"
+              value={generatedObjective.title}
+              onChange={(e) => setGeneratedObjective({ ...generatedObjective, title: e.target.value })}
+              disabled={isSavingGen || isSavedGen}
+              rows={4}
+              className="block w-full resize-none border-0 bg-white px-4 py-3 text-sm leading-6 text-stone-900 outline-none focus:ring-0 disabled:text-stone-500"
+            />
+          </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-end px-6 py-4 border-t border-slate-100 bg-white rounded-b-[2rem] flex-shrink-0">
-          {activeTab === 'manual' ? (
-            <div className="flex items-center gap-3 w-full justify-end">
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={isSubmitting}
-                className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="manual-form"
-                disabled={isSubmitting || !title.trim() || !selectedSyndromeId || !selectedCognitiveSkillId}
-                className="shrink-0 flex items-center justify-center min-w-[150px] gap-2 text-sm bg-primary-gradient border border-slate-200 text-white px-4 py-3 rounded-xl font-medium shadow-sm transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Saving...
-                  </>
-                ) : initialData ? (
-                  'Save Changes'
-                ) : (
-                  'Create Objective'
-                )}
-              </button>
+          {isSavedGen ? (
+            <div
+              role="status"
+              className="flex items-center gap-2.5 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-sm text-brand-800"
+            >
+              <CheckCircle2 size={16} className="flex-shrink-0" aria-hidden="true" />
+              Objective saved to {topicName}.
             </div>
           ) : (
-            generatedObjective && !isGenerating && (
-              <div className="flex items-center justify-between w-full">
-                <button
-                  onClick={handleRegenerate}
-                  disabled={isSavingGen}
-                  className="px-5 py-3 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  <Sparkles size={14} /> Regenerate
-                </button>
-                
-                {!isSavedGen ? (
-                  <button
-                    onClick={handleSaveGenerated}
-                    disabled={isSavingGen}
-                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] text-white font-black text-xs uppercase tracking-widest rounded-xl hover:shadow-lg hover:shadow-[#1BD183]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-                  >
-                    {isSavingGen ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save size={16} />
-                        Save Objective
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleClose}
-                    className="flex items-center gap-2 px-6 py-3 bg-[#191A19] text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#2a2b2a] transition-all active:scale-[0.98]"
-                  >
-                    Done
-                  </button>
-                )}
-              </div>
-            )
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="ai"
+                size="sm"
+                icon={RefreshCw}
+                onClick={() => void handleGenerate()}
+                disabled={isSavingGen || !canGenerate}
+              >
+                Regenerate
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={SlidersHorizontal}
+                onClick={handleRegenerate}
+                disabled={isSavingGen}
+              >
+                Change inputs
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Bloom level">
+            {(id) => (
+              <Select
+                id={id}
+                value={selectedBloom}
+                onChange={(e) => setSelectedBloom(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select a Bloom level
+                </option>
+                {BLOOM_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Discipline">
+            {(id) => (
+              <Select
+                id={id}
+                value={selectedDisciplineId}
+                onChange={(e) => setSelectedDisciplineId(e.target.value)}
+                disabled={isLoadingDisciplines}
+              >
+                <option value="" disabled>
+                  {isLoadingDisciplines ? 'Loading disciplines…' : 'Select a discipline'}
+                </option>
+                {disciplines.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+
+        <Field label="Additional context" hint="Optional">
+          {(id) => (
+            <Textarea
+              id={id}
+              rows={3}
+              value={additionalContext}
+              onChange={(e) => setAdditionalContext(e.target.value)}
+              placeholder="Steer the generator: focus areas, clinical setting, emphasis…"
+            />
+          )}
+        </Field>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="ai"
+            icon={Sparkles}
+            onClick={() => void handleGenerate()}
+            disabled={!canGenerate || isGenerating}
+          >
+            Generate objective
+          </Button>
+          {!canGenerate && (
+            <p className="text-[13px] text-stone-500">Pick a Bloom level and a discipline first.</p>
           )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
+  const renderPrimaryAction = () => {
+    if (activeTab === 'manual') {
+      return (
+        <Button
+          type="submit"
+          form={FORM_ID}
+          variant="primary"
+          icon={Check}
+          loading={isSubmitting}
+          disabled={!canSubmitManual}
+        >
+          {isEdit ? 'Save changes' : 'Create objective'}
+        </Button>
+      );
+    }
+    if (isSavedGen) {
+      return (
+        <Button variant="primary" onClick={handleClose}>
+          Done
+        </Button>
+      );
+    }
+    if (generatedObjective && !isGenerating) {
+      return (
+        <Button
+          variant="primary"
+          icon={Check}
+          loading={isSavingGen}
+          disabled={!generatedObjective.title.trim()}
+          onClick={() => void handleSaveGenerated()}
+        >
+          Save objective
+        </Button>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <>
+      <Drawer
+        open={isOpen}
+        onClose={requestClose}
+        dismissible={!isBusy && !isDiscardOpen}
+        width="max-w-2xl"
+        title={isEdit ? 'Edit objective' : 'New learning objective'}
+        description={
+          placementPath ? (
+            <>
+              In <span className="font-medium text-stone-700">{placementPath}</span>
+            </>
+          ) : undefined
+        }
+        footer={
+          <>
+            <p className="min-w-0 flex-1 truncate text-[13px] text-stone-500">{footerHint}</p>
+            {activeTab === 'generate' && isSavedGen ? (
+              <Button variant="ghost" icon={RefreshCw} onClick={handleRegenerate}>
+                Generate another
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={requestClose} disabled={isBusy}>
+                Cancel
+              </Button>
+            )}
+            {renderPrimaryAction()}
+          </>
+        }
+      >
+        <div className="space-y-6 px-6 py-5">
+          {!initialData && (
+            <SegmentedControl<'manual' | 'generate'>
+              label="How to author the objective"
+              value={activeTab}
+              onChange={(next) => {
+                if (isBusy) return;
+                setActiveTab(next);
+                setError(null);
+              }}
+              options={[
+                { value: 'manual', label: 'Write it' },
+                { value: 'generate', label: 'Generate with AI' },
+              ]}
+            />
+          )}
+
+          {error && (
+            <InlineAlert tone="error" onDismiss={() => setError(null)}>
+              {error}
+            </InlineAlert>
+          )}
+
+          {activeTab === 'manual' ? renderManual() : renderGenerate()}
+        </div>
+      </Drawer>
+
+      <ConfirmDialog
+        open={isDiscardOpen}
+        title={isEdit ? 'Discard your changes?' : 'Discard this objective?'}
+        description={
+          isEdit
+            ? 'Your edits to this objective will be lost.'
+            : 'What you’ve written or generated here will be lost.'
+        }
+        confirmLabel="Discard"
+        onCancel={() => setIsDiscardOpen(false)}
+        onConfirm={handleClose}
+      />
+    </>
+  );
 };
 
 export default CreateObjectiveModal;
-

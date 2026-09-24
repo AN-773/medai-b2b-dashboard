@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { X, Link2, Loader2, Search, Check, AlertTriangle } from 'lucide-react';
+import { Activity, Link2, Search } from 'lucide-react';
 import { OrganSystem } from '../../types/TestsServiceTypes';
 import { testsService } from '../../services/testsService';
+import {
+  Badge,
+  Button,
+  Drawer,
+  EmptyState,
+  InlineAlert,
+  SearchInput,
+  Spinner,
+  cn,
+} from '@/components/ui';
+import { plural } from './HierarchyRows';
 
 interface AttachOrganSystemModalProps {
   isOpen: boolean;
@@ -14,6 +24,7 @@ interface AttachOrganSystemModalProps {
   onAttach: (systems: { id: string; title: string }[]) => Promise<void>;
 }
 
+/** Pick existing organ systems and link them to the current curriculum. */
 const AttachOrganSystemModal: React.FC<AttachOrganSystemModalProps> = ({
   isOpen,
   curriculumId,
@@ -56,29 +67,30 @@ const AttachOrganSystemModal: React.FC<AttachOrganSystemModalProps> = ({
 
   const linked = useMemo(() => new Set(linkedIds), [linkedIds]);
 
-  const attachable = useMemo(
-    () =>
-      allSystems
-        .filter((s) => !linked.has(s.id) && s.curriculumId !== curriculumId)
-        .filter((s) => s.title.toLowerCase().includes(search.toLowerCase())),
-    [allSystems, linked, curriculumId, search],
+  const eligible = useMemo(
+    () => allSystems.filter((s) => !linked.has(s.id) && s.curriculumId !== curriculumId),
+    [allSystems, linked, curriculumId],
   );
 
-  const selectedCount = Object.values(selected).filter(Boolean).length;
+  const attachable = useMemo(
+    () => eligible.filter((s) => s.title.toLowerCase().includes(search.toLowerCase())),
+    [eligible, search],
+  );
 
-  if (!isOpen) return null;
+  // Selections survive searching, so count and attach from the full eligible list.
+  const picks = eligible.filter((s) => selected[s.id]);
+  const selectedCount = picks.length;
 
   const handleClose = () => {
     if (!isSubmitting) onClose();
   };
 
   const handleSubmit = async () => {
-    const picks = attachable.filter((s) => selected[s.id]).map((s) => ({ id: s.id, title: s.title }));
     if (picks.length === 0) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      await onAttach(picks);
+      await onAttach(picks.map((s) => ({ id: s.id, title: s.title })));
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to attach organ systems.');
@@ -87,141 +99,116 @@ const AttachOrganSystemModal: React.FC<AttachOrganSystemModalProps> = ({
     }
   };
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={handleClose}
-      />
-      <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
-        <div className="flex items-center justify-between p-6 border-b border-slate-100 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-[#1BA6D1] to-[#15a968] rounded-2xl shadow-lg shadow-[#1BD183]/20">
-              <Link2 size={24} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">Attach Organ Systems</h2>
-              <p className="text-sm text-slate-500 font-medium">
-                Link existing organ systems to this curriculum.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
-          >
-            <X size={20} className="text-slate-400" />
-          </button>
-        </div>
+  const renderList = () => {
+    if (isLoading) return <Spinner label="Loading organ systems…" className="py-16" />;
+    if (error && eligible.length === 0) return null;
 
-        <div className="p-6 pb-3 flex-shrink-0 space-y-3">
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
-              {error}
-            </div>
-          )}
-          <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-            <AlertTriangle size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
-            <p className="text-[12px] text-amber-700 font-medium leading-relaxed">
-              An organ system belongs to one curriculum. Attaching one already linked elsewhere
-              will move it here.
-            </p>
-          </div>
-          <div className="relative group">
-            <Search
-              className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-[#1BD183] transition-colors"
-              size={16}
-            />
-            <input
-              type="text"
-              placeholder="Search organ systems..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-50 text-xs font-bold text-slate-700 pl-11 pr-4 py-3.5 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all placeholder:text-slate-400"
-            />
-          </div>
-        </div>
+    if (attachable.length === 0) {
+      return search && eligible.length > 0 ? (
+        <EmptyState
+          compact
+          icon={Search}
+          title="No matching organ systems"
+          description={`Nothing matches “${search.trim()}”.`}
+          action={
+            <Button variant="ghost" size="sm" onClick={() => setSearch('')}>
+              Clear search
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState
+          compact
+          icon={Activity}
+          title="Nothing to attach"
+          description="Every organ system is already part of this curriculum."
+        />
+      );
+    }
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-2 space-y-1.5">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-              <Loader2 size={20} className="animate-spin mb-3 text-[#1BD183]" />
-              <p className="text-[10px] font-black uppercase tracking-widest">Loading…</p>
-            </div>
-          ) : attachable.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-[11px] font-black uppercase tracking-widest">
-              {search ? 'No matching organ systems' : 'No organ systems available to attach'}
-            </div>
-          ) : (
-            attachable.map((s) => {
-              const isChecked = !!selected[s.id];
-              const linkedElsewhere = !!s.curriculumId;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelected((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all text-left ${
-                    isChecked
-                      ? 'border-[#1BD183]/40 bg-[#1BD183]/5'
-                      : 'border-transparent hover:bg-slate-50'
-                  }`}
-                >
-                  <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-md border flex-shrink-0 ${
-                      isChecked ? 'bg-[#1BD183] border-[#1BD183]' : 'border-slate-300'
-                    }`}
-                  >
-                    {isChecked && <Check size={13} className="text-white" />}
-                  </span>
-                  <span className="flex-1 min-w-0 truncate text-sm font-bold text-slate-700">
-                    {s.title}
-                  </span>
-                  {linkedElsewhere && (
-                    <span className="flex-shrink-0 text-[9px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                      Linked elsewhere
-                    </span>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
+    return (
+      <ul aria-label="Organ systems" className="divide-y divide-stone-100">
+        {attachable.map((s) => {
+          const isChecked = !!selected[s.id];
+          const linkedElsewhere = !!s.curriculumId;
+          return (
+            <li key={s.id}>
+              <label
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 px-6 py-2.5 transition-colors',
+                  isChecked ? 'bg-brand-50/50' : 'hover:bg-stone-50',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => setSelected((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+                  disabled={isSubmitting}
+                  className="h-4 w-4 flex-shrink-0 rounded border-stone-300 accent-brand-600"
+                />
+                <span className="min-w-0 flex-1 truncate text-sm text-stone-800">{s.title}</span>
+                {linkedElsewhere && (
+                  <Badge tone="amber" title="Attaching moves it to this curriculum">
+                    Linked elsewhere
+                  </Badge>
+                )}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-100 flex-shrink-0">
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50"
-          >
+  return (
+    <Drawer
+      open={isOpen}
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      width="max-w-lg"
+      title="Attach organ systems"
+      description="Link existing organ systems to this curriculum."
+      toolbar={
+        <div className="space-y-3 border-b border-stone-200 px-6 py-4">
+          <InlineAlert tone="warning">
+            An organ system belongs to one curriculum. Attaching one that’s linked elsewhere moves
+            it here.
+          </InlineAlert>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search organ systems"
+          />
+        </div>
+      }
+      footer={
+        <>
+          <p className="min-w-0 flex-1 truncate text-[13px] text-stone-500">
+            {selectedCount > 0 ? `${plural(selectedCount, 'organ system')} selected` : 'Select organ systems to attach'}
+          </p>
+          <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isSubmitting || selectedCount === 0}
-            className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 flex items-center gap-2"
+          </Button>
+          <Button
+            variant="primary"
+            icon={Link2}
+            onClick={() => void handleSubmit()}
+            loading={isSubmitting}
+            disabled={selectedCount === 0}
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Attaching…
-              </>
-            ) : (
-              <>
-                <Link2 size={16} />
-                Attach{selectedCount > 0 ? ` (${selectedCount})` : ''}
-              </>
-            )}
-          </button>
+            {selectedCount > 0 ? `Attach ${selectedCount.toLocaleString()}` : 'Attach'}
+          </Button>
+        </>
+      }
+    >
+      {error && (
+        <div className="px-6 pt-4">
+          <InlineAlert onDismiss={() => setError(null)}>{error}</InlineAlert>
         </div>
-      </div>
-    </div>
+      )}
+      <div className="py-2">{renderList()}</div>
+    </Drawer>
   );
-
-  if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
 };
 
 export default AttachOrganSystemModal;

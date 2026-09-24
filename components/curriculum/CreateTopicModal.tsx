@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { X, FileText, Loader2, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useId } from 'react';
+import { Check } from 'lucide-react';
 import { OrganSystem } from '@/types/TestsServiceTypes';
+import { Button, Dialog, Field, InlineAlert, Input, Select } from '@/components/ui';
 
 interface CreateTopicModalProps {
   isOpen: boolean;
@@ -18,6 +18,11 @@ interface CreateTopicModalProps {
     identifier?: string;
     organSystemId?: string;
   } | null;
+  /**
+   * Keep the topic in `defaultSystemId` (shown as context, not a picker) — for
+   * creating a topic from inside an organ system. Optional; defaults to false.
+   */
+  parentLocked?: boolean;
 }
 
 const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
@@ -27,7 +32,9 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
   organSystems,
   defaultSystemId,
   initialData,
+  parentLocked = false,
 }) => {
+  const formId = useId();
   const [name, setName] = useState(initialData?.name || '');
   const [identifier, setIdentifier] = useState(initialData?.identifier || '');
   const [selectedSystemId, setSelectedSystemId] = useState(
@@ -80,136 +87,85 @@ const CreateTopicModal: React.FC<CreateTopicModalProps> = ({
     }
   }, [isOpen, initialData, defaultSystemId]);
 
-  if (!isOpen) return null;
+  const isEdit = Boolean(initialData);
+  const lockedSystemTitle = parentLocked
+    ? organSystems.find((system) => system.id === selectedSystemId)?.title
+    : undefined;
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={handleClose}
-      />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-lg mx-4 animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-[#1BD183] to-[#15a968] rounded-2xl shadow-lg shadow-[#1BD183]/20">
-              <FileText size={24} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">
-                {initialData ? 'Edit Topic' : 'Create New Topic'}
-              </h2>
-              <p className="text-sm text-slate-500 font-medium">
-                Add a new topic to your curriculum
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
+  return (
+    <Dialog
+      open={isOpen}
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      title={isEdit ? 'Edit topic' : 'New topic'}
+      description={
+        lockedSystemTitle ? (
+          <>
+            In <span className="font-medium text-stone-700">{lockedSystemTitle}</span>
+          </>
+        ) : isEdit ? (
+          'Rename the topic or move it to another organ system.'
+        ) : (
+          'Topics group related subtopics within an organ system.'
+        )
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            variant="primary"
+            icon={Check}
+            loading={isSubmitting}
+            disabled={!name.trim() || !selectedSystemId}
           >
-            <X size={20} className="text-slate-400" />
-          </button>
-        </div>
+            {isEdit ? 'Save changes' : 'Create topic'}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {error && <InlineAlert onDismiss={() => setError(null)}>{error}</InlineAlert>}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-200">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <label
-                htmlFor="organ-system"
-                className="block text-sm font-bold text-slate-700"
-              >
-                Organ System <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  id="organ-system"
-                  value={selectedSystemId}
-                  onChange={(e) => setSelectedSystemId(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                >
-                  <option value="" disabled>
-                    Select an Organ System
-                  </option>
-                  {organSystems.map((sys) => (
-                    <option key={sys.id} value={sys.id}>
-                      {sys.title}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={16}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="topic-name"
-                className="block text-sm font-bold text-slate-700"
-              >
-                Topic Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="topic-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Cardiac Arrhythmias"
+        {!lockedSystemTitle && (
+          <Field label="Organ system">
+            {(id) => (
+              <Select
+                id={id}
+                value={selectedSystemId}
+                onChange={(e) => setSelectedSystemId(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                autoFocus
-              />
-            </div>
-          </div>
+              >
+                <option value="" disabled>
+                  Select an organ system
+                </option>
+                {organSystems.map((sys) => (
+                  <option key={sys.id} value={sys.id}>
+                    {sys.title}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
+        <Field label="Topic name">
+          {(id) => (
+            <Input
+              id={id}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Cardiac arrhythmias"
               disabled={isSubmitting}
-              className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !name.trim() || !selectedSystemId}
-              className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl  transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Creating...
-                </>
-              ) : initialData ? (
-                'Update Topic'
-              ) : (
-                'Create Topic'
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            />
+          )}
+        </Field>
+      </form>
+    </Dialog>
   );
-
-  if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
 };
 
 export default CreateTopicModal;

@@ -1,20 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  AlertCircle,
-  CalendarClock,
-  CheckCircle2,
-  Loader2,
-  Pencil,
-  Plus,
-  Power,
-  QrCode,
-  RefreshCw,
-  Search,
-  Ticket,
-  Users,
-  X,
-} from 'lucide-react';
-import ConfirmationModal from '../ConfirmationModal';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pencil, Plus, Power, QrCode, RefreshCw, Ticket } from 'lucide-react';
 import PromoCodeQrModal from './PromoCodeQrModal';
 import {
   promoCodeService,
@@ -22,17 +7,39 @@ import {
   PromoStatus,
   getPromoStatus,
 } from '../../services/promoCodeService';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  Menu,
+  PageHeader,
+  ProgressBar,
+  SearchInput,
+  SegmentedControl,
+  Spinner,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
+import { ListFooter, SuccessNotice, Toast, shortDate, useToast } from '../admin/AdminFeedback';
 
 const PAGE_SIZE = 24;
 
 const CODE_PATTERN = /^[A-Z0-9_-]{3,32}$/;
 
-const statusPillClass: Record<PromoStatus, string> = {
-  Active: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  Inactive: 'bg-slate-100 text-slate-500 border-slate-200',
-  Expired: 'bg-amber-50 text-amber-700 border-amber-100',
-  Exhausted: 'bg-rose-50 text-rose-700 border-rose-100',
+const STATUS_TONE: Record<PromoStatus, BadgeTone> = {
+  Active: 'green',
+  Inactive: 'neutral',
+  Expired: 'amber',
+  Exhausted: 'red',
 };
+
+type StatusFilter = 'all' | PromoStatus;
 
 interface EditorState {
   code: string;
@@ -68,38 +75,17 @@ const editorFromPromo = (promo: PromoCode): EditorState => ({
   expiresAt: toDateTimeLocal(promo.expiresAt),
 });
 
-const shortDate = (value: string | null | undefined) =>
-  value
-    ? new Date(value).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '';
-
 const fullDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : 'Never expires';
 
-const usageTone = (percent: number) =>
-  percent >= 100 ? 'bg-rose-500' : percent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
-
-const label = 'block text-xs font-medium text-slate-600 mb-1.5';
-const field =
-  'w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5';
-const fieldWithIcon = `${field} pl-9`;
-const iconInField = 'absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none';
-const ghostButton =
-  'inline-flex items-center justify-center gap-2 h-10 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50';
-const primaryButton =
-  'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-slate-900 text-sm font-semibold text-white whitespace-nowrap transition hover:bg-slate-800 disabled:opacity-50';
-const iconButton =
-  'inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50';
+const freeDaysLabel = (days: number) => `${days} free day${days === 1 ? '' : 's'}`;
 
 const PromoCodeManager: React.FC = () => {
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -109,12 +95,12 @@ const PromoCodeManager: React.FC = () => {
   const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const editorRef = useRef<HTMLFormElement>(null);
 
   const [createdPromo, setCreatedPromo] = useState<PromoCode | null>(null);
   const [pendingToggle, setPendingToggle] = useState<PromoCode | null>(null);
   const [busyCode, setBusyCode] = useState('');
   const [qrPromo, setQrPromo] = useState<PromoCode | null>(null);
+  const { toast, showToast } = useToast();
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -146,13 +132,27 @@ const PromoCodeManager: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // The editor opens above a grid that can be scrolled well out of view, so pull
-  // it into sight rather than leaving the operator wondering what the click did.
-  useEffect(() => {
-    if (editor) {
-      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [editingPromo?.code, editor !== null]);
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusFilter, number> = {
+      all: promoCodes.length,
+      Active: 0,
+      Inactive: 0,
+      Expired: 0,
+      Exhausted: 0,
+    };
+    promoCodes.forEach((promo) => {
+      counts[getPromoStatus(promo)] += 1;
+    });
+    return counts;
+  }, [promoCodes]);
+
+  const visibleCodes = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? promoCodes
+        : promoCodes.filter((promo) => getPromoStatus(promo) === statusFilter),
+    [promoCodes, statusFilter],
+  );
 
   const openCreate = () => {
     setEditor(emptyEditor());
@@ -175,9 +175,20 @@ const PromoCodeManager: React.FC = () => {
   const updateEditor = (patch: Partial<EditorState>) =>
     setEditor((current) => (current ? { ...current, ...patch } : current));
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!editor) return;
+  const isEditorDirty = useMemo(() => {
+    if (!editor) return false;
+    if (!editingPromo) return true;
+    const saved = editorFromPromo(editingPromo);
+    return (
+      editor.freeDays !== saved.freeDays ||
+      editor.maxRedemptions !== saved.maxRedemptions ||
+      editor.expiresAt !== saved.expiresAt
+    );
+  }, [editingPromo, editor]);
+
+  const handleSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if (!editor || isSubmitting || !isEditorDirty) return;
 
     const normalizedCode = editor.code.trim().toUpperCase();
     const parsedFreeDays = Number(editor.freeDays);
@@ -220,6 +231,7 @@ const PromoCodeManager: React.FC = () => {
           expiresAt,
         });
         closeEditor();
+        showToast(`${editingPromo.code} updated`);
         await fetchPromoCodes(currentPage, search);
       } else {
         const promo = await promoCodeService.createPromoCode({
@@ -250,6 +262,7 @@ const PromoCodeManager: React.FC = () => {
 
     try {
       await promoCodeService.setPromoCodeActive(promo.code, !promo.active);
+      showToast(`${promo.code} ${promo.active ? 'deactivated' : 'activated'}`);
       await fetchPromoCodes(currentPage, search);
     } catch (error) {
       console.error('Failed to update promo code:', error);
@@ -260,392 +273,411 @@ const PromoCodeManager: React.FC = () => {
     }
   };
 
-  const showEmptyState = hasLoadedOnce && !isLoading && promoCodes.length === 0;
+  const clearFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+  };
+
+  const renderRedemptions = (promo: PromoCode) => {
+    if (promo.maxRedemptions <= 0) {
+      return (
+        <>
+          <p className="tabular-nums text-stone-800">{promo.redemptionCount.toLocaleString()}</p>
+          <p className="mt-0.5 text-xs text-stone-400">No cap</p>
+        </>
+      );
+    }
+    const usedPercent = Math.min(
+      100,
+      Math.round((promo.redemptionCount / promo.maxRedemptions) * 100),
+    );
+    return (
+      <>
+        <p className="tabular-nums text-stone-800">
+          {promo.redemptionCount.toLocaleString()}
+          <span className="text-stone-400"> / {promo.maxRedemptions.toLocaleString()}</span>
+        </p>
+        <ProgressBar
+          value={promo.redemptionCount}
+          max={promo.maxRedemptions}
+          tone={usedPercent >= 80 ? 'amber' : 'brand'}
+          label={`${usedPercent}% of redemptions used`}
+          className="ml-auto mt-1.5 w-20"
+        />
+      </>
+    );
+  };
+
+  const renderList = () => {
+    if (isLoading && !hasLoadedOnce) {
+      return <Spinner label="Loading promo codes…" className="py-20" />;
+    }
+    if (promoCodes.length === 0) {
+      if (loadError) return null;
+      return search ? (
+        <EmptyState
+          compact
+          icon={Ticket}
+          title="No codes match"
+          description="Nothing matched that search. Try a different code."
+          action={
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear search
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={Ticket}
+          title="No promo codes yet"
+          description="Create a code to hand out free Pro days, then print its QR code for flyers and handouts."
+          action={
+            <Button variant="primary" icon={Plus} onClick={openCreate}>
+              New code
+            </Button>
+          }
+        />
+      );
+    }
+    if (visibleCodes.length === 0) {
+      return (
+        <EmptyState
+          compact
+          icon={Ticket}
+          title={`No ${statusFilter.toLowerCase()} codes${totalPages > 1 ? ' on this page' : ''}`}
+          action={
+            <Button variant="ghost" size="sm" onClick={() => setStatusFilter('all')}>
+              Show all codes
+            </Button>
+          }
+        />
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[13px]">
+          <thead>
+            <tr className="border-b border-stone-200 text-stone-500">
+              <th scope="col" className="px-4 py-2.5 font-medium">
+                Code
+              </th>
+              <th scope="col" className="px-4 py-2.5 font-medium">
+                Status
+              </th>
+              <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                Redemptions
+              </th>
+              <th scope="col" className="hidden px-4 py-2.5 font-medium md:table-cell">
+                Expires
+              </th>
+              <th scope="col" className="hidden px-4 py-2.5 font-medium lg:table-cell">
+                Created
+              </th>
+              <th scope="col" className="w-20 px-2 py-2.5">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            className={cn('divide-y divide-stone-100 transition-opacity', isLoading && 'opacity-60')}
+          >
+            {visibleCodes.map((promo) => {
+              const status = getPromoStatus(promo);
+              const isBusy = busyCode === promo.code;
+              return (
+                <tr key={promo.id} className="transition-colors hover:bg-stone-50">
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(promo)}
+                      className="rounded font-mono text-sm font-medium text-stone-900 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                    >
+                      {promo.code}
+                    </button>
+                    <p className="mt-0.5 text-stone-500">{freeDaysLabel(promo.freeDays)} of Pro</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge tone={STATUS_TONE[status]} dot>
+                      {status}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-right">{renderRedemptions(promo)}</td>
+                  <td
+                    className={cn(
+                      'hidden whitespace-nowrap px-4 py-3 tabular-nums md:table-cell',
+                      status === 'Expired' ? 'text-amber-700' : 'text-stone-600',
+                    )}
+                    title={fullDate(promo.expiresAt)}
+                  >
+                    {promo.expiresAt ? (
+                      shortDate(promo.expiresAt)
+                    ) : (
+                      <span className="text-stone-400">Never</span>
+                    )}
+                  </td>
+                  <td className="hidden whitespace-nowrap px-4 py-3 tabular-nums text-stone-600 lg:table-cell">
+                    {shortDate(promo.created) || <span className="text-stone-400">—</span>}
+                  </td>
+                  <td className="px-2 py-3">
+                    <div className="flex items-center justify-end gap-0.5">
+                      <IconButton
+                        icon={QrCode}
+                        label={`QR code for ${promo.code}`}
+                        size="sm"
+                        onClick={() => setQrPromo(promo)}
+                      />
+                      {isBusy ? (
+                        <Spinner className="h-7 w-7" />
+                      ) : (
+                        <Menu
+                          size="sm"
+                          label={`Actions for ${promo.code}`}
+                          items={[
+                            { label: 'Edit', icon: Pencil, onSelect: () => openEdit(promo) },
+                            { label: 'QR code', icon: QrCode, onSelect: () => setQrPromo(promo) },
+                            promo.active
+                              ? {
+                                  label: 'Deactivate',
+                                  icon: Power,
+                                  tone: 'danger',
+                                  onSelect: () => setPendingToggle(promo),
+                                }
+                              : {
+                                  label: 'Activate',
+                                  icon: Power,
+                                  onSelect: () => void handleToggleActive(promo),
+                                },
+                          ]}
+                        />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
-    <div className="font-['Inter'] text-slate-900">
-      {/* The page shell already renders the "Promo Codes" heading, so this is a
-          toolbar rather than a second title block. */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
-        <div className="relative flex-1 min-w-0 max-w-sm">
-          <Search size={15} className={iconInField} />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search codes"
-            className={fieldWithIcon}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 sm:ml-auto">
-          <button
-            type="button"
-            onClick={() => fetchPromoCodes(currentPage, search)}
-            disabled={isLoading}
-            title="Refresh"
-            aria-label="Refresh"
-            className={`${ghostButton} w-10 px-0`}
-          >
-            <RefreshCw size={15} className={isLoading ? 'animate-spin' : undefined} />
-          </button>
-          <button type="button" onClick={openCreate} className={primaryButton}>
-            <Plus size={16} />
+    <div>
+      <PageHeader
+        title="Promo codes"
+        description="Each code grants free Pro days when redeemed in the app or by scanning its QR code."
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openCreate}>
             New code
-          </button>
-        </div>
+          </Button>
+        }
+      />
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search codes"
+          className="w-full sm:w-72"
+        />
+        {promoCodes.length > 0 && (
+          <SegmentedControl<StatusFilter>
+            label="Filter by status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'all', label: 'All', count: statusCounts.all },
+              { value: 'Active', label: 'Active', count: statusCounts.Active },
+              { value: 'Inactive', label: 'Inactive', count: statusCounts.Inactive },
+              { value: 'Expired', label: 'Expired', count: statusCounts.Expired },
+              { value: 'Exhausted', label: 'Exhausted', count: statusCounts.Exhausted },
+            ]}
+            className="max-w-full overflow-x-auto"
+          />
+        )}
+        <Button
+          aria-label="Refresh promo codes"
+          title="Refresh promo codes"
+          icon={RefreshCw}
+          loading={isLoading}
+          onClick={() => fetchPromoCodes(currentPage, search)}
+          className="w-9 px-0 sm:ml-auto"
+        />
       </div>
 
-      <p className="text-sm text-slate-500 mb-6 max-w-2xl">
-        Each code grants free Pro days when redeemed in the app or by scanning its QR code. A
-        printed code is public forever — set a redemption cap and an expiry before it leaves the
-        building.
-      </p>
-
-      {loadError && (
-        <div className="flex items-center gap-2 px-4 py-3 mb-5 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
-          <AlertCircle size={16} className="shrink-0" />
-          {loadError}
-        </div>
-      )}
-
-      {/* Right after creating a code is when you actually want the QR. */}
-      {createdPromo && (
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 mb-5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-900">
-          <CheckCircle2 size={16} className="shrink-0" />
-          <p className="min-w-0">
-            <span className="font-mono font-semibold">{createdPromo.code}</span> is live —{' '}
-            {createdPromo.freeDays} free day{createdPromo.freeDays === 1 ? '' : 's'},{' '}
+      <div className="mt-5 space-y-4">
+        {/* Right after creating a code is when you actually want the QR. */}
+        {createdPromo && (
+          <SuccessNotice
+            onDismiss={() => setCreatedPromo(null)}
+            action={
+              <Button size="sm" icon={QrCode} onClick={() => setQrPromo(createdPromo)}>
+                Get QR code
+              </Button>
+            }
+          >
+            <span className="font-mono font-medium">{createdPromo.code}</span> is live —{' '}
+            {freeDaysLabel(createdPromo.freeDays)},{' '}
             {createdPromo.maxRedemptions > 0
               ? `${createdPromo.maxRedemptions} redemptions`
               : 'no redemption cap'}
             .
-          </p>
-          <div className="flex items-center gap-1 ml-auto">
-            <button
-              type="button"
-              onClick={() => setQrPromo(createdPromo)}
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-emerald-200 bg-white text-xs font-medium text-emerald-800 transition hover:bg-emerald-50"
-            >
-              <QrCode size={13} />
-              Get QR code
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreatedPromo(null)}
-              aria-label="Dismiss"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-emerald-700 transition hover:bg-emerald-100"
-            >
-              <X size={15} />
-            </button>
+          </SuccessNotice>
+        )}
+
+        {loadError && (
+          <InlineAlert
+            onDismiss={promoCodes.length > 0 ? () => setLoadError('') : undefined}
+            action={
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fetchPromoCodes(currentPage, search)}
+                disabled={isLoading}
+                className="-my-1"
+              >
+                Try again
+              </Button>
+            }
+          >
+            {loadError}
+          </InlineAlert>
+        )}
+
+        {!(loadError && promoCodes.length === 0) && (
+          <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+            {renderList()}
+            {promoCodes.length > 0 && (
+              <ListFooter
+                page={currentPage}
+                totalPages={totalPages}
+                total={total}
+                noun="code"
+                disabled={isLoading}
+                onPrevious={() => fetchPromoCodes(currentPage - 1, search)}
+                onNext={() => fetchPromoCodes(currentPage + 1, search)}
+                note={totalPages > 1 && statusFilter !== 'all' ? 'status filter covers this page' : undefined}
+              />
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {editor && (
-        <form
-          ref={editorRef}
-          onSubmit={handleSubmit}
-          className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(16,24,40,0.06)] overflow-hidden"
-        >
-          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 truncate">
-                {editingPromo ? `Edit ${editingPromo.code}` : 'New promo code'}
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {editingPromo
-                  ? 'The code itself is locked — printed QR codes already point at it.'
-                  : 'Pick the code carefully: it becomes the printed redeem link.'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={closeEditor}
-              aria-label="Close editor"
-              className={iconButton}
+      <Dialog
+        open={editor !== null}
+        onClose={closeEditor}
+        dismissible={!isSubmitting}
+        width="max-w-lg"
+        title={editingPromo ? `Edit ${editingPromo.code}` : 'New promo code'}
+        description={
+          editingPromo
+            ? 'The code itself is locked — printed QR codes already point at it.'
+            : 'Pick the code carefully: it becomes the printed redeem link.'
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeEditor} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSubmit()}
+              disabled={!isEditorDirty}
+              loading={isSubmitting}
             >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="p-6 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="promo-code" className={label}>
-                  Code <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <Ticket size={15} className={iconInField} />
-                  <input
-                    id="promo-code"
-                    type="text"
-                    value={editor.code}
-                    disabled={Boolean(editingPromo)}
-                    onChange={(event) => updateEditor({ code: event.target.value.toUpperCase() })}
-                    placeholder="WELCOME-30"
-                    className={`${fieldWithIcon} uppercase disabled:bg-slate-50 disabled:text-slate-500`}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="promo-free-days" className={label}>
-                  Free days <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="promo-free-days"
-                  type="number"
-                  min={1}
-                  max={3650}
-                  value={editor.freeDays}
-                  onChange={(event) => updateEditor({ freeDays: event.target.value })}
-                  placeholder="30"
-                  className={field}
+              {editingPromo ? 'Save changes' : 'Create code'}
+            </Button>
+          </>
+        }
+      >
+        {editor && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {submitError && (
+              <InlineAlert onDismiss={() => setSubmitError('')}>{submitError}</InlineAlert>
+            )}
+            <Field
+              label="Code"
+              description={
+                editingPromo ? undefined : '3–32 letters, numbers, dashes or underscores.'
+              }
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  value={editor.code}
+                  disabled={Boolean(editingPromo)}
+                  onChange={(event) => updateEditor({ code: event.target.value.toUpperCase() })}
+                  placeholder="WELCOME-30"
+                  autoComplete="off"
+                  className="font-mono"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="promo-max-uses" className={label}>
-                  Max uses <span className="text-slate-400 font-normal">· blank = unlimited</span>
-                </label>
-                <div className="relative">
-                  <Users size={15} className={iconInField} />
-                  <input
-                    id="promo-max-uses"
+              )}
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Free days" description="1–3650 days of Pro.">
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={editor.freeDays}
+                    onChange={(event) => updateEditor({ freeDays: event.target.value })}
+                    placeholder="30"
+                  />
+                )}
+              </Field>
+              <Field label="Max uses" hint="Optional" description="Blank means unlimited.">
+                {(id) => (
+                  <Input
+                    id={id}
                     type="number"
                     min={0}
                     value={editor.maxRedemptions}
                     onChange={(event) => updateEditor({ maxRedemptions: event.target.value })}
                     placeholder="Unlimited"
-                    className={fieldWithIcon}
                   />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="promo-expires" className={label}>
-                  Expires <span className="text-slate-400 font-normal">· blank = never</span>
-                </label>
-                <div className="relative">
-                  <CalendarClock size={15} className={iconInField} />
-                  <input
-                    id="promo-expires"
-                    type="datetime-local"
-                    value={editor.expiresAt}
-                    onChange={(event) => updateEditor({ expiresAt: event.target.value })}
-                    className={fieldWithIcon}
-                  />
-                </div>
-              </div>
+                )}
+              </Field>
             </div>
-
-            {submitError && (
-              <div className="flex items-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
-                <AlertCircle size={16} className="shrink-0" />
-                {submitError}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
-            <button type="submit" disabled={isSubmitting} className={primaryButton}>
-              {isSubmitting && <Loader2 size={15} className="animate-spin" />}
-              {editingPromo ? 'Save changes' : 'Create code'}
-            </button>
-            <button type="button" onClick={closeEditor} className={ghostButton}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {isLoading && !hasLoadedOnce ? (
-        <div className="flex items-center justify-center py-24 text-slate-400">
-          <Loader2 size={22} className="animate-spin" />
-        </div>
-      ) : showEmptyState ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-16 text-center">
-          <div className="mx-auto w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
-            <Ticket size={22} className="text-slate-400" />
-          </div>
-          <p className="mt-4 text-sm font-semibold text-slate-900">
-            {search ? 'No matches' : 'No promo codes yet'}
-          </p>
-          <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">
-            {search
-              ? 'Nothing matched that search. Try a different code.'
-              : 'Create a code to hand out free Pro days, then print its QR code for flyers and handouts.'}
-          </p>
-          {!search && (
-            <button type="button" onClick={openCreate} className={`${primaryButton} mt-5`}>
-              <Plus size={16} />
-              New code
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
-          {promoCodes.map((promo) => {
-            const status = getPromoStatus(promo);
-            const isLive = status === 'Active';
-            const isBusy = busyCode === promo.code;
-            const usedPercent =
-              promo.maxRedemptions > 0
-                ? Math.min(100, Math.round((promo.redemptionCount / promo.maxRedemptions) * 100))
-                : null;
-
-            return (
-              <div
-                key={promo.id}
-                className={`group relative rounded-2xl border bg-white p-5 transition hover:shadow-[0_4px_16px_rgba(16,24,40,0.08)] ${
-                  isLive ? 'border-slate-200' : 'border-slate-200 bg-slate-50/70'
-                }`}
-              >
-                <div className="flex items-start gap-3.5">
-                  <div
-                    className={`w-11 h-11 rounded-xl shrink-0 flex items-center justify-center ${
-                      isLive
-                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                        : 'bg-slate-100 text-slate-400'
-                    }`}
-                  >
-                    <Ticket size={19} />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono font-semibold text-slate-900 truncate leading-tight">
-                      {promo.code}
-                    </p>
-                    <p className="text-[13px] text-slate-500 mt-0.5">
-                      {promo.freeDays} free day{promo.freeDays === 1 ? '' : 's'} of Pro
-                    </p>
-                  </div>
-
-                  <span
-                    className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusPillClass[status]}`}
-                  >
-                    {status}
-                  </span>
-                </div>
-
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-slate-500">Redemptions</span>
-                    <span className="font-semibold text-slate-700">
-                      {promo.redemptionCount}
-                      {promo.maxRedemptions > 0 ? ` / ${promo.maxRedemptions}` : ' · no cap'}
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    {usedPercent !== null && (
-                      <div
-                        className={`h-full rounded-full transition-all ${usageTone(usedPercent)}`}
-                        style={{ width: `${usedPercent}%` }}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                <div
-                  className={`mt-3 flex items-center gap-1.5 text-xs ${
-                    status === 'Expired' ? 'text-amber-700' : 'text-slate-500'
-                  }`}
-                  title={fullDate(promo.expiresAt)}
-                >
-                  <CalendarClock size={13} className="shrink-0" />
-                  <span className="truncate">
-                    {promo.expiresAt ? `Expires ${shortDate(promo.expiresAt)}` : 'No expiry'}
-                  </span>
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setQrPromo(promo)}
-                    title="QR code"
-                    aria-label={`QR code for ${promo.code}`}
-                    className={iconButton}
-                  >
-                    <QrCode size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openEdit(promo)}
-                    title="Edit"
-                    aria-label={`Edit ${promo.code}`}
-                    className={iconButton}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      promo.active ? setPendingToggle(promo) : handleToggleActive(promo)
-                    }
-                    disabled={isBusy}
-                    title={promo.active ? 'Deactivate' : 'Activate'}
-                    aria-label={promo.active ? `Deactivate ${promo.code}` : `Activate ${promo.code}`}
-                    className={iconButton}
-                  >
-                    {isBusy ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : (
-                      <Power size={15} />
-                    )}
-                  </button>
-
-                  <span className="ml-auto text-[11px] text-slate-400 truncate">
-                    {promo.created ? `Created ${shortDate(promo.created)}` : ''}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          <p className="text-xs text-slate-500">
-            Page {currentPage} of {totalPages} · {total} code{total === 1 ? '' : 's'}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fetchPromoCodes(currentPage - 1, search)}
-              disabled={currentPage <= 1 || isLoading}
-              className={`${ghostButton} h-9 text-xs`}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => fetchPromoCodes(currentPage + 1, search)}
-              disabled={currentPage >= totalPages || isLoading}
-              className={`${ghostButton} h-9 text-xs`}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+            <Field label="Expires" hint="Optional" description="Blank means the code never expires.">
+              {(id) => (
+                <Input
+                  id={id}
+                  type="datetime-local"
+                  value={editor.expiresAt}
+                  onChange={(event) => updateEditor({ expiresAt: event.target.value })}
+                />
+              )}
+            </Field>
+            <p className="rounded-lg bg-stone-50 px-3 py-2.5 text-[13px] leading-5 text-stone-600">
+              A printed code is public forever — set a redemption cap and an expiry before it
+              leaves the building.
+            </p>
+            {/* Enter in any field submits. */}
+            <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+          </form>
+        )}
+      </Dialog>
 
       <PromoCodeQrModal promo={qrPromo} onClose={() => setQrPromo(null)} />
 
-      <ConfirmationModal
-        isOpen={pendingToggle !== null}
+      <ConfirmDialog
+        open={pendingToggle !== null}
         title="Deactivate promo code?"
-        message={
+        description={
           pendingToggle
             ? `Users will no longer be able to redeem ${pendingToggle.code}. Existing grants keep their free days. You can reactivate the code later.`
             : ''
         }
         confirmLabel="Deactivate"
-        variant="warning"
-        onConfirm={() => pendingToggle && handleToggleActive(pendingToggle)}
+        busy={Boolean(pendingToggle) && busyCode === pendingToggle?.code}
+        onConfirm={() => pendingToggle && void handleToggleActive(pendingToggle)}
         onCancel={() => setPendingToggle(null)}
       />
+
+      <Toast message={toast} />
     </div>
   );
 };

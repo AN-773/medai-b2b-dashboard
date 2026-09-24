@@ -1,92 +1,92 @@
-
 import React from 'react';
+import { CHART_COLORS, SCORE_TONE_HEX, scoreTone } from '@/components/mastery/palette';
 
-export const ReadinessGauge = ({ 
-  value, 
-  size = 'small', 
-  showText = true,
-  label
-}: { 
-  value: number; 
-  size?: 'small' | 'medium' | 'large'; 
+interface ReadinessGaugeProps {
+  /** Readiness as a 0–100 percentage. */
+  value: number;
+  size?: 'small' | 'medium' | 'large';
   showText?: boolean;
+  /** Short caption under the figure; also used as the accessible name. */
   label?: string;
-}) => {
-    // Map size to dimension in pixels
-    const sizeMap = {
-      small: 80,
-      medium: 120,
-      large: 160,
-    };
-    
-    const dimension = sizeMap[size];
-    const center = dimension / 2;
-    // Adjust stroke width based on size
-    const strokeWidth = size === 'small' ? 8 : size === 'medium' ? 12 : 16;
-    const radius = center - strokeWidth;
-    const circumference = 2 * Math.PI * radius;
-    // Calculate offset for the progress arc
-    const offset = circumference - (value / 100) * circumference;
+}
 
-    // Font size mapping
-    const fontSize = size === 'small' ? 'text-lg' : size === 'medium' ? 'text-3xl' : 'text-5xl';
-    
-    // Color logic
-    const getColor = (v: number) => {
-        if (v < 60) return '#f43f5e'; // rose-500
-        if (v < 80) return '#fbbf24'; // amber-400
-        return '#1BD183'; // theme green
-    };
+const SIZES = {
+  small: { dimension: 80, stroke: 7, figure: 'text-lg' },
+  medium: { dimension: 120, stroke: 10, figure: 'text-[26px]' },
+  large: { dimension: 160, stroke: 12, figure: 'text-[32px]' },
+} as const;
 
-    const color = getColor(value);
+/**
+ * Ring gauge for readiness on a light surface. The arc is coloured by band
+ * (red below 60, amber below 80, brand green from 80) and the whole gauge is
+ * exposed to assistive tech as a single image with its value.
+ */
+export const ReadinessGauge = ({
+  value,
+  size = 'small',
+  showText = true,
+  label,
+}: ReadinessGaugeProps) => {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const clamped = Math.max(0, Math.min(100, safeValue));
+  const { dimension, stroke, figure } = SIZES[size];
+  const center = dimension / 2;
+  const radius = center - stroke / 2 - 1;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (clamped / 100) * circumference;
+  const color = SCORE_TONE_HEX[scoreTone(safeValue)];
 
-    return (
-      <div className="relative flex items-center justify-center">
-        {/* SVG Ring */}
-        <svg 
-            width={dimension} 
-            height={dimension} 
-            className="transform -rotate-90 origin-center"
-        >
-          {/* Background Track */}
+  return (
+    <div
+      role="img"
+      aria-label={`${label || 'Readiness'}: ${safeValue}%`}
+      className="relative inline-flex flex-shrink-0 items-center justify-center"
+      style={{ width: dimension, height: dimension }}
+    >
+      <svg
+        width={dimension}
+        height={dimension}
+        className="-rotate-90"
+        aria-hidden="true"
+      >
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={CHART_COLORS.track}
+          strokeWidth={stroke}
+        />
+        {clamped > 0 && (
           <circle
             cx={center}
             cy={center}
             r={radius}
-            fill="transparent"
-            stroke="currentColor"
-            strokeOpacity={0.1}
-            strokeWidth={strokeWidth}
-            className="text-slate-500" 
-          />
-          {/* Progress Arc */}
-          <circle
-            cx={center}
-            cy={center}
-            r={radius}
-            fill="transparent"
+            fill="none"
             stroke={color}
-            strokeWidth={strokeWidth}
+            strokeWidth={stroke}
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            className="transition-all duration-1000 ease-out"
+            className="transition-[stroke-dashoffset] duration-700 ease-out"
           />
-        </svg>
-
-        {/* Centered Text */}
-        {showText && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className={`${fontSize} font-black ${getColor(value) === '#1BD183' ? 'text-white' : 'text-white'} drop-shadow-md leading-none`}>
-                    {value}%
-                </span>
-                {label && (
-                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                      {label}
-                   </span>
-                )}
-            </div>
         )}
-      </div>
-    );
+      </svg>
+
+      {showText && (
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
+          aria-hidden="true"
+        >
+          <span
+            className={`${figure} font-semibold leading-none tracking-tight text-stone-900 tabular-nums`}
+          >
+            {safeValue}
+            <span className="text-[0.6em] font-medium text-stone-500">%</span>
+          </span>
+          {label && <span className="mt-1 text-xs text-stone-500">{label}</span>}
+        </div>
+      )}
+    </div>
+  );
 };

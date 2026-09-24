@@ -1,15 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  Eye,
-  FileText,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Save,
-  Trash2,
-} from 'lucide-react';
-import ConfirmationModal from '../ConfirmationModal';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, FileText, Pencil, Plus, RefreshCw, Send, Trash2 } from 'lucide-react';
 import {
   NOTIFICATION_CHANNELS,
   NotificationChannel,
@@ -20,16 +10,38 @@ import {
   notificationService,
 } from '../../services/notificationService';
 import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Drawer,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  Menu,
+  SearchInput,
+  SectionHeader,
+  SegmentedControl,
+  Select,
+  Spinner,
+  Textarea,
+  cn,
+} from '@/components/ui';
+import {
   ChannelBadge,
-  ErrorBanner,
-  Panel,
+  DataTable,
+  LoadingRow,
+  TableMessage,
+  Timestamp,
+  channelLabel,
   errorMessage,
-  formatTimestamp,
-  inputClass,
-  labelClass,
-  primaryButtonClass,
-  secondaryButtonClass,
+  formatShortTimestamp,
+  plural,
+  tdClass,
+  useToast,
 } from './shared';
+import { useNotificationTabs } from './navigation';
 
 interface Draft {
   key: string;
@@ -64,22 +76,61 @@ const newDraft = (): Draft => ({
   isNew: true,
 });
 
+const sameDraft = (a: Draft, b: Draft) =>
+  a.key === b.key &&
+  a.channel === b.channel &&
+  a.subject_tmpl === b.subject_tmpl &&
+  a.body_tmpl === b.body_tmpl &&
+  a.format === b.format;
+
+const FORMAT_LABEL: Record<TemplateFormat, string> = {
+  text: 'Plain text',
+  html: 'HTML',
+  json: 'JSON',
+};
+
+type ChannelFilter = 'all' | NotificationChannel;
+
+const COLUMNS = [
+  { label: 'Template' },
+  { label: 'Channel' },
+  { label: 'Format' },
+  { label: 'Version', className: 'text-right' },
+  { label: 'Updated' },
+  { label: 'Actions', srOnly: true, className: 'w-12' },
+];
+
+const EDITOR_FORM_ID = 'notification-template-editor';
+
+/** Waits this long after the last keystroke before rendering the preview. */
+const PREVIEW_DEBOUNCE_MS = 600;
+
 const TemplateManager: React.FC = () => {
+  const { openTab } = useNotificationTabs();
+  const { toast, showToast } = useToast();
+
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [listError, setListError] = useState('');
+  const [search, setSearch] = useState('');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
 
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** The draft as it was opened or last saved — the baseline for "unsaved changes". */
+  const [original, setOriginal] = useState<Draft | null>(null);
   const [editorError, setEditorError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [savedNotice, setSavedNotice] = useState('');
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
 
   const [variablesText, setVariablesText] = useState('{\n  "firstName": "Alice"\n}');
   const [preview, setPreview] = useState<TemplatePreview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  /** Bumped per render request so a slow, stale response can't overwrite a newer one. */
+  const previewRequestRef = useRef(0);
 
   const [pendingDelete, setPendingDelete] = useState<NotificationTemplate | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -101,31 +152,76 @@ const TemplateManager: React.FC = () => {
     load();
   }, [load]);
 
-  const grouped = useMemo(() => {
-    const byKey = new Map<string, NotificationTemplate[]>();
+  const sorted = useMemo(
+    () =>
+      [...templates].sort(
+        (a, b) => a.key.localeCompare(b.key) || a.channel.localeCompare(b.channel),
+      ),
+    [templates],
+  );
+
+  const channelCounts = useMemo(() => {
+    const counts: Record<NotificationChannel, number> = { email: 0, push: 0, teams: 0 };
     templates.forEach((template) => {
-      const list = byKey.get(template.key) || [];
-      list.push(template);
-      byKey.set(template.key, list);
+      if (template.channel in counts) counts[template.channel] += 1;
     });
-    return Array.from(byKey.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return counts;
   }, [templates]);
 
-  const selectTemplate = (template: NotificationTemplate) => {
-    setDraft(toDraft(template));
-    setEditorError('');
-    setSavedNotice('');
+  const query = search.trim().toLowerCase();
+  const visible = useMemo(
+    () =>
+      sorted.filter(
+        (template) =>
+          (channelFilter === 'all' || template.channel === channelFilter) &&
+          (!query ||
+            template.key.toLowerCase().includes(query) ||
+            (template.subject_tmpl || '').toLowerCase().includes(query)),
+      ),
+    [sorted, channelFilter, query],
+  );
+
+  const resetPreview = () => {
+    previewRequestRef.current += 1;
     setPreview(null);
     setPreviewError('');
+    setIsPreviewing(false);
   };
 
-  const startNewTemplate = () => {
-    setDraft(newDraft());
+  const openEditor = (next: Draft) => {
+    setDraft(next);
+    setOriginal(next);
     setEditorError('');
-    setSavedNotice('');
-    setPreview(null);
-    setPreviewError('');
+    resetPreview();
   };
+
+  const selectTemplate = (template: NotificationTemplate) => openEditor(toDraft(template));
+
+  const startNewTemplate = () => openEditor(newDraft());
+
+  const closeEditor = () => {
+    setDraft(null);
+    setOriginal(null);
+    setEditorError('');
+    setIsConfirmingDiscard(false);
+    resetPreview();
+  };
+
+  const isDirty = draft !== null && original !== null && !sameDraft(draft, original);
+
+  const requestClose = () => {
+    if (isSaving) return;
+    if (isDirty) {
+      setIsConfirmingDiscard(true);
+      return;
+    }
+    closeEditor();
+  };
+
+  const storedTemplate =
+    draft && !draft.isNew
+      ? templates.find((template) => templateId(template) === templateId(draft)) ?? null
+      : null;
 
   const parseVariables = (): Record<string, unknown> | null => {
     const raw = variablesText.trim();
@@ -155,6 +251,8 @@ const TemplateManager: React.FC = () => {
       return;
     }
 
+    previewRequestRef.current += 1;
+    const requestId = previewRequestRef.current;
     setIsPreviewing(true);
     try {
       // Send the editor's current text as a draft override so the preview
@@ -166,15 +264,44 @@ const TemplateManager: React.FC = () => {
         body_tmpl: draft.body_tmpl,
         format: draft.format,
       });
+      if (requestId !== previewRequestRef.current) return;
       setPreview(result);
     } catch (err) {
+      if (requestId !== previewRequestRef.current) return;
       console.error('Failed to preview template:', err);
       setPreview(null);
       setPreviewError(errorMessage(err, 'Unable to render this template.'));
     } finally {
-      setIsPreviewing(false);
+      if (requestId === previewRequestRef.current) setIsPreviewing(false);
     }
   };
+
+  // Live preview: re-render a moment after the editor or the sample variables
+  // change. Read through a ref so the timer always runs the latest closure.
+  const handlePreviewRef = useRef(handlePreview);
+  useEffect(() => {
+    handlePreviewRef.current = handlePreview;
+  });
+
+  const previewSignature = draft
+    ? JSON.stringify([
+        draft.key,
+        draft.channel,
+        draft.subject_tmpl,
+        draft.body_tmpl,
+        draft.format,
+        variablesText,
+      ])
+    : '';
+  const canAutoPreview = Boolean(draft?.key.trim() && draft?.body_tmpl.trim());
+
+  useEffect(() => {
+    if (!previewSignature || !canAutoPreview) return;
+    const timer = window.setTimeout(() => {
+      void handlePreviewRef.current();
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [previewSignature, canAutoPreview]);
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -196,7 +323,6 @@ const TemplateManager: React.FC = () => {
 
     setIsSaving(true);
     setEditorError('');
-    setSavedNotice('');
 
     try {
       // The service re-seeds any row whose version is behind the build's, so
@@ -211,8 +337,10 @@ const TemplateManager: React.FC = () => {
         updated_at: new Date().toISOString(),
       });
 
-      setDraft(toDraft(saved));
-      setSavedNotice(`Saved ${key} (${draft.channel}) as version ${saved.version}.`);
+      const savedDraft = toDraft(saved);
+      setDraft(savedDraft);
+      setOriginal(savedDraft);
+      showToast(`Saved ${key} (${channelLabel(draft.channel)}) as version ${saved.version}.`);
       await load();
     } catch (err) {
       console.error('Failed to save template:', err);
@@ -224,329 +352,497 @@ const TemplateManager: React.FC = () => {
 
   const handleDelete = async (template: NotificationTemplate) => {
     setListError('');
+    const isOpenInEditor =
+      draft !== null && !draft.isNew && templateId(draft) === templateId(template);
     try {
       await notificationService.deleteTemplate(template.key, template.channel);
-      if (draft && draft.key === template.key && draft.channel === template.channel) {
-        setDraft(null);
+      if (isOpenInEditor) {
+        closeEditor();
       }
+      showToast(`Deleted ${template.key} (${channelLabel(template.channel)}).`);
       await load();
     } catch (err) {
       console.error('Failed to delete template:', err);
-      setListError(errorMessage(err, 'Unable to delete this template.'));
+      const message = errorMessage(err, 'Unable to delete this template.');
+      if (isOpenInEditor) setEditorError(message);
+      else setListError(message);
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    await handleDelete(pendingDelete);
+    setIsDeleting(false);
+    setPendingDelete(null);
+  };
+
+  const footerHint = !draft
+    ? ''
+    : isDirty
+      ? 'Unsaved changes'
+      : draft.isNew
+        ? `Saving creates the ${channelLabel(draft.channel).toLowerCase()} template`
+        : `Saving stores version ${draft.version + 1}`;
+
+  const isFiltered = query !== '' || channelFilter !== 'all';
+
+  const renderPreviewBody = (result: TemplatePreview) => {
+    if (result.body_format === 'html') {
+      // Rendered as source, not injected: an operator previewing a template
+      // should see exactly what the service will send.
+      return (
+        <pre className="mt-1.5 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md bg-stone-900 p-3 font-mono text-xs leading-5 text-stone-100 custom-scrollbar">
+          {result.body}
+        </pre>
+      );
+    }
+    return (
+      <pre
+        className={cn(
+          'mt-1.5 max-h-96 overflow-auto whitespace-pre-wrap break-words text-stone-800 custom-scrollbar',
+          result.body_format === 'json'
+            ? 'rounded-md bg-stone-50 p-3 font-mono text-xs leading-5 ring-1 ring-inset ring-stone-200'
+            : 'font-sans text-[13px] leading-6',
+        )}
+      >
+        {result.body}
+      </pre>
+    );
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900">Templates</h3>
-          <p className="text-sm text-slate-500">
-            Go template syntax — <code className="text-xs">{'{{.firstName}}'}</code> interpolates a
-            variable. Preview before saving; edits reach real recipients immediately.
-          </p>
+    <div className="space-y-5">
+      <SectionHeader
+        title="Templates"
+        description="What each notification says on each channel. Open one to edit it with a live preview — saved edits reach real recipients immediately."
+        meta={
+          !isLoading && !listError ? (
+            <Badge className="tabular-nums">{plural(templates.length, 'template')}</Badge>
+          ) : undefined
+        }
+        actions={
+          <>
+            <IconButton
+              icon={RefreshCw}
+              label="Refresh"
+              onClick={load}
+              disabled={isLoading}
+              className={isLoading ? '[&_svg]:animate-spin' : undefined}
+            />
+            <Button icon={Plus} onClick={startNewTemplate}>
+              New template
+            </Button>
+          </>
+        }
+      />
+
+      {templates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by key or subject"
+            className="w-full sm:w-72"
+          />
+          <SegmentedControl
+            label="Filter by channel"
+            value={channelFilter}
+            onChange={setChannelFilter}
+            className="sm:ml-auto"
+            options={[
+              { value: 'all', label: 'All', count: templates.length },
+              ...NOTIFICATION_CHANNELS.map((channel) => ({
+                value: channel,
+                label: channelLabel(channel),
+                count: channelCounts[channel],
+              })),
+            ]}
+          />
         </div>
+      )}
 
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={load} disabled={isLoading} className={secondaryButtonClass}>
-            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Refresh
-          </button>
-          <button type="button" onClick={startNewTemplate} className={primaryButtonClass}>
-            <Plus size={16} />
-            New Template
-          </button>
+      {listError && (
+        <InlineAlert onDismiss={() => setListError('')} className="break-words">
+          {listError}
+        </InlineAlert>
+      )}
+
+      {!isLoading && !listError && templates.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-300">
+          <EmptyState
+            icon={FileText}
+            title="No templates yet"
+            description="A template defines the subject and body a notification sends on one channel."
+            action={
+              <Button variant="primary" icon={Plus} onClick={startNewTemplate}>
+                New template
+              </Button>
+            }
+          />
         </div>
-      </div>
-
-      <ErrorBanner message={listError} />
-
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(280px,0.7fr)_minmax(0,1.6fr)] gap-6 items-start">
-        <Panel title="Template directory" description={`${templates.length} stored`}>
-          <div className="max-h-[640px] overflow-y-auto divide-y divide-slate-100">
-            {isLoading ? (
-              <p className="px-6 py-10 text-center text-sm text-slate-500">
-                <Loader2 size={16} className="inline animate-spin mr-2" />
-                Loading templates
-              </p>
-            ) : grouped.length === 0 ? (
-              <p className="px-6 py-10 text-center text-sm text-slate-500">
-                No templates stored yet.
-              </p>
+      ) : (
+        (isLoading || templates.length > 0) && (
+          <DataTable
+            label="Templates"
+            columns={COLUMNS}
+            busy={isLoading && templates.length > 0}
+            footer={
+              isFiltered && visible.length > 0 ? (
+                <p className="border-t border-stone-100 px-4 py-2.5 text-[13px] tabular-nums text-stone-500">
+                  Showing {visible.length.toLocaleString()} of {plural(templates.length, 'template')}
+                </p>
+              ) : undefined
+            }
+          >
+            {isLoading && templates.length === 0 ? (
+              <LoadingRow colSpan={COLUMNS.length} label="Loading templates…" />
+            ) : visible.length === 0 ? (
+              <TableMessage colSpan={COLUMNS.length}>
+                <EmptyState
+                  compact
+                  icon={FileText}
+                  title="No templates match"
+                  description="Try another search or channel."
+                  action={
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSearch('');
+                        setChannelFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  }
+                />
+              </TableMessage>
             ) : (
-              grouped.map(([key, variants]) => (
-                <div key={key} className="px-6 py-4">
-                  <p className="text-sm font-mono font-bold text-slate-900 break-all">{key}</p>
-                  <div className="mt-2 space-y-1">
-                    {variants.map((variant) => {
-                      const isSelected =
-                        draft && !draft.isNew && templateId(draft) === templateId(variant);
-
-                      return (
-                        <div key={templateId(variant)} className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => selectTemplate(variant)}
-                            className={`flex-1 flex items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors ${
-                              isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'
-                            }`}
-                          >
-                            <ChannelBadge channel={variant.channel} />
-                            <span className="text-xs text-slate-500">v{variant.version}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPendingDelete(variant)}
-                            className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            aria-label={`Delete ${key} ${variant.channel} template`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Panel>
-
-        {draft ? (
-          <div className="space-y-6">
-            <form onSubmit={handleSave}>
-              <Panel
-                title={draft.isNew ? 'New template' : `Editing ${draft.key}`}
-                description={
-                  draft.isNew
-                    ? 'Saving creates the template for the selected channel.'
-                    : `Version ${draft.version} — saving stores version ${draft.version + 1}.`
-                }
-              >
-                <div className="p-6 space-y-5">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    <div className="space-y-2">
-                      <label htmlFor="template-key" className={labelClass}>
-                        Key
-                      </label>
-                      <input
-                        id="template-key"
-                        type="text"
-                        value={draft.key}
-                        onChange={(event) => setDraft({ ...draft, key: event.target.value })}
-                        disabled={!draft.isNew}
-                        placeholder="user.invited"
-                        className={`${inputClass} font-mono disabled:opacity-70 disabled:cursor-not-allowed`}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label htmlFor="template-channel" className={labelClass}>
-                        Channel
-                      </label>
-                      <select
-                        id="template-channel"
-                        value={draft.channel}
-                        onChange={(event) =>
-                          setDraft({ ...draft, channel: event.target.value as NotificationChannel })
-                        }
-                        disabled={!draft.isNew}
-                        className={`${inputClass} disabled:opacity-70 disabled:cursor-not-allowed`}
-                      >
-                        {NOTIFICATION_CHANNELS.map((channel) => (
-                          <option key={channel} value={channel}>
-                            {channel}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label htmlFor="template-format" className={labelClass}>
-                        Body format
-                      </label>
-                      <select
-                        id="template-format"
-                        value={draft.format}
-                        onChange={(event) =>
-                          setDraft({ ...draft, format: event.target.value as TemplateFormat })
-                        }
-                        className={inputClass}
-                      >
-                        {TEMPLATE_FORMATS.map((format) => (
-                          <option key={format} value={format}>
-                            {format}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="template-subject" className={labelClass}>
-                      Subject
-                    </label>
-                    <input
-                      id="template-subject"
-                      type="text"
-                      value={draft.subject_tmpl}
-                      onChange={(event) => setDraft({ ...draft, subject_tmpl: event.target.value })}
-                      placeholder="You're invited to {{.appName}}"
-                      className={`${inputClass} font-mono`}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="template-body" className={labelClass}>
-                      Body
-                    </label>
-                    <textarea
-                      id="template-body"
-                      value={draft.body_tmpl}
-                      onChange={(event) => setDraft({ ...draft, body_tmpl: event.target.value })}
-                      rows={12}
-                      placeholder="Hi {{.firstName}}, ..."
-                      className={`${inputClass} font-mono leading-relaxed`}
-                    />
-                  </div>
-
-                  <ErrorBanner message={editorError} />
-
-                  {savedNotice && (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                      {savedNotice}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between pt-2">
-                    <p className="text-xs text-slate-500">
-                      Last updated {formatTimestamp(templates.find((t) => draft && templateId(t) === templateId(draft))?.updated_at)}
-                    </p>
-                    <div className="flex items-center gap-3">
+              visible.map((template) => {
+                const isOpen = draft !== null && !draft.isNew && templateId(draft) === templateId(template);
+                return (
+                  <tr
+                    key={templateId(template)}
+                    onClick={() => selectTemplate(template)}
+                    className={cn(
+                      'cursor-pointer transition-colors hover:bg-stone-50',
+                      isOpen && 'bg-stone-50',
+                    )}
+                  >
+                    <td className={tdClass}>
                       <button
                         type="button"
-                        onClick={handlePreview}
-                        disabled={isPreviewing}
-                        className={secondaryButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectTemplate(template);
+                        }}
+                        className="block max-w-[32rem] truncate rounded text-left font-mono font-medium text-stone-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
                       >
-                        {isPreviewing ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <Eye size={16} />
-                        )}
-                        Preview
+                        {template.key}
                       </button>
-                      <button type="submit" disabled={isSaving} className={primaryButtonClass}>
-                        {isSaving ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <Save size={16} />
-                        )}
-                        Save Template
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </Panel>
-            </form>
+                      <p
+                        className="mt-0.5 max-w-[32rem] truncate text-xs text-stone-500"
+                        title={template.subject_tmpl || undefined}
+                      >
+                        {template.subject_tmpl || <span className="text-stone-400">No subject</span>}
+                      </p>
+                    </td>
+                    <td className={tdClass}>
+                      <ChannelBadge channel={template.channel} />
+                    </td>
+                    <td className={cn(tdClass, 'whitespace-nowrap text-stone-600')}>
+                      {FORMAT_LABEL[template.format] ?? template.format}
+                    </td>
+                    <td className={cn(tdClass, 'text-right tabular-nums')}>v{template.version}</td>
+                    <td className={cn(tdClass, 'text-stone-600')}>
+                      <Timestamp value={template.updated_at} />
+                    </td>
+                    {/* Stops row clicks, including from the portaled menu. */}
+                    <td className="w-12 py-2 pr-3 text-right" onClick={(event) => event.stopPropagation()}>
+                      <Menu
+                        size="sm"
+                        label={`Actions for ${template.key} (${channelLabel(template.channel)})`}
+                        items={[
+                          {
+                            label: 'Edit',
+                            icon: Pencil,
+                            onSelect: () => selectTemplate(template),
+                          },
+                          {
+                            label: 'Send a test',
+                            icon: Send,
+                            onSelect: () =>
+                              openTab('send', { template: template.key, channel: template.channel }),
+                          },
+                          {
+                            label: 'Delete template',
+                            icon: Trash2,
+                            tone: 'danger',
+                            onSelect: () => setPendingDelete(template),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </DataTable>
+        )
+      )}
 
-            <Panel
-              title="Preview"
-              description="Renders the editor's current text — no message is sent."
-            >
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label htmlFor="template-variables" className={labelClass}>
-                    Variables (JSON)
-                  </label>
-                  <textarea
-                    id="template-variables"
-                    value={variablesText}
-                    onChange={(event) => setVariablesText(event.target.value)}
-                    rows={10}
-                    className={`${inputClass} font-mono text-xs`}
-                  />
-                  <ErrorBanner message={previewError} />
-                </div>
+      {draft && (
+        <Drawer
+          open
+          onClose={requestClose}
+          dismissible={!isSaving && !isConfirmingDiscard && pendingDelete === null}
+          width="max-w-6xl"
+          title={draft.isNew ? 'New template' : <span className="font-mono">{draft.key}</span>}
+          description={
+            draft.isNew
+              ? 'Pick a key and channel, then write the message. The preview renders as you type.'
+              : `${channelLabel(draft.channel)} · Version ${draft.version} · Updated ${formatShortTimestamp(
+                  storedTemplate?.updated_at,
+                )}`
+          }
+          footer={
+            <>
+              {storedTemplate && (
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  onClick={() => setPendingDelete(storedTemplate)}
+                  disabled={isSaving}
+                  className="-ml-2"
+                >
+                  Delete
+                </Button>
+              )}
+              <span
+                className={cn(
+                  'ml-auto truncate text-[13px]',
+                  isDirty ? 'text-amber-700' : 'text-stone-500',
+                )}
+              >
+                {footerHint}
+              </span>
+              <Button variant="ghost" onClick={requestClose} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" form={EDITOR_FORM_ID} loading={isSaving}>
+                {draft.isNew ? 'Create template' : 'Save template'}
+              </Button>
+            </>
+          }
+        >
+          <form
+            id={EDITOR_FORM_ID}
+            onSubmit={handleSave}
+            className="grid min-h-full grid-cols-1 lg:grid-cols-2"
+          >
+            <div className="space-y-4 px-6 py-5">
+              {editorError && (
+                <InlineAlert onDismiss={() => setEditorError('')} className="break-words">
+                  {editorError}
+                </InlineAlert>
+              )}
 
-                <div className="space-y-3">
-                  {preview ? (
-                    <>
-                      {preview.missing_variables.length > 0 && (
-                        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
-                          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                          <p className="text-xs">
-                            Rendered blank for:{' '}
-                            <span className="font-mono font-bold">
-                              {preview.missing_variables.join(', ')}
-                            </span>
-                          </p>
-                        </div>
-                      )}
-
-                      <div>
-                        <p className={labelClass}>Subject</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900 break-words">
-                          {preview.subject || '—'}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className={labelClass}>Body ({preview.body_format})</p>
-                        {preview.body_format === 'html' ? (
-                          // Rendered as source, not injected: an operator
-                          // previewing a template should see exactly what the
-                          // service will send.
-                          <pre className="mt-1 max-h-80 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100 whitespace-pre-wrap break-words">
-                            {preview.body}
-                          </pre>
-                        ) : (
-                          <pre className="mt-1 max-h-80 overflow-auto rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs leading-relaxed text-slate-800 whitespace-pre-wrap break-words">
-                            {preview.body}
-                          </pre>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-10">
-                      <Eye size={36} className="text-slate-200 mb-3" />
-                      <p className="text-sm font-medium text-slate-900">Nothing rendered yet</p>
-                      <p className="text-xs mt-1">Select Preview to render with these variables.</p>
-                    </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                <Field
+                  label="Key"
+                  description={draft.isNew ? undefined : 'Fixed once created'}
+                >
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={draft.key}
+                      onChange={(event) => setDraft({ ...draft, key: event.target.value })}
+                      disabled={!draft.isNew}
+                      placeholder="user.invited"
+                      className="font-mono text-[13px]"
+                    />
                   )}
+                </Field>
+                <Field label="Channel">
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={draft.channel}
+                      onChange={(event) =>
+                        setDraft({ ...draft, channel: event.target.value as NotificationChannel })
+                      }
+                      disabled={!draft.isNew}
+                    >
+                      {NOTIFICATION_CHANNELS.map((channel) => (
+                        <option key={channel} value={channel}>
+                          {channelLabel(channel)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Body format">
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={draft.format}
+                      onChange={(event) =>
+                        setDraft({ ...draft, format: event.target.value as TemplateFormat })
+                      }
+                    >
+                      {TEMPLATE_FORMATS.map((format) => (
+                        <option key={format} value={format}>
+                          {FORMAT_LABEL[format] ?? format}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              </div>
+
+              <Field label="Subject">
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={draft.subject_tmpl}
+                    onChange={(event) => setDraft({ ...draft, subject_tmpl: event.target.value })}
+                    placeholder="You're invited to {{.appName}}"
+                    className="font-mono text-[13px]"
+                  />
+                )}
+              </Field>
+
+              <Field
+                label="Body"
+                description={
+                  <>
+                    Go template syntax — <code className="font-mono">{'{{.firstName}}'}</code> inserts
+                    the <code className="font-mono">firstName</code> variable.
+                  </>
+                }
+              >
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    value={draft.body_tmpl}
+                    onChange={(event) => setDraft({ ...draft, body_tmpl: event.target.value })}
+                    rows={16}
+                    placeholder="Hi {{.firstName}}, ..."
+                    spellCheck={false}
+                    className="resize-y font-mono text-[13px]"
+                  />
+                )}
+              </Field>
+            </div>
+
+            <div className="space-y-4 border-t border-stone-200 bg-stone-50/70 px-6 py-5 lg:border-l lg:border-t-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-stone-900">Live preview</h3>
+                  <p className="mt-0.5 text-[13px] text-stone-500">
+                    Renders the editor’s current text — nothing is sent.
+                  </p>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  {isPreviewing && <Spinner label="Rendering…" />}
+                  <IconButton
+                    icon={RefreshCw}
+                    size="sm"
+                    label="Render again"
+                    onClick={() => void handlePreview()}
+                    disabled={isPreviewing}
+                  />
                 </div>
               </div>
-            </Panel>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-16 text-center">
-            <FileText size={40} className="mx-auto text-slate-200 mb-4" />
-            <p className="font-medium text-slate-900">No template selected</p>
-            <p className="text-sm text-slate-500 mt-1">
-              Pick one from the directory, or create a new template.
-            </p>
-          </div>
-        )}
-      </div>
 
-      <ConfirmationModal
-        isOpen={pendingDelete !== null}
+              <Field label="Sample variables" description="A JSON object of the values to fill in.">
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    value={variablesText}
+                    onChange={(event) => setVariablesText(event.target.value)}
+                    rows={6}
+                    spellCheck={false}
+                    className="resize-y font-mono text-[13px]"
+                  />
+                )}
+              </Field>
+
+              {previewError && <InlineAlert className="break-words">{previewError}</InlineAlert>}
+
+              {preview ? (
+                <>
+                  {preview.missing_variables.length > 0 && (
+                    <InlineAlert tone="warning" title="Rendered blank for missing variables">
+                      <span className="font-mono">{preview.missing_variables.join(', ')}</span>
+                    </InlineAlert>
+                  )}
+                  <div
+                    className={cn(
+                      'overflow-hidden rounded-lg border border-stone-200 bg-white shadow-card transition-opacity',
+                      isPreviewing && 'opacity-60',
+                    )}
+                  >
+                    <div className="border-b border-stone-100 px-4 py-3">
+                      <p className="text-xs text-stone-500">Subject</p>
+                      <p className="mt-0.5 break-words text-sm font-medium text-stone-900">
+                        {preview.subject || <span className="font-normal text-stone-400">No subject</span>}
+                      </p>
+                    </div>
+                    <div className="px-4 py-3">
+                      <p className="text-xs text-stone-500">
+                        Body · {FORMAT_LABEL[preview.body_format as TemplateFormat] ?? preview.body_format}
+                      </p>
+                      {renderPreviewBody(preview)}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                !isPreviewing &&
+                !previewError && (
+                  <div className="rounded-lg border border-dashed border-stone-300 bg-white">
+                    <EmptyState
+                      compact
+                      icon={Eye}
+                      title="Nothing rendered yet"
+                      description={
+                        canAutoPreview
+                          ? 'The preview appears in a moment.'
+                          : 'Add a key and a body to see the rendered message.'
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </form>
+        </Drawer>
+      )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
         title="Delete template?"
-        message={
+        description={
           pendingDelete
             ? `The ${pendingDelete.channel} template "${pendingDelete.key}" will be removed. Any notification requesting this template on this channel will fail until it is recreated. Seeded templates come back on the next service restart.`
             : ''
         }
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={() => {
-          if (pendingDelete) {
-            handleDelete(pendingDelete);
-          }
-          setPendingDelete(null);
-        }}
+        confirmLabel="Delete template"
+        busy={isDeleting}
+        onConfirm={() => void confirmDelete()}
         onCancel={() => setPendingDelete(null)}
       />
+
+      <ConfirmDialog
+        open={isConfirmingDiscard}
+        title="Discard changes?"
+        description="Your edits to this template haven’t been saved."
+        confirmLabel="Discard"
+        onConfirm={closeEditor}
+        onCancel={() => setIsConfirmingDiscard(false)}
+      />
+
+      {toast}
     </div>
   );
 };

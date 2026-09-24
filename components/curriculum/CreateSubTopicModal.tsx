@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { X, Network, Loader2, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useId, useRef } from 'react';
+import { Check } from 'lucide-react';
 import { OrganSystem, Topic } from '@/types/TestsServiceTypes';
 import { testsService } from '@/services/testsService';
+import { Button, Dialog, Field, InlineAlert, Input, Select } from '@/components/ui';
 
 interface CreateSubTopicModalProps {
   isOpen: boolean;
@@ -16,6 +16,11 @@ interface CreateSubTopicModalProps {
   defaultOrganSystemId?: string;
   defaultTopicId?: string;
   initialData?: { name: string; identifier?: string; topicId?: string; organSystemId?: string } | null;
+  /**
+   * Keep the subtopic in `defaultTopicId` (shown as context, not pickers) — for
+   * creating a subtopic from inside a topic. Optional; defaults to false.
+   */
+  parentLocked?: boolean;
 }
 
 const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
@@ -26,7 +31,9 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
   defaultOrganSystemId,
   defaultTopicId,
   initialData,
+  parentLocked = false,
 }) => {
+  const formId = useId();
   const [name, setName] = useState(initialData?.name || '');
   const [identifier, setIdentifier] = useState(initialData?.identifier || '');
   const [selectedOrganSystemId, setSelectedOrganSystemId] = useState(defaultOrganSystemId || '');
@@ -111,62 +118,64 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
     }
   }, [isOpen, initialData, defaultTopicId, defaultOrganSystemId]);
 
-  if (!isOpen) return null;
+  const isEdit = Boolean(initialData);
+  const organSystemTitle = organSystems.find((s) => s.id === selectedOrganSystemId)?.title;
+  const topicTitle = availableTopics.find((t) => t.id === selectedTopicId)?.title;
+  const showPickers = !parentLocked || !selectedTopicId;
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={handleClose}
-      />
+  const renderLockedContext = () => {
+    const parts = [organSystemTitle, topicTitle ?? (loadingTopics ? 'Loading…' : undefined)].filter(
+      (part): part is string => Boolean(part),
+    );
+    if (parts.length === 0) return 'Subtopics hold the learning objectives for a topic.';
+    return (
+      <>
+        In <span className="font-medium text-stone-700">{parts.join(' › ')}</span>
+      </>
+    );
+  };
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-lg mx-4 animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-[#1BD183] to-[#15a968] rounded-2xl shadow-lg shadow-[#1BD183]/20">
-              <Network size={24} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">
-                {initialData ? 'Edit Subtopic' : 'Create New Subtopic'}
-              </h2>
-              <p className="text-sm text-slate-500 font-medium">
-                {initialData ? 'Update subtopic details or move to another topic' : 'Add a new subtopic to your curriculum'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
+  return (
+    <Dialog
+      open={isOpen}
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      width={showPickers ? 'max-w-lg' : 'max-w-md'}
+      title={isEdit ? 'Edit subtopic' : 'New subtopic'}
+      description={
+        !showPickers
+          ? renderLockedContext()
+          : isEdit
+            ? 'Rename the subtopic or move it to another topic.'
+            : 'Subtopics hold the learning objectives for a topic.'
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            variant="primary"
+            icon={Check}
+            loading={isSubmitting}
+            disabled={!name.trim() || !selectedTopicId}
           >
-            <X size={20} className="text-slate-400" />
-          </button>
-        </div>
+            {isEdit ? 'Save changes' : 'Create subtopic'}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {error && <InlineAlert onDismiss={() => setError(null)}>{error}</InlineAlert>}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-200">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-5">
-            {/* Organ System Dropdown */}
-            <div className="space-y-2">
-              <label
-                htmlFor="organ-system-select"
-                className="block text-sm font-bold text-slate-700"
-              >
-                Organ System <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  id="organ-system-select"
+        {showPickers && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Organ system">
+              {(id) => (
+                <Select
+                  id={id}
                   value={selectedOrganSystemId}
                   onChange={(e) => {
                     setSelectedOrganSystemId(e.target.value);
@@ -174,111 +183,59 @@ const CreateSubTopicModal: React.FC<CreateSubTopicModalProps> = ({
                     setSelectedTopicId('');
                   }}
                   disabled={isSubmitting}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
                 >
                   <option value="" disabled>
-                    Select an Organ System
+                    Select an organ system
                   </option>
                   {organSystems.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title}
                     </option>
                   ))}
-                </select>
-                <ChevronDown
-                  size={16}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-              </div>
-            </div>
+                </Select>
+              )}
+            </Field>
 
-            {/* Topic Dropdown */}
-            <div className="space-y-2">
-              <label
-                htmlFor="topic-select"
-                className="block text-sm font-bold text-slate-700"
-              >
-                Topic <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  id="topic-select"
+            <Field label="Topic">
+              {(id) => (
+                <Select
+                  id={id}
                   value={selectedTopicId}
                   onChange={(e) => setSelectedTopicId(e.target.value)}
                   disabled={isSubmitting || !selectedOrganSystemId || loadingTopics}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
                 >
                   <option value="" disabled>
-                    {loadingTopics ? 'Loading topics...' : selectedOrganSystemId ? 'Select a Topic' : 'Select an Organ System first'}
+                    {loadingTopics
+                      ? 'Loading topics…'
+                      : selectedOrganSystemId
+                        ? 'Select a topic'
+                        : 'Choose an organ system first'}
                   </option>
                   {availableTopics.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.title}
                     </option>
                   ))}
-                </select>
-                <ChevronDown
-                  size={16}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-              </div>
-            </div>
-
-            {/* Subtopic Name */}
-            <div className="space-y-2">
-              <label
-                htmlFor="subtopic-name"
-                className="block text-sm font-bold text-slate-700"
-              >
-                Subtopic Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="subtopic-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Atrial Fibrillation"
-                disabled={isSubmitting}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1BD183] focus:border-transparent transition-all disabled:opacity-50"
-                autoFocus
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !name.trim() || !selectedTopicId}
-              className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl  transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  {initialData ? 'Updating...' : 'Creating...'}
-                </>
-              ) : initialData ? (
-                'Update Subtopic'
-              ) : (
-                'Create Subtopic'
+                </Select>
               )}
-            </button>
+            </Field>
           </div>
-        </form>
-      </div>
-    </div>
-  );
+        )}
 
-  if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
+        <Field label="Subtopic name">
+          {(id) => (
+            <Input
+              id={id}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Atrial fibrillation"
+              disabled={isSubmitting}
+            />
+          )}
+        </Field>
+      </form>
+    </Dialog>
+  );
 };
 
 

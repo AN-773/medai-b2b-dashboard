@@ -2,21 +2,43 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Prompt, PromptCatalogItem } from '../../types';
 import { testsService } from '../../services/testsService';
 import {
-  Plus,
-  Search,
-  Edit2,
-  Trash2,
   BookOpen,
-  FileText,
-  Loader2,
+  ChevronRight,
+  Pencil,
+  Plus,
   RefreshCw,
-  Sparkles,
+  Trash2,
 } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
+  InlineAlert,
+  Menu,
+  SearchInput,
+  SectionHeader,
+  SegmentedControl,
+  Spinner,
+} from '@/components/ui';
 import PromptEditorPage from './PromptEditorPage';
 import {
+  displayPromptExam,
   formatPromptExam,
+  getPromptScopeTone,
   serializePromptSchema,
 } from './promptConfig';
+import {
+  Toast,
+  formatDate,
+  plural,
+  scrollPageToTop,
+  useSettingsFocus,
+  useToast,
+} from './SettingsKit';
+
+type PromptFilter = 'all' | 'overridden' | 'defaults';
 
 const buildCatalogSearchText = (item: PromptCatalogItem) => {
   const promptContent = item.configuredPrompts
@@ -43,21 +65,31 @@ const buildCatalogSearchText = (item: PromptCatalogItem) => {
 
 const getDefaultBadges = (item: PromptCatalogItem) =>
   [
-    item.defaultText ? 'System default' : null,
-    item.defaultUserTemplate ? 'Template default' : null,
-    item.defaultEnforcedSchema != null ? 'Schema default' : null,
+    item.defaultText ? 'system instruction' : null,
+    item.defaultUserTemplate ? 'template' : null,
+    item.defaultEnforcedSchema != null ? 'response schema' : null,
   ].filter(Boolean) as string[];
 
 const PromptManager: React.FC = () => {
   const [catalogItems, setCatalogItems] = useState<PromptCatalogItem[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<PromptFilter>('all');
   const deferredSearchTerm = useDeferredValue(searchTerm);
+  const toast = useToast();
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  const [promptToDelete, setPromptToDelete] = useState<{ prompt: Prompt; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // The editor takes the full width of the settings page.
+  useSettingsFocus(isEditorOpen);
 
   const fetchPromptCatalog = async () => {
     setIsLoading(true);
@@ -70,6 +102,7 @@ const PromptManager: React.FC = () => {
       setErrorMsg(err.message || 'Failed to load prompt catalog.');
     } finally {
       setIsLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -83,13 +116,25 @@ const PromptManager: React.FC = () => {
   );
 
   const normalizedSearchTerm = deferredSearchTerm.trim().toLowerCase();
-  const filteredCatalogItems = useMemo(() => {
+  const searchedCatalogItems = useMemo(() => {
     if (!normalizedSearchTerm) {
       return catalogItems;
     }
 
     return catalogItems.filter(item => buildCatalogSearchText(item).includes(normalizedSearchTerm));
   }, [catalogItems, normalizedSearchTerm]);
+
+  const filteredCatalogItems = useMemo(
+    () =>
+      filter === 'all'
+        ? searchedCatalogItems
+        : searchedCatalogItems.filter(item =>
+            filter === 'overridden'
+              ? item.configuredPrompts.length > 0
+              : item.configuredPrompts.length === 0,
+          ),
+    [filter, searchedCatalogItems],
+  );
 
   const configuredTypeCount = useMemo(
     () => catalogItems.filter(item => item.configuredPrompts.length > 0).length,
@@ -100,25 +145,34 @@ const PromptManager: React.FC = () => {
     setSelectedPrompt(prompt);
     setSelectedType(null);
     setIsEditorOpen(true);
+    scrollPageToTop();
   };
 
   const handleCreate = (type?: string) => {
     setSelectedPrompt(null);
     setSelectedType(type || catalogItems[0]?.type || null);
     setIsEditorOpen(true);
+    scrollPageToTop();
   };
 
-  const handleDelete = async (promptId: string) => {
-    if (!window.confirm('Are you sure you want to delete this prompt?')) {
+  const handleDelete = async () => {
+    if (!promptToDelete) {
       return;
     }
 
+    setIsDeleting(true);
+    setActionError(null);
     try {
-      await testsService.deletePrompt(promptId);
+      await testsService.deletePrompt(promptToDelete.prompt.id);
+      setPromptToDelete(null);
+      toast.show('Prompt deleted.');
       await fetchPromptCatalog();
     } catch (err: any) {
       console.error('Failed to delete prompt:', err);
-      alert(err.message || 'Failed to delete prompt');
+      setPromptToDelete(null);
+      setActionError(err.message || 'Failed to delete prompt');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -126,6 +180,7 @@ const PromptManager: React.FC = () => {
     setIsEditorOpen(false);
     setSelectedPrompt(null);
     setSelectedType(null);
+    scrollPageToTop();
 
     if (didChange) {
       await fetchPromptCatalog();
@@ -144,230 +199,256 @@ const PromptManager: React.FC = () => {
     );
   }
 
-  return (
-    <div className="flex h-full flex-col bg-white font-['Inter'] text-slate-900">
-      <div className="mb-6 flex flex-col gap-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h3 className="text-lg font-bold">Generative Prompts</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Manage saved prompt overrides and inspect the full backend catalog, including built-in types that are still using defaults.
+  const renderPromptRow = (item: PromptCatalogItem, prompt: Prompt) => {
+    const name = item.label || item.type;
+    const examLabel = formatPromptExam(item.requiresExam, prompt.exam);
+    const scopeName = displayPromptExam(examLabel);
+    const previewText =
+      prompt.text || prompt.userTemplate || serializePromptSchema(prompt.enforcedSchema) || 'Saved override';
+    const updated = formatDate(prompt.updatedAt || prompt.createdAt);
+    const fileCount = prompt.files?.length || 0;
+    const meta = [
+      updated ? `Updated ${updated}` : null,
+      fileCount > 0 ? plural(fileCount, 'context file') : null,
+    ].filter(Boolean);
+
+    return (
+      <li key={prompt.id} className="flex items-start gap-1 pr-2 transition-colors hover:bg-stone-50">
+        <button
+          type="button"
+          onClick={() => handleEdit(prompt)}
+          className="group flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left focus-visible:bg-stone-50 focus-visible:outline-none"
+        >
+          <span className="min-w-[4rem] flex-shrink-0 pt-px">
+            <Badge tone={getPromptScopeTone(examLabel)}>{displayPromptExam(examLabel)}</Badge>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-[13px] leading-5 text-stone-700" title={previewText}>
+              {previewText}
+            </span>
+            {meta.length > 0 && (
+              <span className="mt-0.5 block text-xs text-stone-500">{meta.join(' · ')}</span>
+            )}
+          </span>
+          <ChevronRight
+            size={16}
+            className="mt-0.5 flex-shrink-0 text-stone-300 transition-colors group-hover:text-stone-500"
+          />
+        </button>
+        <div className="pt-1.5">
+          <Menu
+            size="sm"
+            label={`Actions for ${name} (${scopeName})`}
+            items={[
+              { label: 'Edit prompt', icon: Pencil, onSelect: () => handleEdit(prompt) },
+              {
+                label: 'Delete prompt',
+                icon: Trash2,
+                tone: 'danger',
+                onSelect: () => setPromptToDelete({ prompt, name: `${name} (${scopeName})` }),
+              },
+            ]}
+          />
+        </div>
+      </li>
+    );
+  };
+
+  const renderCatalogItem = (item: PromptCatalogItem) => {
+    const configuredPrompts = item.configuredPrompts || [];
+    const isConfigured = configuredPrompts.length > 0;
+    const defaultBadges = getDefaultBadges(item);
+    const canAddVariant = item.requiresExam && configuredPrompts.length < 3;
+    const defaultPreview =
+      item.defaultText || item.defaultUserTemplate || serializePromptSchema(item.defaultEnforcedSchema) || 'No built-in default defined';
+
+    return (
+      <li key={item.type} className="px-5 py-4">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+          <div className="min-w-[min(100%,18rem)] flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="text-sm font-medium text-stone-900">{item.label || item.type}</h3>
+              <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-500">
+                {item.type}
+              </code>
+            </div>
+            {item.description && (
+              <p className="mt-0.5 line-clamp-2 max-w-3xl text-[13px] leading-5 text-stone-500">
+                {item.description}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-stone-500">
+              {item.requiresExam ? 'One prompt per exam' : 'Global'}
+              {' · '}
+              {defaultBadges.length > 0
+                ? `Built-in defaults: ${defaultBadges.join(', ')}`
+                : 'No built-in defaults'}
             </p>
           </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {isConfigured ? (
+              <Badge tone="green" dot>
+                {configuredPrompts.length > 1 ? `${configuredPrompts.length} overrides` : 'Override'}
+              </Badge>
+            ) : (
+              <Badge>Default</Badge>
+            )}
+            {!isConfigured ? (
+              <Button size="sm" icon={Plus} onClick={() => handleCreate(item.type)}>
+                Configure
+              </Button>
+            ) : canAddVariant ? (
+              <Button size="sm" variant="ghost" icon={Plus} onClick={() => handleCreate(item.type)}>
+                Add exam variant
+              </Button>
+            ) : null}
+          </div>
+        </div>
 
-          <div className="flex w-full flex-col gap-3 md:flex-row lg:w-auto">
-            <div className="relative flex-1 md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder="Search prompt types, exams, or content..."
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow"
+        {isConfigured ? (
+          <ul className="mt-3 divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200">
+            {configuredPrompts.map(prompt => renderPromptRow(item, prompt))}
+          </ul>
+        ) : (
+          <p
+            className="mt-3 line-clamp-2 max-w-3xl border-l-2 border-stone-200 pl-3 text-[13px] leading-5 text-stone-500"
+            title={defaultPreview}
+          >
+            {defaultPreview}
+          </p>
+        )}
+      </li>
+    );
+  };
+
+  const isFiltered = Boolean(normalizedSearchTerm) || filter !== 'all';
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="AI prompts"
+        meta={
+          hasLoaded && (
+            <span className="text-[13px] tabular-nums text-stone-500">
+              {plural(catalogItems.length, 'type')} · {plural(allPrompts.length, 'saved override')}
+            </span>
+          )
+        }
+        description="Saved prompt overrides and the full backend catalog, including built-in types still using their defaults."
+        actions={
+          <>
+            <IconButton
+              icon={RefreshCw}
+              label="Refresh catalog"
+              onClick={() => void fetchPromptCatalog()}
+              disabled={isLoading}
+              className={isLoading ? '[&_svg]:animate-spin' : undefined}
+            />
+            <Button variant="primary" icon={Plus} onClick={() => handleCreate()}>
+              New prompt
+            </Button>
+          </>
+        }
+      />
+
+      {errorMsg && (
+        <InlineAlert
+          title="Couldn't load the prompt catalog"
+          action={
+            <Button size="sm" variant="secondary" onClick={() => void fetchPromptCatalog()} loading={isLoading}>
+              Retry
+            </Button>
+          }
+        >
+          {errorMsg}
+        </InlineAlert>
+      )}
+
+      {actionError && <InlineAlert onDismiss={() => setActionError(null)}>{actionError}</InlineAlert>}
+
+      {!hasLoaded || (isLoading && catalogItems.length === 0) ? (
+        <Spinner label="Loading prompts…" className="py-24" />
+      ) : catalogItems.length === 0 ? (
+        !errorMsg && (
+          <div className="rounded-xl border border-dashed border-stone-300">
+            <EmptyState
+              icon={BookOpen}
+              title="The prompt catalog is empty"
+              description="No prompt types came back from the backend. You can still create a prompt for a custom type."
+              action={
+                <Button variant="primary" icon={Plus} onClick={() => handleCreate()}>
+                  New prompt
+                </Button>
+              }
+            />
+          </div>
+        )
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search types, exams or prompt text"
+              className="w-full sm:w-80"
+            />
+            <SegmentedControl
+              label="Filter prompt types"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'all', label: 'All', count: catalogItems.length },
+                { value: 'overridden', label: 'Overridden', count: configuredTypeCount },
+                { value: 'defaults', label: 'Using defaults', count: catalogItems.length - configuredTypeCount },
+              ]}
+            />
+          </div>
+
+          {filteredCatalogItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-stone-300">
+              <EmptyState
+                icon={BookOpen}
+                title="No matching prompt types"
+                description="Adjust the search or filter, or create a custom prompt type from the editor."
+                action={
+                  isFiltered ? (
+                    <Button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
               />
             </div>
+          ) : (
+            <ul className="divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-card">
+              {filteredCatalogItems.map(renderCatalogItem)}
+            </ul>
+          )}
+        </>
+      )}
 
-            <button
-              onClick={fetchPromptCatalog}
-              className="rounded-lg border border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-50"
-              title="Refresh Catalog"
-            >
-              <RefreshCw size={16} />
-            </button>
+      <ConfirmDialog
+        open={Boolean(promptToDelete)}
+        title="Delete prompt?"
+        description={
+          <>
+            The saved override for{' '}
+            <span className="font-medium text-stone-900">{promptToDelete?.name}</span> will be
+            deleted and the feature falls back to its built-in default. This can't be undone.
+          </>
+        }
+        confirmLabel="Delete prompt"
+        busy={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setPromptToDelete(null)}
+      />
 
-            <button
-              onClick={() => handleCreate()}
-              className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white transition-colors hover:bg-emerald-700"
-            >
-              <Plus size={16} />
-              Add Prompt
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Catalog Types</div>
-            <div className="mt-2 text-2xl font-bold text-slate-900">{catalogItems.length}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Configured Prompts</div>
-            <div className="mt-2 text-2xl font-bold text-slate-900">{allPrompts.length}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Using Built-In Defaults</div>
-            <div className="mt-2 text-2xl font-bold text-slate-900">{catalogItems.length - configuredTypeCount}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="relative flex-1 overflow-auto rounded-xl border border-slate-200">
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-sm">
-            <Loader2 className="animate-spin text-emerald-600" size={32} />
-          </div>
-        )}
-
-        {errorMsg && !isLoading && (
-          <div className="p-8 text-center text-red-600">{errorMsg}</div>
-        )}
-
-        {!isLoading && !errorMsg && filteredCatalogItems.length === 0 && (
-          <div className="flex flex-col items-center p-12 text-center text-slate-500">
-            <BookOpen size={48} className="mb-4 text-slate-200" />
-            <p className="text-lg font-medium text-slate-900">No Matching Prompt Types</p>
-            <p className="mt-1 max-w-md text-sm">
-              Adjust the search term or create a custom prompt type directly from the editor.
-            </p>
-          </div>
-        )}
-
-        {!isLoading && !errorMsg && filteredCatalogItems.length > 0 && (
-          <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
-              <tr>
-                <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Feature Type</th>
-                <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Scope</th>
-                <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Configuration</th>
-                <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Built-In Defaults</th>
-                <th className="px-5 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Files</th>
-                <th className="px-5 py-3 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCatalogItems.flatMap(item => {
-                const configuredPrompts = item.configuredPrompts || [];
-                const defaultBadges = getDefaultBadges(item);
-                const canAddVariant = item.requiresExam && configuredPrompts.length < 3;
-                const rows = configuredPrompts.length > 0 ? configuredPrompts : [null];
-
-                return rows.map((prompt, index) => {
-                  const examLabel = prompt ? formatPromptExam(item.requiresExam, prompt.exam) : item.requiresExam ? 'Exam-scoped' : 'Global';
-                  const previewText = prompt
-                    ? prompt.text || prompt.userTemplate || serializePromptSchema(prompt.enforcedSchema) || 'Saved override'
-                    : item.defaultText || item.defaultUserTemplate || serializePromptSchema(item.defaultEnforcedSchema) || 'No built-in default defined';
-
-                  return (
-                    <tr key={prompt?.id || `${item.type}-empty`} className="transition-colors hover:bg-slate-50/60">
-                      <td className="px-5 py-4 align-top">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-600">
-                            {item.requiresExam ? (
-                              <FileText size={16} className="text-[#1BD183]" />
-                            ) : (
-                              <Sparkles size={16} className="text-amber-500" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-slate-800">{item.label || item.type}</span>
-                              <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                {item.type}
-                              </span>
-                            </div>
-                            <p className="mt-1 max-w-md text-sm text-slate-500">{item.description}</p>
-                            {index === 0 && canAddVariant && (
-                              <button
-                                type="button"
-                                onClick={() => handleCreate(item.type)}
-                                className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
-                              >
-                                <Plus size={12} />
-                                Add Exam Variant
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        <span
-                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            examLabel === 'Global'
-                              ? 'border-slate-200 bg-slate-100 text-slate-700'
-                              : examLabel === 'Exam-scoped'
-                                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                : examLabel.toLowerCase().includes('step 1')
-                                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                  : 'border-purple-200 bg-purple-50 text-purple-700'
-                          }`}
-                        >
-                          {examLabel}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        {prompt ? (
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-600">Saved Override</div>
-                            <p className="mt-1 max-w-md line-clamp-3 text-sm text-slate-600" title={previewText}>
-                              {previewText}
-                            </p>
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Using Backend Defaults</div>
-                            <p className="mt-1 max-w-md text-sm text-slate-500" title={previewText}>
-                              {previewText}
-                            </p>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        {defaultBadges.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {defaultBadges.map(badge => (
-                              <span
-                                key={badge}
-                                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500"
-                              >
-                                {badge}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-slate-400">None</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-center align-top">
-                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                          {prompt?.files?.length || 0}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-right align-top">
-                        {prompt ? (
-                          <>
-                            <button
-                              onClick={() => handleEdit(prompt)}
-                              className="mr-1 rounded-lg p-2 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
-                              title="Edit Prompt"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(prompt.id)}
-                              className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                              title="Delete Prompt"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => handleCreate(item.type)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-                          >
-                            <Plus size={14} />
-                            Configure
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                });
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Toast message={toast.message} onDismiss={toast.dismiss} />
     </div>
   );
 };

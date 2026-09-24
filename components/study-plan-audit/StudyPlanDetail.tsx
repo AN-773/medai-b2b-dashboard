@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
+  ArrowRight,
   BookOpen,
-  FileSearch,
+  ChevronRight,
   FileText,
   GitBranch,
-  LayoutDashboard,
   ListChecks,
   Microscope,
   PlayCircle,
   RefreshCw,
+  SearchX,
+  type LucideIcon,
 } from 'lucide-react';
 import { studyPlanAuditService } from '@/services/studyPlanAuditService';
 import type {
@@ -18,48 +19,95 @@ import type {
   StudyPlanAuditStageSummary,
 } from '@/types/StudyPlanAuditTypes';
 import {
+  Button,
+  InlineAlert,
+  PageHeader,
+  SearchInput,
+  SectionHeader,
+  SegmentedControl,
+  Spinner,
+  cn,
+} from '@/components/ui';
+import {
+  CopyButton,
   EmptyBlock,
   ErrorBlock,
   IdChip,
-  LoadingBlock,
-  Section,
+  KV,
   Stat,
+  StatStrip,
   StagePill,
+  StatusLabel,
   StatusPill,
   TenantTag,
   TimeAgo,
   formatNumber,
+  plural,
+  statusTone,
 } from './shared';
+import {
+  NumCell,
+  Pagination,
+  TableCard,
+  paginationProps,
+  Th,
+  isInteractiveTarget,
+  rowClass,
+  tableClass,
+  theadClass,
+  usePagination,
+} from './AuditTable';
+import { AuditTabs, auditPanelId, auditTabId, type AuditTabDef } from './AuditTabs';
 import ItemLineagePanel from './panels/ItemLineagePanel';
 import LOLineagePanel from './panels/LOLineagePanel';
 import SessionAuditPanel from './panels/SessionAuditPanel';
 import UploadAuditPanel from './panels/UploadAuditPanel';
 
 type TabId = 'overview' | 'uploads' | 'los' | 'items' | 'sessions';
+type SessionStatusFilter = 'all' | 'succeeded' | 'failed' | 'no_items_generated' | 'started';
 
-const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'uploads', label: 'Uploads', icon: FileText },
-  { id: 'los', label: 'Learning objectives', icon: ListChecks },
-  { id: 'items', label: 'Items', icon: BookOpen },
-  { id: 'sessions', label: 'Sessions', icon: PlayCircle },
-];
+const TAB_PREFIX = 'study-plan-audit';
+const PAGE_SIZE = 50;
+
+interface RunTotals {
+  runs: number;
+  ok: number;
+  bad: number;
+  successRate: number;
+  failureRate: number;
+}
+
+const summarizeStages = (stages: StudyPlanAuditStageSummary[]): RunTotals => {
+  let runs = 0;
+  let ok = 0;
+  let bad = 0;
+  stages.forEach((s) => {
+    runs += s.total_runs;
+    ok += s.succeeded_runs;
+    bad += s.failed_runs;
+  });
+  return {
+    runs,
+    ok,
+    bad,
+    successRate: runs > 0 ? Math.round((ok / runs) * 1000) / 10 : 0,
+    failureRate: runs > 0 ? Math.round((bad / runs) * 1000) / 10 : 0,
+  };
+};
 
 const StudyPlanDetail: React.FC = () => {
   const { studyPlanIdentifier } = useParams<{
     studyPlanIdentifier: string;
   }>();
-  const navigate = useNavigate();
   const [data, setData] = useState<GetStudyPlanAuditResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('overview');
+  const [sessionStatus, setSessionStatus] = useState<SessionStatusFilter>('all');
 
   const [openSessionIdentifier, setOpenSessionIdentifier] = useState<string | null>(null);
   const [openUploadIdentifier, setOpenUploadIdentifier] = useState<string | null>(null);
-  const [openItemIdentifier, setOpenItemIdentifier] = useState<string | null>(
-    null,
-  );
+  const [openItemIdentifier, setOpenItemIdentifier] = useState<string | null>(null);
   const [openLoIdentifier, setOpenLoIdentifier] = useState<string | null>(null);
 
   const load = async () => {
@@ -67,8 +115,7 @@ const StudyPlanDetail: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const resp =
-        await studyPlanAuditService.getStudyPlanAudit(studyPlanIdentifier);
+      const resp = await studyPlanAuditService.getStudyPlanAudit(studyPlanIdentifier);
       setData(resp);
     } catch (err: any) {
       setError(err?.message || 'Failed to load study plan audit.');
@@ -82,80 +129,143 @@ const StudyPlanDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyPlanIdentifier]);
 
-  if (loading) return <LoadingBlock />;
-  if (error) return <ErrorBlock error={error} onRetry={load} />;
-  if (!data)
+  const runTotals = useMemo(() => summarizeStages(data?.stages ?? []), [data]);
+
+  const sessionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    data?.sessions.forEach((s) => {
+      counts[s.status] = (counts[s.status] ?? 0) + 1;
+    });
+    return counts;
+  }, [data]);
+
+  const failedUploads = useMemo(
+    () => data?.uploads.filter((u) => statusTone(u.status) === 'red').length ?? 0,
+    [data],
+  );
+
+  const showSessions = (filter: SessionStatusFilter) => {
+    setSessionStatus(filter);
+    setTab('sessions');
+  };
+
+  const refreshButton = (
+    <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={load}>
+      Refresh
+    </Button>
+  );
+
+  if (!data) {
     return (
-      <EmptyBlock
-        title="No data"
-        hint="Study plan audit response was empty."
-      />
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow={<AuditBreadcrumb identifier={studyPlanIdentifier ?? ''} />}
+          title={loading ? 'Loading study plan…' : 'Study plan unavailable'}
+          actions={refreshButton}
+        />
+        {loading ? (
+          <Spinner label="Loading study plan audit…" className="py-24" />
+        ) : error ? (
+          <ErrorBlock error={error} onRetry={load} />
+        ) : (
+          <EmptyBlock title="No data" hint="Study plan audit response was empty." />
+        )}
+      </div>
     );
+  }
+
+  const failedSessions = sessionCounts.failed ?? 0;
+  const emptySessions = sessionCounts.no_items_generated ?? 0;
+
+  const tabs: AuditTabDef<TabId>[] = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      attention: runTotals.bad > 0 ? 'red' : null,
+      attentionLabel: 'Some generation runs failed',
+    },
+    {
+      id: 'uploads',
+      label: 'Uploads',
+      count: data.uploads.length,
+      attention: failedUploads > 0 ? 'red' : null,
+      attentionLabel: 'Some uploads failed',
+    },
+    { id: 'los', label: 'Learning objectives', count: data.learning_objectives.length },
+    { id: 'items', label: 'Items', count: data.items.length },
+    {
+      id: 'sessions',
+      label: 'Sessions',
+      count: data.sessions.length,
+      attention: failedSessions > 0 ? 'red' : emptySessions > 0 ? 'amber' : null,
+      attentionLabel:
+        failedSessions > 0 ? 'Some sessions failed' : 'Some sessions generated no items',
+    },
+  ];
 
   return (
-    <div className="space-y-5">
-      <Header data={data} onBack={() => navigate('/study-plan-audit')} onRefresh={load} />
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow={<AuditBreadcrumb identifier={data.study_plan.identifier} />}
+        title={data.study_plan.title || 'Untitled study plan'}
+        meta={<StatusPill value={data.study_plan.status} size="md" />}
+        actions={refreshButton}
+      />
 
-      <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                active
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Icon size={14} />
-              {t.label}
-              <span
-                className={`ml-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] ${
-                  active
-                    ? 'bg-white/15 text-white'
-                    : 'bg-slate-100 text-slate-500'
-                }`}
-              >
-                {countFor(t.id, data)}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+      {error && <ErrorBlock error={error} onRetry={load} />}
+
+      <PlanFacts data={data} runs={runTotals} />
 
       <div>
-        {tab === 'overview' && <OverviewTab data={data} onPickTab={setTab} />}
-        {tab === 'uploads' && (
-          <UploadsTab
-            data={data}
-            onOpenUpload={(identifier) => setOpenUploadIdentifier(identifier)}
-          />
-        )}
-        {tab === 'los' && (
-          <LOsTab
-            data={data}
-            onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
-          />
-        )}
-        {tab === 'items' && (
-          <ItemsTab
-            data={data}
-            onOpenItem={(identifier) => setOpenItemIdentifier(identifier)}
-            onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
-          />
-        )}
-        {tab === 'sessions' && (
-          <SessionsTab
-            data={data}
-            onOpenSession={(identifier) =>
-              setOpenSessionIdentifier(identifier)
-            }
-          />
-        )}
+        <AuditTabs
+          tabs={tabs}
+          active={tab}
+          onSelect={setTab}
+          label="Audit sections"
+          idPrefix={TAB_PREFIX}
+        />
+        <div
+          role="tabpanel"
+          id={auditPanelId(TAB_PREFIX)}
+          aria-labelledby={auditTabId(TAB_PREFIX, tab)}
+          className="pt-6"
+        >
+          {tab === 'overview' && (
+            <OverviewTab
+              data={data}
+              runs={runTotals}
+              failedSessions={failedSessions}
+              emptySessions={emptySessions}
+              onPickTab={setTab}
+              onShowSessions={showSessions}
+            />
+          )}
+          {tab === 'uploads' && (
+            <UploadsTab
+              data={data}
+              onOpenUpload={(identifier) => setOpenUploadIdentifier(identifier)}
+            />
+          )}
+          {tab === 'los' && (
+            <LOsTab data={data} onOpenLo={(identifier) => setOpenLoIdentifier(identifier)} />
+          )}
+          {tab === 'items' && (
+            <ItemsTab
+              data={data}
+              onOpenItem={(identifier) => setOpenItemIdentifier(identifier)}
+              onOpenLo={(identifier) => setOpenLoIdentifier(identifier)}
+            />
+          )}
+          {tab === 'sessions' && (
+            <SessionsTab
+              data={data}
+              counts={sessionCounts}
+              statusFilter={sessionStatus}
+              onStatusFilterChange={setSessionStatus}
+              onOpenSession={(identifier) => setOpenSessionIdentifier(identifier)}
+            />
+          )}
+        </div>
       </div>
 
       <SessionAuditPanel
@@ -183,265 +293,361 @@ const StudyPlanDetail: React.FC = () => {
   );
 };
 
-const countFor = (tab: TabId, data: GetStudyPlanAuditResponse) => {
-  switch (tab) {
-    case 'overview':
-      return data.stages.length;
-    case 'uploads':
-      return data.uploads.length;
-    case 'los':
-      return data.learning_objectives.length;
-    case 'items':
-      return data.items.length;
-    case 'sessions':
-      return data.sessions.length;
-  }
-};
-
 // ---------- Header ----------
 
-const Header: React.FC<{
-  data: GetStudyPlanAuditResponse;
-  onBack: () => void;
-  onRefresh: () => void;
-}> = ({ data, onBack, onRefresh }) => (
-  <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-    <div className="flex items-center justify-between gap-3">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        <ArrowLeft size={14} />
-        All study plans
-      </button>
-      <button
-        type="button"
-        onClick={onRefresh}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-      >
-        <RefreshCw size={14} />
-        Refresh
-      </button>
-    </div>
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-          <span className="font-mono">{data.study_plan.identifier}</span>
-          <span>·</span>
-          <span className="font-mono">{data.study_plan.exam_name}</span>
-          <TenantTag tenantId={data.study_plan.tenant_id} />
-          <StatusPill value={data.study_plan.status} />
-        </div>
-        <h1 className="mt-1 truncate text-xl font-bold tracking-tight text-slate-900">
-          {data.study_plan.title || '(untitled)'}
-        </h1>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-          <IdChip value={data.study_plan_id} label="plan" />
-          <span>
-            Created <TimeAgo iso={data.study_plan.created_at} />
-          </span>
-          <span>·</span>
-          <span>
-            Updated <TimeAgo iso={data.study_plan.updated_at} />
-          </span>
-        </div>
-      </div>
-      <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:grid-cols-4">
-        <Stat label="Uploads" value={formatNumber(data.totals.uploads)} />
-        <Stat
-          label="LOs"
-          value={formatNumber(data.totals.learning_objectives)}
-        />
-        <Stat label="Items" value={formatNumber(data.totals.items)} />
-        <Stat label="Sessions" value={formatNumber(data.totals.sessions)} />
-      </div>
-    </div>
+const AuditBreadcrumb: React.FC<{ identifier: string }> = ({ identifier }) => (
+  <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5">
+    <Link
+      to="/study-plan-audit"
+      className="flex-shrink-0 rounded text-stone-500 transition hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+    >
+      Study plan audit
+    </Link>
+    <ChevronRight size={14} className="flex-shrink-0 text-stone-300" aria-hidden="true" />
+    <code className="min-w-0 truncate font-mono text-stone-700" aria-current="page" title={identifier}>
+      {identifier}
+    </code>
+    {identifier && <CopyButton text={identifier} label="Copy study plan identifier" />}
+  </nav>
+);
+
+const Figure: React.FC<{ label: string; value: number; detail?: React.ReactNode }> = ({
+  label,
+  value,
+  detail,
+}) => (
+  <div className="min-w-0">
+    <dt className="text-xs text-stone-500">{label}</dt>
+    <dd className="mt-1 flex flex-wrap items-baseline gap-x-2">
+      <span className="text-lg font-semibold tabular-nums text-stone-900">
+        {formatNumber(value)}
+      </span>
+      {detail && <span className="text-xs text-stone-500">{detail}</span>}
+    </dd>
   </div>
 );
+
+/** Key facts about the plan: who/what/when on top, plan-wide totals below. */
+const PlanFacts: React.FC<{ data: GetStudyPlanAuditResponse; runs: RunTotals }> = ({
+  data,
+  runs,
+}) => {
+  const plan = data.study_plan;
+  return (
+    <section
+      aria-label="Study plan summary"
+      className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-5 py-4 sm:grid-cols-3 lg:grid-cols-5">
+        <KV label="Exam">{plan.exam_name || <span className="text-stone-400">—</span>}</KV>
+        <KV label="Tenant">
+          {plan.tenant_id ? (
+            <code className="break-all font-mono text-[13px] text-stone-800">{plan.tenant_id}</code>
+          ) : (
+            <span className="text-stone-400">No tenant</span>
+          )}
+        </KV>
+        <KV label="Plan ID">
+          <IdChip value={data.study_plan_id} truncate={13} />
+        </KV>
+        <KV label="Created">
+          <TimeAgo iso={plan.created_at} />
+        </KV>
+        <KV label="Updated">
+          <TimeAgo iso={plan.updated_at} />
+        </KV>
+      </dl>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-stone-100 px-5 py-4 sm:grid-cols-3 lg:grid-cols-5">
+        <Figure label="Uploads" value={data.totals.uploads} />
+        <Figure label="Learning objectives" value={data.totals.learning_objectives} />
+        <Figure label="Items" value={data.totals.items} />
+        <Figure label="Sessions" value={data.totals.sessions} />
+        <Figure
+          label="Generation runs"
+          value={runs.runs}
+          detail={
+            runs.bad > 0 ? (
+              <span className="font-medium text-red-700">{formatNumber(runs.bad)} failed</span>
+            ) : runs.runs > 0 ? (
+              `${runs.successRate}% succeeded`
+            ) : undefined
+          }
+        />
+      </dl>
+    </section>
+  );
+};
 
 // ---------- Overview ----------
 
 const OverviewTab: React.FC<{
   data: GetStudyPlanAuditResponse;
+  runs: RunTotals;
+  failedSessions: number;
+  emptySessions: number;
   onPickTab: (t: TabId) => void;
-}> = ({ data, onPickTab }) => {
-  const totals = useMemo(() => {
-    let runs = 0;
-    let ok = 0;
-    let bad = 0;
-    data.stages.forEach((s) => {
-      runs += s.total_runs;
-      ok += s.succeeded_runs;
-      bad += s.failed_runs;
-    });
-    return {
-      runs,
-      ok,
-      bad,
-      successRate: runs > 0 ? Math.round((ok / runs) * 1000) / 10 : 0,
-      failureRate: runs > 0 ? Math.round((bad / runs) * 1000) / 10 : 0,
-    };
-  }, [data]);
-
+  onShowSessions: (filter: SessionStatusFilter) => void;
+}> = ({ data, runs, failedSessions, emptySessions, onPickTab, onShowSessions }) => {
   const sorted = useMemo(
     () => [...data.stages].sort((a, b) => b.total_runs - a.total_runs),
     [data.stages],
   );
+  const worstStage = useMemo(
+    () =>
+      [...data.stages]
+        .filter((s) => s.failed_runs > 0)
+        .sort((a, b) => b.failed_runs - a.failed_runs)[0],
+    [data.stages],
+  );
+  const hasProblems = failedSessions > 0 || emptySessions > 0 || runs.bad > 0;
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Generation runs" value={formatNumber(totals.runs)} />
+    <div className="space-y-8">
+      {hasProblems && (
+        <div className="space-y-2">
+          {failedSessions > 0 && (
+            <InlineAlert
+              tone="error"
+              title={`${plural(failedSessions, 'session')} failed`}
+              action={
+                <Button size="sm" variant="secondary" onClick={() => onShowSessions('failed')}>
+                  Show failed sessions
+                </Button>
+              }
+            >
+              Open a session to see its error and the generation runs behind it.
+            </InlineAlert>
+          )}
+          {emptySessions > 0 && (
+            <InlineAlert
+              tone="warning"
+              title={`${plural(emptySessions, 'session')} generated no items`}
+              action={
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onShowSessions('no_items_generated')}
+                >
+                  Show sessions
+                </Button>
+              }
+            >
+              Usually an empty objective selection, or every run failed before items were
+              persisted.
+            </InlineAlert>
+          )}
+          {runs.bad > 0 && (
+            <InlineAlert
+              tone="warning"
+              title={`${formatNumber(runs.bad)} of ${plural(runs.runs, 'generation run')} failed`}
+            >
+              {worstStage ? (
+                <>
+                  Most failures are in the <code className="font-mono">{worstStage.stage}</code>{' '}
+                  stage ({formatNumber(worstStage.failed_runs)}). See the breakdown below.
+                </>
+              ) : (
+                'See the breakdown by stage below.'
+              )}
+            </InlineAlert>
+          )}
+        </div>
+      )}
+
+      <StatStrip className="grid-cols-2 lg:grid-cols-4">
+        <Stat label="Generation runs" value={formatNumber(runs.runs)} />
         <Stat
           label="Succeeded"
-          value={formatNumber(totals.ok)}
-          tone="success"
-          hint={`${totals.successRate}% of runs`}
+          value={formatNumber(runs.ok)}
+          tone={runs.ok > 0 ? 'success' : 'default'}
+          hint={`${runs.successRate}% of runs`}
         />
         <Stat
           label="Failed"
-          value={formatNumber(totals.bad)}
-          tone={totals.bad > 0 ? 'danger' : 'default'}
-          hint={`${totals.failureRate}% of runs`}
+          value={formatNumber(runs.bad)}
+          tone={runs.bad > 0 ? 'danger' : 'default'}
+          hint={`${runs.failureRate}% of runs`}
         />
         <Stat
           label="Audit footprint"
-          value={`${data.stages.length} stages`}
-          hint="grouped by tenant × stage"
+          value={plural(data.stages.length, 'stage')}
+          hint="Grouped by tenant and stage"
         />
-      </div>
+      </StatStrip>
 
-      <Section
-        title="Per-stage outcomes"
-        subtitle="Aggregated success/failure for every audited stage and tenant"
-        dense
-      >
-        {sorted.length === 0 ? (
-          <EmptyBlock
-            title="No stage activity"
-            hint="No generation_runs rows exist for this plan."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50/70">
-                <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  <th className="px-4 py-2 font-black">Stage</th>
-                  <th className="px-4 py-2 font-black">Tenant</th>
-                  <th className="px-4 py-2 text-right font-black">Runs</th>
-                  <th className="px-4 py-2 text-right font-black">Succeeded</th>
-                  <th className="px-4 py-2 text-right font-black">Failed</th>
-                  <th className="px-4 py-2 font-black">Success rate</th>
+      <section className="space-y-3">
+        <SectionHeader
+          title="Outcomes by stage"
+          description="Success and failure for every audited stage and tenant, busiest first."
+        />
+        <TableCard>
+          {sorted.length === 0 ? (
+            <EmptyBlock
+              title="No stage activity"
+              hint="No generation_runs rows exist for this plan."
+            />
+          ) : (
+            <table className={tableClass}>
+              <thead className={theadClass}>
+                <tr>
+                  <Th>Stage</Th>
+                  <Th>Tenant</Th>
+                  <Th align="right">Runs</Th>
+                  <Th align="right">Succeeded</Th>
+                  <Th align="right">Failed</Th>
+                  <Th>Success rate</Th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {sorted.map((s, i) => (
                   <StageRow key={`${s.tenant_id ?? 'na'}-${s.stage}-${i}`} row={s} />
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </Section>
+          )}
+        </TableCard>
+      </section>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <QuickPick
-          label="Inspect uploads"
-          hint={`${data.uploads.length} audited`}
-          onClick={() => onPickTab('uploads')}
-          icon={FileText}
+      <section className="space-y-3">
+        <SectionHeader
+          title="Trace the lineage"
+          description="Uploads are chunked to ground learning objectives, objectives generate items, and sessions select objectives to generate more."
         />
-        <QuickPick
-          label="Inspect LOs"
-          hint={`${data.learning_objectives.length} with lineage`}
-          onClick={() => onPickTab('los')}
-          icon={ListChecks}
-        />
-        <QuickPick
-          label="Inspect items"
-          hint={`${data.items.length} with audit runs`}
-          onClick={() => onPickTab('items')}
-          icon={BookOpen}
-        />
-        <QuickPick
-          label="Inspect sessions"
-          hint={`${data.sessions.length} with session_generation_audits`}
-          onClick={() => onPickTab('sessions')}
-          icon={PlayCircle}
-        />
-      </div>
+        <div className="grid gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-card sm:grid-cols-2 lg:grid-cols-4">
+          <LineageStepCard
+            icon={FileText}
+            title="Uploads"
+            figure={data.uploads.length}
+            detail={`audited · ${formatNumber(data.totals.uploads)} in this plan`}
+            actionLabel="Inspect uploads"
+            onClick={() => onPickTab('uploads')}
+          />
+          <LineageStepCard
+            icon={ListChecks}
+            title="Learning objectives"
+            figure={data.learning_objectives.length}
+            detail={`with lineage · ${formatNumber(data.totals.learning_objectives)} in this plan`}
+            actionLabel="Inspect objectives"
+            onClick={() => onPickTab('los')}
+          />
+          <LineageStepCard
+            icon={BookOpen}
+            title="Items"
+            figure={data.items.length}
+            detail={`with audit runs · ${formatNumber(data.totals.items)} in this plan`}
+            actionLabel="Inspect items"
+            onClick={() => onPickTab('items')}
+          />
+          <LineageStepCard
+            icon={PlayCircle}
+            title="Sessions"
+            figure={data.sessions.length}
+            detail={`with generation audits · ${formatNumber(data.totals.sessions)} in this plan`}
+            actionLabel="Inspect sessions"
+            onClick={() => onPickTab('sessions')}
+          />
+        </div>
+      </section>
     </div>
   );
 };
 
 const StageRow: React.FC<{ row: StudyPlanAuditStageSummary }> = ({ row }) => (
-  <tr>
+  <tr className={rowClass}>
     <td className="px-4 py-3">
       <StagePill value={row.stage} />
     </td>
     <td className="px-4 py-3">
       <TenantTag tenantId={row.tenant_id} />
     </td>
-    <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">
-      {formatNumber(row.total_runs)}
-    </td>
-    <td className="px-4 py-3 text-right font-mono tabular-nums text-emerald-700">
-      {formatNumber(row.succeeded_runs)}
-    </td>
-    <td className="px-4 py-3 text-right font-mono tabular-nums text-rose-700">
-      {formatNumber(row.failed_runs)}
-    </td>
+    <NumCell value={row.total_runs} />
+    <NumCell value={row.succeeded_runs} />
+    <NumCell value={row.failed_runs} tone="red" />
     <td className="px-4 py-3">
       <RateBar succeeded={row.success_rate} failed={row.failure_rate} />
     </td>
   </tr>
 );
 
-const RateBar: React.FC<{ succeeded: number; failed: number }> = ({
-  succeeded,
-  failed,
-}) => {
+const RateBar: React.FC<{ succeeded: number; failed: number }> = ({ succeeded, failed }) => {
   const ok = Math.max(0, Math.min(100, succeeded));
   const bad = Math.max(0, Math.min(100 - ok, failed));
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className="h-full bg-emerald-500"
-          style={{ width: `${ok}%`, display: 'inline-block' }}
-        />
-        <div
-          className="h-full bg-rose-500"
-          style={{ width: `${bad}%`, display: 'inline-block' }}
-        />
+    <div className="flex items-center gap-2.5">
+      <div
+        className="flex h-1.5 w-28 overflow-hidden rounded-full bg-stone-200/80"
+        role="img"
+        aria-label={`${ok.toFixed(1)}% succeeded, ${bad.toFixed(1)}% failed`}
+      >
+        <div className="h-full bg-brand-500" style={{ width: `${ok}%` }} />
+        <div className="h-full bg-red-500" style={{ width: `${bad}%` }} />
       </div>
-      <span className="font-mono text-[11px] tabular-nums text-slate-600">
-        {ok.toFixed(1)}%
-      </span>
+      <span className="tabular-nums text-stone-600">{ok.toFixed(1)}%</span>
     </div>
   );
 };
 
-const QuickPick: React.FC<{
-  label: string;
-  hint: string;
+const LineageStepCard: React.FC<{
+  icon: LucideIcon;
+  title: string;
+  figure: number;
+  detail: string;
+  actionLabel: string;
   onClick: () => void;
-  icon: React.ElementType;
-}> = ({ label, hint, onClick, icon: Icon }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/40"
-  >
-    <div className="rounded-lg bg-slate-900 p-2 text-white">
-      <Icon size={16} />
+}> = ({ icon: Icon, title, figure, detail, actionLabel, onClick }) => (
+  <div className="flex flex-col bg-white p-5">
+    <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+      <Icon size={16} className="text-stone-400" aria-hidden="true" />
+      {title}
     </div>
-    <div>
-      <div className="text-sm font-bold text-slate-900">{label}</div>
-      <div className="text-[11px] text-slate-500">{hint}</div>
+    <div className="mt-4 text-[28px] font-semibold leading-none tracking-tight tabular-nums text-stone-900">
+      {formatNumber(figure)}
     </div>
-  </button>
+    <div className="mt-2 text-[13px] text-stone-500">{detail}</div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group mt-5 inline-flex w-fit items-center gap-1.5 rounded text-sm font-medium text-stone-700 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+    >
+      {actionLabel}
+      <ArrowRight size={15} className="transition group-hover:translate-x-0.5" aria-hidden="true" />
+    </button>
+  </div>
+);
+
+// ---------- Shared tab chrome ----------
+
+const TabToolbar: React.FC<{ children: React.ReactNode; description: React.ReactNode }> = ({
+  children,
+  description,
+}) => (
+  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">{children}</div>
+    <p className="text-[13px] text-stone-500">{description}</p>
+  </div>
+);
+
+const NoMatches: React.FC<{ query: string; noun: string; emptyTitle: string }> = ({
+  query,
+  noun,
+  emptyTitle,
+}) =>
+  query.trim() ? (
+    <EmptyBlock
+      icon={<SearchX size={17} />}
+      title={`No ${noun} match “${query.trim()}”`}
+      hint="Search matches titles, identifiers and IDs."
+    />
+  ) : (
+    <EmptyBlock title={emptyTitle} />
+  );
+
+const inspectCell = (label: string, icon: LucideIcon, onClick: () => void, ariaLabel: string) => (
+  <td className="whitespace-nowrap px-3 py-3 text-right">
+    <Button size="sm" variant="ghost" icon={icon} onClick={onClick} aria-label={ariaLabel}>
+      {label}
+    </Button>
+  </td>
 );
 
 // ---------- Uploads tab ----------
@@ -456,89 +662,89 @@ const UploadsTab: React.FC<{
     if (!s) return data.uploads;
     return data.uploads.filter((u) =>
       [u.file_name, u.identifier, u.id, u.status, u.tenant_id ?? '']
-        .map((v) => v.toLowerCase())
+        .map((v) => (v ?? '').toLowerCase())
         .some((v) => v.includes(s)),
     );
   }, [data.uploads, q]);
+  const pagination = usePagination(filtered, PAGE_SIZE, q);
 
   return (
-    <Section
-      title="Uploads with audit footprint"
-      subtitle="Driven by upload-linked generation_runs"
-      right={
-        <TableSearch value={q} onChange={setQ} placeholder="Search uploads…" />
-      }
-      dense
-    >
-      {filtered.length === 0 ? (
-        <EmptyBlock
-          title="No matching uploads"
-          icon={<FileSearch size={28} className="opacity-40" />}
+    <div className="space-y-3">
+      <TabToolbar description="Driven by upload-linked generation runs.">
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search uploads"
+          className="w-full sm:w-72"
         />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/70">
-              <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <th className="px-4 py-2 font-black">File</th>
-                <th className="px-4 py-2 font-black">Tenant</th>
-                <th className="px-4 py-2 text-right font-black">Chunks</th>
-                <th className="px-4 py-2 text-right font-black">LOs</th>
-                <th className="px-4 py-2 text-right font-black">Audit runs</th>
-                <th className="px-4 py-2 font-black">Last audit</th>
-                <th className="px-4 py-2 font-black">Status</th>
-                <th className="px-2 py-2" />
+      </TabToolbar>
+      <TableCard
+        footer={
+          <Pagination {...paginationProps(pagination)} noun="upload" />
+        }
+      >
+        {filtered.length === 0 ? (
+          <NoMatches query={q} noun="uploads" emptyTitle="No uploads with an audit footprint" />
+        ) : (
+          <table className={cn(tableClass, 'min-w-[860px]')}>
+            <thead className={theadClass}>
+              <tr>
+                <Th>File</Th>
+                <Th>Status</Th>
+                <Th align="right">Chunks</Th>
+                <Th align="right">Objectives</Th>
+                <Th align="right">Audit runs</Th>
+                <Th>Last audit</Th>
+                <Th className="w-10">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="truncate font-semibold text-slate-800">
-                        {u.file_name}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-                        <span className="font-mono">{u.identifier}</span>
-                        <IdChip value={u.id} label="upload" />
-                      </div>
+            <tbody>
+              {pagination.pageItems.map((u) => (
+                <tr
+                  key={u.id}
+                  onClick={(event) => {
+                    if (isInteractiveTarget(event)) return;
+                    onOpenUpload(u.identifier);
+                  }}
+                  className={cn('cursor-pointer', rowClass)}
+                >
+                  <td className="max-w-[26rem] px-4 py-3">
+                    <p
+                      className="truncate text-sm font-medium text-stone-900"
+                      title={u.file_name}
+                    >
+                      {u.file_name || 'Unnamed file'}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-stone-500">
+                      <code className="font-mono text-stone-600">{u.identifier}</code>
+                      <IdChip value={u.id} label="ID" />
+                      <TenantTag tenantId={u.tenant_id} />
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <TenantTag tenantId={u.tenant_id} />
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <StatusLabel value={u.status} />
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(u.chunk_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(u.learning_objectives_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(u.audit_runs)}
-                  </td>
-                  <td className="px-4 py-3">
+                  <NumCell value={u.chunk_count} />
+                  <NumCell value={u.learning_objectives_count} />
+                  <NumCell value={u.audit_runs} />
+                  <td className="px-4 py-3 text-stone-600">
                     <TimeAgo iso={u.last_audit_at} />
                   </td>
-                  <td className="px-4 py-3">
-                    <StatusPill value={u.status} />
-                  </td>
-                  <td className="px-2 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onOpenUpload(u.identifier)}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <Microscope size={12} />
-                      Inspect
-                    </button>
-                  </td>
+                  {inspectCell(
+                    'Inspect',
+                    Microscope,
+                    () => onOpenUpload(u.identifier),
+                    `Inspect upload ${u.file_name || u.identifier}`,
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </Section>
+        )}
+      </TableCard>
+    </div>
   );
 };
 
@@ -554,84 +760,88 @@ const LOsTab: React.FC<{
     if (!s) return data.learning_objectives;
     return data.learning_objectives.filter((lo) =>
       [lo.title, lo.identifier, lo.id, lo.tenant_id ?? '']
-        .map((v) => v.toLowerCase())
+        .map((v) => (v ?? '').toLowerCase())
         .some((v) => v.includes(s)),
     );
   }, [data.learning_objectives, q]);
+  const pagination = usePagination(filtered, PAGE_SIZE, q);
 
   return (
-    <Section
-      title="Learning objectives"
-      subtitle="LO activity across lineage and session selections"
-      right={<TableSearch value={q} onChange={setQ} placeholder="Search LOs…" />}
-      dense
-    >
-      {filtered.length === 0 ? (
-        <EmptyBlock title="No matching learning objectives" />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/70">
-              <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <th className="px-4 py-2 font-black">Objective</th>
-                <th className="px-4 py-2 font-black">Tenant</th>
-                <th className="px-4 py-2 text-right font-black">Uploads</th>
-                <th className="px-4 py-2 text-right font-black">Chunks</th>
-                <th className="px-4 py-2 text-right font-black">Items</th>
-                <th className="px-4 py-2 text-right font-black">Sessions</th>
-                <th className="px-4 py-2 font-black">Last audit</th>
-                <th className="px-2 py-2" />
+    <div className="space-y-3">
+      <TabToolbar description="Objective activity across lineage and session selections.">
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search objectives"
+          className="w-full sm:w-72"
+        />
+      </TabToolbar>
+      <TableCard
+        footer={
+          <Pagination {...paginationProps(pagination)} noun="objective" />
+        }
+      >
+        {filtered.length === 0 ? (
+          <NoMatches
+            query={q}
+            noun="objectives"
+            emptyTitle="No learning objectives with audit activity"
+          />
+        ) : (
+          <table className={cn(tableClass, 'min-w-[900px]')}>
+            <thead className={theadClass}>
+              <tr>
+                <Th>Objective</Th>
+                <Th align="right">Uploads</Th>
+                <Th align="right">Chunks</Th>
+                <Th align="right">Items</Th>
+                <Th align="right">Sessions</Th>
+                <Th>Last audit</Th>
+                <Th className="w-10">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((lo) => (
-                <tr key={lo.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm font-semibold text-slate-800">
-                        {lo.title || '(untitled LO)'}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-                        <span className="font-mono">{lo.identifier}</span>
-                        <IdChip value={lo.id} label="lo" />
-                      </div>
+            <tbody>
+              {pagination.pageItems.map((lo) => (
+                <tr
+                  key={lo.id}
+                  onClick={(event) => {
+                    if (isInteractiveTarget(event)) return;
+                    onOpenLo(lo.identifier);
+                  }}
+                  className={cn('cursor-pointer', rowClass)}
+                >
+                  <td className="max-w-[32rem] px-4 py-3">
+                    <p className="line-clamp-2 text-sm font-medium text-stone-900">
+                      {lo.title || 'Untitled objective'}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-stone-500">
+                      <code className="font-mono text-stone-600">{lo.identifier}</code>
+                      <IdChip value={lo.id} label="ID" />
+                      <TenantTag tenantId={lo.tenant_id} />
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <TenantTag tenantId={lo.tenant_id} />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(lo.source_upload_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(lo.source_chunk_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(lo.item_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(lo.session_count)}
-                  </td>
-                  <td className="px-4 py-3">
+                  <NumCell value={lo.source_upload_count} />
+                  <NumCell value={lo.source_chunk_count} />
+                  <NumCell value={lo.item_count} />
+                  <NumCell value={lo.session_count} />
+                  <td className="px-4 py-3 text-stone-600">
                     <TimeAgo iso={lo.last_audit_at} />
                   </td>
-                  <td className="px-2 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onOpenLo(lo.identifier)}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <GitBranch size={12} />
-                      Lineage
-                    </button>
-                  </td>
+                  {inspectCell(
+                    'Lineage',
+                    GitBranch,
+                    () => onOpenLo(lo.identifier),
+                    `Open lineage for objective ${lo.identifier}`,
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </Section>
+        )}
+      </TableCard>
+    </div>
   );
 };
 
@@ -659,41 +869,56 @@ const ItemsTab: React.FC<{
         .some((v) => v.includes(s)),
     );
   }, [data.items, q]);
+  const pagination = usePagination(filtered, PAGE_SIZE, q);
 
   return (
-    <Section
-      title="Items with audit runs"
-      subtitle="LO → item lineage within the study plan"
-      right={<TableSearch value={q} onChange={setQ} placeholder="Search items…" />}
-      dense
-    >
-      {filtered.length === 0 ? (
-        <EmptyBlock title="No matching items" />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/70">
-              <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <th className="px-4 py-2 font-black">Item</th>
-                <th className="px-4 py-2 font-black">Type</th>
-                <th className="px-4 py-2 font-black">Learning objective</th>
-                <th className="px-4 py-2 text-right font-black">Runs</th>
-                <th className="px-4 py-2 font-black">Last audit</th>
-                <th className="px-2 py-2" />
+    <div className="space-y-3">
+      <TabToolbar description="Objective → item lineage within this study plan.">
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search items or objectives"
+          className="w-full sm:w-72"
+        />
+      </TabToolbar>
+      <TableCard
+        footer={<Pagination {...paginationProps(pagination)} noun="item" />}
+      >
+        {filtered.length === 0 ? (
+          <NoMatches query={q} noun="items" emptyTitle="No items with audit runs" />
+        ) : (
+          <table className={cn(tableClass, 'min-w-[960px]')}>
+            <thead className={theadClass}>
+              <tr>
+                <Th>Item</Th>
+                <Th>Type</Th>
+                <Th>Learning objective</Th>
+                <Th align="right">Runs</Th>
+                <Th>Last audit</Th>
+                <Th className="w-10">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((it) => (
-                <tr key={it.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="line-clamp-2 max-w-md text-sm text-slate-800">
-                        {it.stem_or_question_or_front || '(no stem)'}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-                        <span className="font-mono">{it.identifier}</span>
-                        <IdChip value={it.id} label="item" />
-                      </div>
+            <tbody>
+              {pagination.pageItems.map((it) => (
+                <tr
+                  key={it.id}
+                  onClick={(event) => {
+                    if (isInteractiveTarget(event)) return;
+                    onOpenItem(it.identifier);
+                  }}
+                  className={cn('cursor-pointer align-top', rowClass)}
+                >
+                  <td className="max-w-[30rem] px-4 py-3">
+                    <p className="line-clamp-2 text-[13px] leading-5 text-stone-800">
+                      {it.stem_or_question_or_front || (
+                        <span className="text-stone-400">No stem</span>
+                      )}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-stone-500">
+                      <code className="font-mono text-stone-600">{it.identifier}</code>
+                      <IdChip value={it.id} label="ID" />
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -703,56 +928,59 @@ const ItemsTab: React.FC<{
                     {it.learning_objective_id ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          onOpenLo(it.learning_objective_identifier)
-                        }
-                        className="group flex max-w-xs flex-col items-start text-left"
+                        onClick={() => onOpenLo(it.learning_objective_identifier)}
+                        className="group/lo block max-w-[18rem] rounded text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        title="Open objective lineage"
                       >
-                        <span className="truncate text-sm text-slate-700 group-hover:text-emerald-700">
-                          {it.learning_objective_title || '(untitled LO)'}
+                        <span className="line-clamp-2 text-[13px] text-stone-700 group-hover/lo:text-stone-950 group-hover/lo:underline">
+                          {it.learning_objective_title || 'Untitled objective'}
                         </span>
-                        <span className="font-mono text-[10.5px] text-slate-500">
+                        <code className="font-mono text-xs text-stone-500">
                           {it.learning_objective_identifier}
-                        </span>
+                        </code>
                       </button>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-stone-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(it.audit_runs)}
-                  </td>
-                  <td className="px-4 py-3">
+                  <NumCell value={it.audit_runs} />
+                  <td className="px-4 py-3 text-stone-600">
                     <TimeAgo iso={it.last_audit_at} />
                   </td>
-                  <td className="px-2 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onOpenItem(it.identifier)}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <GitBranch size={12} />
-                      Lineage
-                    </button>
-                  </td>
+                  {inspectCell(
+                    'Lineage',
+                    GitBranch,
+                    () => onOpenItem(it.identifier),
+                    `Open lineage for item ${it.identifier}`,
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </Section>
+        )}
+      </TableCard>
+    </div>
   );
 };
 
 // ---------- Sessions tab ----------
 
+const SESSION_FILTERS: Array<{ value: SessionStatusFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'succeeded', label: 'Succeeded' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'no_items_generated', label: 'No items' },
+  { value: 'started', label: 'Started' },
+];
+
 const SessionsTab: React.FC<{
   data: GetStudyPlanAuditResponse;
+  counts: Record<string, number>;
+  statusFilter: SessionStatusFilter;
+  onStatusFilterChange: (filter: SessionStatusFilter) => void;
   onOpenSession: (identifier: string) => void;
-}> = ({ data, onOpenSession }) => {
+}> = ({ data, counts, statusFilter, onStatusFilterChange, onOpenSession }) => {
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -770,134 +998,139 @@ const SessionsTab: React.FC<{
           sess.error_code ?? '',
           sess.error_message ?? '',
         ]
-          .map((v) => v.toLowerCase())
+          .map((v) => (v ?? '').toLowerCase())
           .some((v) => v.includes(s)),
       );
     }
     return base;
   }, [data.sessions, q, statusFilter]);
+  const pagination = usePagination(filtered, PAGE_SIZE, `${q}|${statusFilter}`);
 
   return (
-    <Section
-      title="Sessions with generation audits"
-      subtitle="Driven by session_generation_audits"
-      right={
-        <div className="flex items-center gap-2">
-          <select
+    <div className="space-y-3">
+      <TabToolbar description="Driven by session generation audits.">
+        <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
+          <SegmentedControl
+            label="Filter sessions by status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-emerald-300 focus:outline-none"
-          >
-            <option value="all">All statuses</option>
-            <option value="succeeded">succeeded</option>
-            <option value="failed">failed</option>
-            <option value="no_items_generated">no_items_generated</option>
-            <option value="started">started</option>
-          </select>
-          <TableSearch
-            value={q}
-            onChange={setQ}
-            placeholder="Search sessions…"
+            onChange={onStatusFilterChange}
+            options={SESSION_FILTERS.map((filter) => ({
+              ...filter,
+              count: filter.value === 'all' ? data.sessions.length : (counts[filter.value] ?? 0),
+            }))}
           />
         </div>
-      }
-      dense
-    >
-      {filtered.length === 0 ? (
-        <EmptyBlock title="No matching sessions" />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/70">
-              <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <th className="px-4 py-2 font-black">Session</th>
-                <th className="px-4 py-2 font-black">Mode</th>
-                <th className="px-4 py-2 text-right font-black">Requested</th>
-                <th className="px-4 py-2 text-right font-black">Generated</th>
-                <th className="px-4 py-2 text-right font-black">Persisted</th>
-                <th className="px-4 py-2 font-black">Status</th>
-                <th className="px-4 py-2 font-black">Started</th>
-                <th className="px-2 py-2" />
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Search sessions or errors"
+          className="w-full sm:w-64"
+        />
+      </TabToolbar>
+      <TableCard
+        footer={
+          <Pagination {...paginationProps(pagination)} noun="session" />
+        }
+      >
+        {filtered.length === 0 ? (
+          q.trim() ? (
+            <NoMatches query={q} noun="sessions" emptyTitle="" />
+          ) : (
+            <EmptyBlock
+              title={
+                statusFilter === 'all'
+                  ? 'No sessions with generation audits'
+                  : 'No sessions with this status'
+              }
+            />
+          )
+        ) : (
+          <table className={cn(tableClass, 'min-w-[980px]')}>
+            <thead className={theadClass}>
+              <tr>
+                <Th>Session</Th>
+                <Th>Mode</Th>
+                <Th align="right">Requested</Th>
+                <Th align="right">Generated</Th>
+                <Th align="right">Persisted</Th>
+                <Th>Status</Th>
+                <Th>Started</Th>
+                <Th className="w-10">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((sess) => (
-                <tr key={sess.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-mono text-[11px] text-slate-700">
+            <tbody>
+              {pagination.pageItems.map((sess) => {
+                const shortfall =
+                  sess.requested_item_count > 0 &&
+                  sess.items_persisted < sess.requested_item_count;
+                return (
+                  <tr
+                    key={sess.id}
+                    onClick={(event) => {
+                      if (isInteractiveTarget(event)) return;
+                      onOpenSession(sess.identifier);
+                    }}
+                    className={cn('cursor-pointer align-top', rowClass)}
+                  >
+                    <td className="px-4 py-3">
+                      <code className="font-mono text-[13px] font-medium text-stone-900">
                         {sess.identifier}
-                      </span>
-                      <IdChip value={sess.id} label="session" />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StagePill value={sess.mode} />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(sess.requested_item_count)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(sess.items_generated)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatNumber(sess.items_persisted)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <StatusPill value={sess.status} />
+                      </code>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-stone-500">
+                        <IdChip value={sess.id} label="ID" />
+                        <TenantTag tenantId={sess.tenant_id} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StagePill value={sess.mode} />
+                    </td>
+                    <NumCell value={sess.requested_item_count} />
+                    <NumCell value={sess.items_generated} />
+                    <NumCell
+                      value={sess.items_persisted}
+                      tone={shortfall ? 'amber' : 'default'}
+                      title={
+                        shortfall
+                          ? `${formatNumber(sess.items_persisted)} of ${formatNumber(sess.requested_item_count)} requested items persisted`
+                          : undefined
+                      }
+                    />
+                    <td className="max-w-[20rem] px-4 py-3">
+                      <StatusLabel value={sess.status} />
                       {sess.error_code && (
-                        <span className="font-mono text-[10px] text-rose-600">
+                        <code className="mt-1 block font-mono text-xs text-red-700">
                           {sess.error_code}
-                        </span>
+                        </code>
                       )}
                       {sess.error_message && (
-                        <span
-                          className="max-w-[18rem] whitespace-normal break-words text-[11px] leading-snug text-rose-700"
+                        <p
+                          className="mt-0.5 line-clamp-2 break-words text-xs leading-snug text-red-700"
                           title={sess.error_message}
                         >
                           {sess.error_message}
-                        </span>
+                        </p>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <TimeAgo iso={sess.started_at} />
-                  </td>
-                  <td className="px-2 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onOpenSession(sess.identifier)}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      <Microscope size={12} />
-                      Inspect
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-stone-600">
+                      <TimeAgo iso={sess.started_at} />
+                    </td>
+                    {inspectCell(
+                      'Inspect',
+                      Microscope,
+                      () => onOpenSession(sess.identifier),
+                      `Inspect session ${sess.identifier}`,
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      )}
-    </Section>
+        )}
+      </TableCard>
+    </div>
   );
 };
-
-// ---------- Inline atoms ----------
-
-const TableSearch: React.FC<{
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}> = ({ value, onChange, placeholder }) => (
-  <input
-    type="text"
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    placeholder={placeholder}
-    className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-  />
-);
 
 export default StudyPlanDetail;

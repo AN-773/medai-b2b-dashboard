@@ -1,17 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import {
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  Building2,
-  CheckCircle2,
-  Loader2,
-  Mail,
-  RefreshCw,
-  ShieldCheck,
-  UserRound,
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Building2, Copy, Eye, EyeOff, Mail, Plus, RefreshCw } from 'lucide-react';
 import { iamService, IamTenant } from '../../services/iamService';
+import {
+  Badge,
+  Button,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  Menu,
+  PageHeader,
+  SearchInput,
+  Spinner,
+  cn,
+} from '@/components/ui';
+import { ListFooter, SuccessNotice, Toast, copyText, shortDate, useToast } from '../admin/AdminFeedback';
+
+interface ProvisionedTenant {
+  tenant: IamTenant;
+  ownerName: string;
+  ownerEmail: string;
+}
 
 const TenantManager: React.FC = () => {
   const pageSize = 10;
@@ -19,16 +30,19 @@ const TenantManager: React.FC = () => {
   const [ownerName, setOwnerName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingTenants, setIsLoadingTenants] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [tenantLoadError, setTenantLoadError] = useState('');
-  const [createdTenant, setCreatedTenant] = useState<IamTenant | null>(null);
-  const [createdOwnerName, setCreatedOwnerName] = useState('');
-  const [createdOwnerEmail, setCreatedOwnerEmail] = useState('');
+  const [provisioned, setProvisioned] = useState<ProvisionedTenant | null>(null);
   const [tenants, setTenants] = useState<IamTenant[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalTenants, setTotalTenants] = useState(0);
+  const [filter, setFilter] = useState('');
+  const { toast, showToast } = useToast();
 
   const totalPages = Math.max(1, Math.ceil(totalTenants / pageSize));
 
@@ -46,15 +60,45 @@ const TenantManager: React.FC = () => {
       setTenantLoadError('Unable to load tenants right now.');
     } finally {
       setIsLoadingTenants(false);
+      setHasLoadedOnce(true);
     }
   };
 
   useEffect(() => {
     fetchTenants(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // The API has no search, so this narrows the page that is already loaded.
+  const visibleTenants = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    if (!query) return tenants;
+    return tenants.filter((tenant) =>
+      [tenant.name, tenant.id, tenant.ownerName, tenant.ownerEmail].some((value) =>
+        value?.toLowerCase().includes(query),
+      ),
+    );
+  }, [filter, tenants]);
+
+  const openCreate = () => {
+    setSubmitError('');
+    setIsPasswordVisible(false);
+    setIsCreateOpen(true);
+  };
+
+  const closeCreate = () => {
+    if (isSubmitting) return;
+    setIsCreateOpen(false);
+    setSubmitError('');
+  };
+
+  const canSubmit = Boolean(
+    tenantName.trim() && ownerName.trim() && ownerEmail.trim() && ownerPassword,
+  );
+
+  const handleSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if (isSubmitting) return;
 
     const normalizedTenantName = tenantName.trim();
     const normalizedOwnerName = ownerName.trim();
@@ -76,13 +120,17 @@ const TenantManager: React.FC = () => {
         userPassword: ownerPassword,
       });
 
-      setCreatedTenant(tenant);
-      setCreatedOwnerName(normalizedOwnerName);
-      setCreatedOwnerEmail(normalizedOwnerEmail);
+      setProvisioned({
+        tenant,
+        ownerName: normalizedOwnerName,
+        ownerEmail: normalizedOwnerEmail,
+      });
       setTenantName('');
       setOwnerName('');
       setOwnerEmail('');
       setOwnerPassword('');
+      setIsCreateOpen(false);
+      setFilter('');
       fetchTenants(1);
     } catch (error) {
       console.error('Failed to create tenant:', error);
@@ -92,322 +140,302 @@ const TenantManager: React.FC = () => {
     }
   };
 
-  return (
-    <div className="flex flex-col h-full bg-white text-slate-900 font-['Inter']">
-      <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4 mb-6">
-        <div>
-          <h3 className="text-lg font-bold">Tenant Provisioning</h3>
-          <p className="text-sm text-slate-500">
-            Create a new tenant and provision its primary owner in one step.
-          </p>
-        </div>
+  const handleCopy = async (text: string, what: string) => {
+    if (await copyText(text)) showToast(`${what} copied`);
+  };
 
-        <button
-          type="button"
+  const renderTable = () => {
+    if (!hasLoadedOnce && isLoadingTenants) {
+      return <Spinner label="Loading tenants…" className="py-20" />;
+    }
+    if (tenants.length === 0) {
+      return tenantLoadError ? null : (
+        <EmptyState
+          icon={Building2}
+          title="No tenants yet"
+          description="Create a tenant to provision an institution's workspace and its first owner account."
+          action={
+            <Button variant="primary" icon={Plus} onClick={openCreate}>
+              New tenant
+            </Button>
+          }
+        />
+      );
+    }
+    if (visibleTenants.length === 0) {
+      return (
+        <EmptyState
+          compact
+          icon={Building2}
+          title="No tenants on this page match"
+          description="The filter only covers the tenants shown on this page."
+          action={
+            <Button variant="ghost" size="sm" onClick={() => setFilter('')}>
+              Clear filter
+            </Button>
+          }
+        />
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[13px]">
+          <thead>
+            <tr className="border-b border-stone-200 text-stone-500">
+              <th scope="col" className="px-4 py-2.5 font-medium">
+                Tenant
+              </th>
+              <th scope="col" className="px-4 py-2.5 font-medium">
+                Owner
+              </th>
+              <th scope="col" className="hidden px-4 py-2.5 text-right font-medium md:table-cell">
+                Created
+              </th>
+              <th scope="col" className="w-12 px-2 py-2.5">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            className={cn(
+              'divide-y divide-stone-100 transition-opacity',
+              isLoadingTenants && 'opacity-60',
+            )}
+          >
+            {visibleTenants.map((tenant) => {
+              const hasOwner = Boolean(tenant.ownerName || tenant.ownerEmail);
+              const isNew = provisioned?.tenant.id === tenant.id;
+              return (
+                <tr key={tenant.id} className="transition-colors hover:bg-stone-50">
+                  <td className="w-[45%] max-w-0 px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-medium text-stone-900">{tenant.name}</p>
+                      {isNew && <Badge tone="green">New</Badge>}
+                    </div>
+                    <p className="mt-0.5 truncate font-mono text-xs text-stone-400" title={tenant.id}>
+                      {tenant.id}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {hasOwner ? (
+                      <>
+                        <p className="text-stone-800">{tenant.ownerName || 'Unnamed owner'}</p>
+                        <p className="mt-0.5 break-all text-xs text-stone-500">
+                          {tenant.ownerEmail || 'No email on file'}
+                        </p>
+                      </>
+                    ) : (
+                      <Badge tone="amber" dot>
+                        No owner
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-right tabular-nums text-stone-600 md:table-cell">
+                    {shortDate(tenant.created) || <span className="text-stone-400">—</span>}
+                  </td>
+                  <td className="px-2 py-3 text-right">
+                    <Menu
+                      size="sm"
+                      label={`Actions for ${tenant.name}`}
+                      items={[
+                        {
+                          label: 'Copy tenant ID',
+                          icon: Copy,
+                          onSelect: () => void handleCopy(tenant.id, 'Tenant ID'),
+                        },
+                        {
+                          label: 'Copy owner email',
+                          icon: Mail,
+                          disabled: !tenant.ownerEmail,
+                          hint: tenant.ownerEmail ? undefined : 'No owner email on file',
+                          onSelect: () => {
+                            if (tenant.ownerEmail) void handleCopy(tenant.ownerEmail, 'Owner email');
+                          },
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Tenants"
+        description="Institutions on the platform and their primary owners. Creating a tenant provisions its owner account in the same step."
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openCreate}>
+            New tenant
+          </Button>
+        }
+      />
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <SearchInput
+          value={filter}
+          onChange={setFilter}
+          placeholder="Filter tenants on this page"
+          disabled={tenants.length === 0}
+          className="w-full sm:w-80"
+        />
+        <Button
+          aria-label="Refresh tenants"
+          title="Refresh tenants"
+          icon={RefreshCw}
+          loading={isLoadingTenants}
           onClick={() => fetchTenants(currentPage)}
-          disabled={isLoadingTenants}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {isLoadingTenants ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <RefreshCw size={16} />
-          )}
-          Refresh Tenants
-        </button>
+          className="w-9 px-0 sm:ml-auto"
+        />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)] gap-6 mb-6">
-        <form
-          onSubmit={handleSubmit}
-          className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm"
-        >
-          <div className="px-6 py-5 border-b border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                <Building2 size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">Create Tenant</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Set up the institution and its first owner account.
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="mt-5 space-y-4">
+        {provisioned && (
+          <SuccessNotice onDismiss={() => setProvisioned(null)}>
+            <span className="font-medium">{provisioned.tenant.name}</span> is ready for onboarding.
+            The owner, {provisioned.ownerName} ({provisioned.ownerEmail}), can sign in with the
+            temporary password you set.
+          </SuccessNotice>
+        )}
 
-          <div className="p-6 space-y-6">
-            <div className="space-y-2">
-              <label
-                htmlFor="tenant-name"
-                className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
+        {tenantLoadError && (
+          <InlineAlert
+            action={
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fetchTenants(currentPage)}
+                disabled={isLoadingTenants}
+                className="-my-1"
               >
-                Tenant Name
-              </label>
-              <input
-                id="tenant-name"
-                type="text"
+                Try again
+              </Button>
+            }
+          >
+            {tenantLoadError}
+          </InlineAlert>
+        )}
+
+        {!(tenantLoadError && tenants.length === 0) && (
+          <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+            {renderTable()}
+            {tenants.length > 0 && (
+              <ListFooter
+                page={currentPage}
+                totalPages={totalPages}
+                total={totalTenants}
+                noun="tenant"
+                disabled={isLoadingTenants}
+                onPrevious={() => fetchTenants(currentPage - 1)}
+                onNext={() => fetchTenants(currentPage + 1)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      <Dialog
+        open={isCreateOpen}
+        onClose={closeCreate}
+        dismissible={!isSubmitting}
+        width="max-w-lg"
+        title="New tenant"
+        description="Sets up the institution and its first owner account in one step."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeCreate} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSubmit()}
+              disabled={!canSubmit}
+              loading={isSubmitting}
+            >
+              {isSubmitting ? 'Provisioning…' : 'Create tenant'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {submitError && (
+            <InlineAlert onDismiss={() => setSubmitError('')}>{submitError}</InlineAlert>
+          )}
+          <Field label="Tenant name">
+            {(id) => (
+              <Input
+                id={id}
                 value={tenantName}
                 onChange={(event) => setTenantName(event.target.value)}
                 placeholder="Acme School of Medicine"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                autoComplete="off"
               />
-            </div>
+            )}
+          </Field>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="space-y-2">
-                <label
-                  htmlFor="owner-name"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Owner Name
-                </label>
-                <div className="relative">
-                  <UserRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="owner-name"
-                    type="text"
-                    value={ownerName}
-                    onChange={(event) => setOwnerName(event.target.value)}
-                    placeholder="Alex Morgan"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Owner name">
+              {(id) => (
+                <Input
+                  id={id}
+                  value={ownerName}
+                  onChange={(event) => setOwnerName(event.target.value)}
+                  placeholder="Alex Morgan"
+                  autoComplete="off"
+                />
+              )}
+            </Field>
+            <Field label="Owner email">
+              {(id) => (
+                <Input
+                  id={id}
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(event) => setOwnerEmail(event.target.value)}
+                  placeholder="owner@acme.edu"
+                  autoComplete="off"
+                />
+              )}
+            </Field>
+          </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="owner-email"
-                  className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-                >
-                  Owner Email
-                </label>
-                <div className="relative">
-                  <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="owner-email"
-                    type="email"
-                    value={ownerEmail}
-                    onChange={(event) => setOwnerEmail(event.target.value)}
-                    placeholder="owner@acme.edu"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="owner-password"
-                className="text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]"
-              >
-                Temporary Password
-              </label>
-              <input
-                id="owner-password"
-                type="password"
-                value={ownerPassword}
-                onChange={(event) => setOwnerPassword(event.target.value)}
-                placeholder="Create a temporary password"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            {submitError && (
-              <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900">
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                <p className="text-sm">{submitError}</p>
+          <Field
+            label="Temporary password"
+            description="Share it with the owner privately. Setup stops if the owner email is already in use."
+          >
+            {(id) => (
+              <div className="relative">
+                <Input
+                  id={id}
+                  type={isPasswordVisible ? 'text' : 'password'}
+                  value={ownerPassword}
+                  onChange={(event) => setOwnerPassword(event.target.value)}
+                  placeholder="Create a temporary password"
+                  autoComplete="new-password"
+                  className="pr-10"
+                />
+                <IconButton
+                  icon={isPasswordVisible ? EyeOff : Eye}
+                  label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                  size="sm"
+                  onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2"
+                />
               </div>
             )}
-
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between pt-2">
-              <p className="text-xs text-slate-500">
-                The owner account is created at the same time as the tenant.
-              </p>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Provisioning Tenant
-                  </>
-                ) : (
-                  <>
-                    <Building2 size={16} />
-                    Create Tenant
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          </Field>
+          {/* Enter in any field submits. */}
+          <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
         </form>
+      </Dialog>
 
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-            <div className="flex items-center gap-3 mb-3">
-              <ShieldCheck size={18} className="text-emerald-600" />
-              <p className="text-sm font-bold text-slate-900">What Happens</p>
-            </div>
-            <div className="space-y-2 text-sm text-slate-600">
-              <p>A new owner account is provisioned for the tenant during setup.</p>
-              <p>The owner is attached immediately so the tenant is ready for onboarding.</p>
-              <p>For now, setup stops if that owner email is already in use.</p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm min-h-[220px]">
-            <div className="flex items-center gap-3 mb-4">
-              <CheckCircle2 size={18} className="text-emerald-600" />
-              <p className="text-sm font-bold text-slate-900">Provisioning Status</p>
-            </div>
-
-            {createdTenant ? (
-              <div className="space-y-3 text-sm text-slate-700">
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-900">
-                  Tenant and owner account created successfully.
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Tenant
-                  </p>
-                  <p>{createdTenant.name}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Owner
-                  </p>
-                  <p>{createdOwnerName}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Owner Email
-                  </p>
-                  <p>{createdOwnerEmail}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Status
-                  </p>
-                  <p>Ready for the next onboarding step.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-10">
-                <Building2 size={40} className="text-slate-200 mb-4" />
-                <p className="font-medium text-slate-900">No tenant created yet</p>
-                <p className="text-sm mt-1 max-w-sm">
-                  Create a tenant to provision a fresh workspace and its initial owner account.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900">Tenant Directory</h4>
-            <p className="text-xs text-slate-500 mt-1">
-              Review current tenants and their primary owners.
-            </p>
-          </div>
-          <div className="text-xs font-semibold text-slate-500">
-            {totalTenants} tenant{totalTenants === 1 ? '' : 's'}
-          </div>
-        </div>
-
-        {tenantLoadError && (
-          <div className="mx-6 mt-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900">
-            <AlertCircle size={18} className="mt-0.5 shrink-0" />
-            <p className="text-sm">{tenantLoadError}</p>
-          </div>
-        )}
-
-        {!tenantLoadError && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-white">
-                <tr className="border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Tenant</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Owner</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Owner Email</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Created</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoadingTenants ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading tenants
-                      </div>
-                    </td>
-                  </tr>
-                ) : tenants.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
-                      No tenants found.
-                    </td>
-                  </tr>
-                ) : (
-                  tenants.map((tenant) => (
-                    <tr key={tenant.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{tenant.name}</p>
-                          <p className="text-xs text-slate-500 mt-1">{tenant.id}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {tenant.ownerName || 'Unassigned'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {tenant.ownerEmail || 'Unavailable'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {tenant.created ? new Date(tenant.created).toLocaleDateString() : 'Unavailable'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-          <p className="text-xs text-slate-500">
-            Page {currentPage} of {totalPages}
-          </p>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fetchTenants(currentPage - 1)}
-              disabled={currentPage <= 1 || isLoadingTenants}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft size={14} />
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => fetchTenants(currentPage + 1)}
-              disabled={currentPage >= totalPages || isLoadingTenants}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
+      <Toast message={toast} />
     </div>
   );
 };

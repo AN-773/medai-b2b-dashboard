@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Search, X, Check } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
+import { Badge, Button, cn } from '@/components/ui';
+import { SelectPopover, filterOptions, isTypeaheadKey } from '@/components/select/SelectPopover';
 
 export interface SelectOption {
   id: string;
@@ -16,6 +18,10 @@ interface MultiSearchableSelectProps {
   className?: string;
 }
 
+/**
+ * Multi-value combobox: selected values sit in the control as removable chips,
+ * the portaled listbox toggles options and stays open, and "Clear" empties it.
+ */
 const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
   options,
   values,
@@ -27,157 +33,196 @@ const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [popupDirection, setPopupDirection] = useState<'down' | 'up'>('down');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const baseId = useId();
+  const triggerId = `${baseId}-trigger`;
+  const labelId = `${baseId}-label`;
+  const listboxId = `${baseId}-listbox`;
 
-  // Close dropdown when clicking outside
+  const filteredOptions = filterOptions(options, searchQuery);
+  const selectedOptions = options.filter((option) => values.includes(option.id));
+  const hasValues = values.length > 0;
+  const canClear = hasValues && !disabled;
+
+  const close = (restoreFocus: boolean) => {
+    setIsOpen(false);
+    setSearchQuery('');
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setSearchQuery('');
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Focus input when dropdown opens
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-
-    if (isOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const dropdownHeight = 320; // Approx height of search input + max-h-60 list
-
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        setPopupDirection('up');
-      } else {
-        setPopupDirection('down');
-      }
-    }
-  }, [isOpen]);
-
-  const filteredOptions = options.filter(option =>
-    option?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const selectedOptions = options.filter(opt => values.includes(opt.id));
+    if (disabled && isOpen) close(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled]);
 
   const handleSelect = (optionId: string) => {
     if (values.includes(optionId)) {
-      onChange(values.filter(v => v !== optionId));
+      onChange(values.filter((v) => v !== optionId));
     } else {
       onChange([...values, optionId]);
     }
   };
 
-  const removeValue = (e: React.MouseEvent, optionId: string) => {
-    e.stopPropagation();
-    onChange(values.filter(v => v !== optionId));
+  const removeValue = (optionId: string) => {
+    onChange(values.filter((v) => v !== optionId));
   };
 
+  const clearAll = () => onChange([]);
+
+  const toggle = () => {
+    if (disabled) return;
+    if (isOpen) close(true);
+    else setIsOpen(true);
+  };
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled || isOpen) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setIsOpen(true);
+    } else if (event.key === 'Backspace' && hasValues) {
+      // Like a tag input: Backspace on the closed control drops the last chip.
+      event.preventDefault();
+      onChange(values.slice(0, -1));
+    } else if (isTypeaheadKey(event)) {
+      event.preventDefault();
+      setSearchQuery(event.key);
+      setIsOpen(true);
+    }
+  };
+
+  const summary = selectedOptions.map((option) => option.name).join(', ');
+
   return (
-    <div className={`space-y-2 ${className}`} ref={containerRef}>
+    <div className={cn('min-w-0', className)} ref={rootRef}>
       {label && (
-        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
+        <label
+          id={labelId}
+          htmlFor={triggerId}
+          className="mb-1.5 block text-[13px] font-medium text-stone-700"
+        >
           {label}
         </label>
       )}
-      
-      <div className="relative">
-        {/* Trigger Button */}
+
+      {/* The whole control opens the list; chips and the clear button stop the click. */}
+      <div
+        ref={anchorRef}
+        onClick={toggle}
+        className={cn(
+          'relative flex min-h-9 w-full flex-wrap items-center gap-1 rounded-lg border bg-white py-1 pl-1.5 text-sm shadow-card transition',
+          canClear ? 'pr-14' : 'pr-8',
+          disabled
+            ? 'cursor-not-allowed border-stone-200 bg-stone-50'
+            : 'cursor-pointer border-stone-200 hover:border-stone-300',
+          isOpen
+            ? 'border-brand-500 ring-[3px] ring-brand-500/15'
+            : 'focus-within:border-brand-500 focus-within:ring-[3px] focus-within:ring-brand-500/15',
+        )}
+      >
+        {selectedOptions.map((option) => (
+          <Badge
+            key={option.id}
+            className={cn('max-w-full', disabled ? 'text-stone-500' : 'pr-0.5')}
+            title={option.name}
+          >
+            <span className="max-w-[12rem] truncate">{option.name}</span>
+            {!disabled && (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Remove ${option.name}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removeValue(option.id);
+                }}
+                className="rounded p-px text-stone-400 transition-colors hover:bg-stone-200 hover:text-stone-700"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </Badge>
+        ))}
+
         <button
           ref={triggerRef}
+          id={triggerId}
           type="button"
+          role="combobox"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? listboxId : undefined}
+          aria-labelledby={label ? labelId : undefined}
+          aria-label={label ? undefined : placeholder}
           disabled={disabled}
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          className={`w-full flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-[#1BD183] outline-none transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[42px] ${
-            isOpen ? 'ring-2 ring-[#1BD183] border-[#1BD183]' : ''
-          }`}
+          onKeyDown={handleTriggerKeyDown}
+          className="h-6 min-w-[3rem] flex-1 truncate bg-transparent px-1.5 text-left outline-none disabled:cursor-not-allowed"
         >
           {selectedOptions.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 max-w-[90%]">
-              {selectedOptions.map(opt => (
-                <span key={opt.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700 shadow-sm text-[10px] font-bold uppercase tracking-tight">
-                  {opt.name}
-                  <X 
-                    size={10} 
-                    className="text-slate-400 hover:text-rose-500 cursor-pointer" 
-                    onClick={(e) => removeValue(e, opt.id)}
-                  />
-                </span>
-              ))}
-            </div>
+            <span className="sr-only">
+              {selectedOptions.length} selected: {summary}
+            </span>
           ) : (
-            <span className="text-slate-400 font-bold uppercase tracking-tight px-2">{placeholder}</span>
+            <span className="text-stone-400">{placeholder}</span>
           )}
-          
-          <ChevronDown
-            size={14}
-            className={`text-slate-400 transition-transform duration-200 ml-2 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-          />
         </button>
 
-        {/* Dropdown */}
-        {isOpen && (
-          <div 
-            className={`absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200 ${
-              popupDirection === 'up' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'
-            }`}
-          >
-            {/* Search Input */}
-            <div className="p-3 border-b border-slate-100">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                />
-              </div>
-            </div>
-
-            {/* Options List */}
-            <div className="max-h-60 overflow-y-auto">
-              {filteredOptions.length === 0 ? (
-                <div className="px-4 py-6 text-center text-xs font-bold text-slate-400">
-                  No options found
-                </div>
-              ) : (
-                filteredOptions.map((option) => {
-                  const isSelected = values.includes(option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleSelect(option.id)}
-                      className={`w-full flex items-center justify-between px-4 py-3 text-left text-xs font-bold transition-colors ${
-                        isSelected
-                          ? 'bg-[#1BD183]/10 text-[#1BD183]'
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="uppercase tracking-tight">{option.name}</span>
-                      {isSelected && <Check size={14} />}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
+        <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-0.5">
+          {canClear && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                clearAll();
+                triggerRef.current?.focus();
+              }}
+              aria-label={label ? `Clear ${label}` : 'Clear all'}
+              title="Clear all"
+              className="pointer-events-auto rounded p-0.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+            >
+              <X size={14} />
+            </button>
+          )}
+          <ChevronDown
+            size={15}
+            aria-hidden="true"
+            className={cn('text-stone-400 transition-transform duration-150', isOpen && 'rotate-180')}
+          />
+        </div>
       </div>
+
+      <SelectPopover
+        open={isOpen}
+        anchorRef={anchorRef}
+        insideRef={rootRef}
+        listboxId={listboxId}
+        label={label || placeholder}
+        options={filteredOptions}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        isSelected={(id) => values.includes(id)}
+        onPick={handleSelect}
+        onDismiss={close}
+        multiple
+        footer={
+          <>
+            <span className="text-[13px] tabular-nums text-stone-500">
+              {hasValues ? `${values.length} selected` : 'None selected'}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" tabIndex={-1} onClick={clearAll} disabled={!hasValues}>
+                Clear
+              </Button>
+              <Button variant="secondary" size="sm" tabIndex={-1} onClick={() => close(true)}>
+                Done
+              </Button>
+            </div>
+          </>
+        }
+      />
     </div>
   );
 };

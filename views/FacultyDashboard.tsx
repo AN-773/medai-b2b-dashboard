@@ -1,29 +1,50 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity,
   AlertTriangle,
-  ArrowUpRight,
+  ArrowRight,
   BarChart3,
-  Brain,
-  Calendar,
+  BookOpen,
+  CalendarClock,
   CheckCircle2,
-  Clock,
-  Clock as ClockIcon,
   Download,
-  Plus,
-  RefreshCw,
+  Gauge,
+  Library,
+  ListChecks,
+  Sparkles,
   Target,
-  TrendingUp,
-  Users,
+  TrendingDown,
+  UserPlus,
+  UsersRound,
 } from 'lucide-react';
 import { CohortRiskChart } from '@/components/student_mastery/CohortRiskChart';
 import { SystemMasteryChart } from '@/components/student_mastery/SystemMasteryChart';
 import { academyStudioBackend } from '@/services/academyStudioBackend';
 import { cohortMetricsService } from '@/services/cohortMetricsService';
-import type { TeacherCohort } from '@/types/AcademyStudioTypes';
+import type { TeacherCohort, TeacherCourse } from '@/types/AcademyStudioTypes';
 import type { CohortMetricsReport } from '@/types/CohortMetricsTypes';
 import type { FacultyAlert, Intervention } from '@/types';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  InlineAlert,
+  PageHeader,
+  ProgressBar,
+  SegmentedControl,
+  Select,
+  Spinner,
+  type BadgeTone,
+} from '@/components/ui';
+import { getCoursePendingSuggestionCount } from '@/components/academy/course-workbench/shared';
+import { DashboardPanel } from '@/components/dashboard/DashboardPanel';
+import { KpiTile, SegmentBar } from '@/components/dashboard/KpiTile';
+import {
+  NeedsAttentionList,
+  sortByPriority,
+  type AttentionItem,
+} from '@/components/dashboard/NeedsAttentionList';
+import { getTAPRStatus } from '@/utils/masteryMathStatus';
 import {
   formatPacing,
   formatScore,
@@ -31,8 +52,7 @@ import {
   getIdSuffix,
 } from './mastery/masteryShared';
 
-type FacultyView = 'OVERVIEW' | 'INTERVENTIONS';
-type TimeRange = 'WEEK' | 'MONTH' | 'SEMESTER' | 'YEAR';
+type ReadinessFilter = 'all' | 'at-risk';
 
 type ReadinessDistributionEntry = {
   range: string;
@@ -43,6 +63,12 @@ type CourseMasteryEntry = {
   system: string;
   mastery: number;
 };
+
+/** Courses listed one per row in "Needs attention" before collapsing into a summary row. */
+const MAX_REVIEW_ROWS = 3;
+
+const plural = (count: number, word: string) =>
+  `${count.toLocaleString()} ${word}${count === 1 ? '' : 's'}`;
 
 const emptyDistribution: ReadinessDistributionEntry[] = [
   { range: 'High', count: 0 },
@@ -60,21 +86,6 @@ const buildReadinessDistribution = (
   { range: 'Critical', count: report.readinessDistribution.critical },
 ];
 
-const buildTimeSavings = (learnerCount: number, atRiskCount: number) => {
-  const traditionalTime = learnerCount * 0.5;
-  const assistedTime =
-    atRiskCount * (5 / 60) + Math.max(learnerCount - atRiskCount, 0) * (2 / 60);
-  const weeklySavings = Math.max(traditionalTime - assistedTime, 0);
-
-  return {
-    hoursThisWeek: Math.round(weeklySavings * 5),
-    hoursThisMonth: Math.round(weeklySavings * 20),
-    efficiencyGain: Math.round(
-      ((traditionalTime - assistedTime) / (traditionalTime || 1)) * 100,
-    ),
-  };
-};
-
 const buildAlerts = (
   report: CohortMetricsReport,
   courseMastery: CourseMasteryEntry[],
@@ -86,33 +97,33 @@ const buildAlerts = (
   if (behindCount > 0) {
     alerts.push({
       id: 'alert-at-risk',
-      title: `${behindCount} Students At Risk`,
-      description: `${Math.round((behindCount / Math.max(report.learnerCount, 1)) * 100)}% of the cohort is currently behind pacing expectations.`,
+      title: `${plural(behindCount, 'learner')} behind pace`,
+      description: `${Math.round((behindCount / Math.max(report.learnerCount, 1)) * 100)}% of the cohort is behind pacing expectations.`,
       priority: behindCount / Math.max(report.learnerCount, 1) >= 0.25 ? 'HIGH' : 'MEDIUM',
       timeAgo: 'Live',
-      suggestedAction: 'Review intervention queue',
+      suggestedAction: 'Review learners',
     });
   }
 
   if (weakestCourse) {
     alerts.push({
       id: 'alert-weakest-course',
-      title: `${weakestCourse.system} Weakness Detected`,
-      description: `Average mastery in ${weakestCourse.system} is ${weakestCourse.mastery}%.`,
+      title: `${weakestCourse.system} has the lowest mastery`,
+      description: `Average mastery is ${weakestCourse.mastery}%. A targeted review session could close the gap.`,
       priority: weakestCourse.mastery < 60 ? 'HIGH' : 'MEDIUM',
       timeAgo: 'Live',
-      suggestedAction: `Schedule ${weakestCourse.system} review`,
+      suggestedAction: 'Plan a review',
     });
   }
 
   if (report.window.daysRemaining > 0) {
     alerts.push({
       id: 'alert-window',
-      title: `${report.window.daysRemaining} Days Remaining`,
-      description: `${report.window.expectedLOsCovered.toFixed(0)} learning objectives should be covered by now to stay on pace.`,
+      title: `${plural(report.window.daysRemaining, 'day')} left in the term`,
+      description: `${plural(Math.round(report.window.expectedLOsCovered), 'learning objective')} should be covered by now to stay on pace.`,
       priority: report.window.daysRemaining <= 14 ? 'HIGH' : 'LOW',
       timeAgo: 'Live',
-      suggestedAction: 'Align pacing plan',
+      suggestedAction: 'Check pacing',
     });
   }
 
@@ -121,7 +132,7 @@ const buildAlerts = (
   return [
     {
       id: 'alert-clear',
-      title: 'No Priority Alerts',
+      title: 'No priority alerts',
       description: 'This cohort currently has no critical readiness or pacing flags.',
       priority: 'LOW',
       timeAgo: 'Live',
@@ -146,7 +157,7 @@ const buildInterventions = (
     interventions.push({
       id: 'intervention-course-review',
       priority: weakestCourse.mastery < 60 ? 'HIGH' : 'MEDIUM',
-      title: `${weakestCourse.system} Review Session`,
+      title: `${weakestCourse.system} review session`,
       description: 'Targeted review session to close the largest measured course gap across the cohort.',
       estimatedTime: '2 hours',
       expectedImpact: Math.max(4, Math.round((80 - weakestCourse.mastery) / 3)),
@@ -160,7 +171,7 @@ const buildInterventions = (
     interventions.push({
       id: 'intervention-behind-learners',
       priority: behindCount >= Math.max(report.learnerCount * 0.25, 1) ? 'HIGH' : 'MEDIUM',
-      title: 'Pacing Reset Session',
+      title: 'Pacing reset session',
       description: 'Focused advising block for learners who are behind expected cohort progress.',
       estimatedTime: '90 minutes',
       expectedImpact: 6,
@@ -174,7 +185,7 @@ const buildInterventions = (
     interventions.push({
       id: 'intervention-peer-support',
       priority: 'LOW',
-      title: 'Peer Mentoring Group',
+      title: 'Peer mentoring group',
       description: 'Use ahead learners to support on-track peers in guided review sessions.',
       estimatedTime: '1 hour',
       expectedImpact: 3,
@@ -187,14 +198,25 @@ const buildInterventions = (
   return interventions.slice(0, 3);
 };
 
+const ALERT_ICONS: Record<string, AttentionItem['icon']> = {
+  'alert-at-risk': AlertTriangle,
+  'alert-weakest-course': TrendingDown,
+  'alert-window': CalendarClock,
+};
+
+const PACING_BADGE: Record<string, { tone: BadgeTone; label: string }> = {
+  Behind: { tone: 'amber', label: 'Behind' },
+  'On Pace': { tone: 'green', label: 'On pace' },
+  Ahead: { tone: 'blue', label: 'Ahead' },
+};
+
 const FacultyDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<FacultyView>('OVERVIEW');
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRange>('SEMESTER');
   const [showAtRiskOnly, setShowAtRiskOnly] = useState(false);
 
   const [cohorts, setCohorts] = useState<TeacherCohort[]>([]);
+  const [courses, setCourses] = useState<TeacherCourse[]>([]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
@@ -212,6 +234,7 @@ const FacultyDashboard: React.FC = () => {
       .then((snapshot) => {
         if (!active) return;
         setCohorts(snapshot.cohorts);
+        setCourses(snapshot.courses);
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -306,15 +329,6 @@ const FacultyDashboard: React.FC = () => {
     );
   }, [cohortReport, showAtRiskOnly]);
 
-  const timeSavings = useMemo(
-    () =>
-      buildTimeSavings(
-        cohortReport?.learnerCount || selectedCohort?.studentIds.length || 0,
-        cohortReport?.atRiskCount || 0,
-      ),
-    [cohortReport, selectedCohort],
-  );
-
   const alerts = useMemo(
     () => (cohortReport ? buildAlerts(cohortReport, courseMastery) : []),
     [cohortReport, courseMastery],
@@ -344,12 +358,24 @@ const FacultyDashboard: React.FC = () => {
     };
   }, [cohortReport]);
 
-  const selectedCohortName = selectedCohort?.title || 'No cohort selected';
-  const selectedCohortMeta = selectedCohort?.term || `${cohortReport?.learnerCount || 0} learners`;
+  // Courses with AI-suggested objectives waiting for review, most first.
+  const coursesToReview = useMemo(
+    () =>
+      courses
+        .filter((course) => getCoursePendingSuggestionCount(course) > 0)
+        .sort(
+          (left, right) =>
+            getCoursePendingSuggestionCount(right) - getCoursePendingSuggestionCount(left),
+        ),
+    [courses],
+  );
+
   const weakestCourse = courseMastery[0] || null;
+  const strongestCourse = courseMastery.length > 1 ? courseMastery[courseMastery.length - 1] : null;
   const actionableAlerts = alerts.filter((alert) => alert.id !== 'alert-clear');
-  const criticalAlertsCount = alerts.filter((alert) => alert.priority === 'HIGH').length;
-  const alertCards = actionableAlerts.slice(0, 2);
+  const courseReviewImpact = interventions.find(
+    (intervention) => intervention.id === 'intervention-course-review',
+  )?.expectedImpact;
 
   const handleExportReport = () => {
     if (!selectedCohort || !cohortReport || typeof window === 'undefined') return;
@@ -397,656 +423,426 @@ const FacultyDashboard: React.FC = () => {
     navigate('/curricula');
   };
 
-  const HeaderNavigation = () => (
-    <div>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6">
-            <div className="flex items-center justify-between xl:justify-start gap-2 p-1.5 bg-white rounded-[2.5rem] w-full xl:w-fit overflow-x-auto no-scrollbar">
-              {[
-                { id: 'OVERVIEW' as const, icon: BarChart3, label: 'Overview' },
-                {
-                  id: 'INTERVENTIONS' as const,
-                  icon: Brain,
-                  label: 'Interventions',
-                },
-              ].map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => {
-                    setActiveView(type.id);
-                  }}
-                  className={`flex-1 xl:flex-none flex items-center justify-center gap-2 xl:gap-3 px-4 xl:px-8 py-3 xl:py-3.5 rounded-[2rem] text-[10px] xl:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeView === type.id ? 'bg-[#1BD183] text-white shadow-md shadow-[#1BD183]/20' : 'text-slate-500 hover:bg-slate-300/50'}`}
+  const handleReviewCourse = (course: TeacherCourse) => {
+    navigate(`/courses?courseId=${encodeURIComponent(course.id)}&tab=objectives`);
+  };
+
+  // --- Needs attention -------------------------------------------------------
+  const attentionItems: AttentionItem[] = (() => {
+    if (!cohortReport) return [];
+    const items: AttentionItem[] = [];
+
+    if (cohortReport.learnerCount === 0) {
+      items.push({
+        id: 'no-learners',
+        priority: 'MEDIUM',
+        icon: UserPlus,
+        title: 'No learners in this cohort yet',
+        detail: 'Add learners so readiness, pacing and coverage can be measured.',
+        actionLabel: 'Add learners',
+        onSelect: () => navigate('/cohorts'),
+      });
+    }
+
+    actionableAlerts.forEach((alert) => {
+      items.push({
+        id: alert.id,
+        priority: alert.priority,
+        icon: ALERT_ICONS[alert.id] ?? AlertTriangle,
+        title: alert.title,
+        detail: alert.description,
+        actionLabel: alert.suggestedAction ?? 'Open in Mastery',
+        onSelect: handleOpenInterventions,
+      });
+    });
+
+    const peerSupport = interventions.find(
+      (intervention) => intervention.id === 'intervention-peer-support',
+    );
+    if (peerSupport) {
+      items.push({
+        id: peerSupport.id,
+        priority: peerSupport.priority,
+        icon: UsersRound,
+        title: `${plural(peerSupport.studentCount, 'learner')} ahead of pace`,
+        detail: `${peerSupport.title}: ${peerSupport.description.charAt(0).toLowerCase()}${peerSupport.description.slice(1)}`,
+        actionLabel: 'See learners',
+        onSelect: handleOpenInterventions,
+      });
+    }
+
+    coursesToReview.slice(0, MAX_REVIEW_ROWS).forEach((course) => {
+      const pending = getCoursePendingSuggestionCount(course);
+      items.push({
+        id: `review-${course.id}`,
+        priority: 'MEDIUM',
+        icon: Sparkles,
+        title: `Review ${plural(pending, 'suggested objective')} in ${course.title}`,
+        detail: 'AI proposed these from your sources. Nothing is added to the course until you accept it.',
+        actionLabel: 'Review',
+        onSelect: () => handleReviewCourse(course),
+      });
+    });
+
+    const remainingReviews = coursesToReview.length - MAX_REVIEW_ROWS;
+    if (remainingReviews > 0) {
+      items.push({
+        id: 'review-more',
+        priority: 'MEDIUM',
+        icon: BookOpen,
+        title: `${plural(remainingReviews, 'more course')} with suggestions to review`,
+        detail: 'Filter Courses by "Needs review" to work through them.',
+        actionLabel: 'Open courses',
+        onSelect: () => navigate('/courses'),
+      });
+    }
+
+    return sortByPriority(items);
+  })();
+
+  const highPriorityCount = attentionItems.filter((item) => item.priority === 'HIGH').length;
+
+  // --- Page states ------------------------------------------------------------
+  const header = (
+    <PageHeader
+      title="Dashboard"
+      description="How your cohort is progressing, and what needs your attention."
+      actions={
+        cohorts.length > 0 ? (
+          <>
+            <label className="flex items-center gap-2">
+              <span className="text-[13px] text-stone-500">Cohort</span>
+              <span className="block w-52 sm:w-60">
+                <Select
+                  value={selectedCohortId ?? ''}
+                  onChange={(event) => setSelectedCohortId(event.target.value)}
                 >
-                  <type.icon size={14} />
-                  {type.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleExportReport}
-            disabled={!cohortReport}
-            className="w-full xl:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            <Download size={14} />
-            Export Report
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const CohortSelector = () => (
-    <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-          Cohort Management
-        </h3>
-        {/* <div className="flex items-center gap-3">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Time Range:
-          </span>
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-            className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#1BD183]"
-          >
-            <option value="WEEK">This Week</option>
-            <option value="MONTH">This Month</option>
-            <option value="SEMESTER">This Semester</option>
-            <option value="YEAR">This Year</option>
-          </select>
-        </div> */}
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            {cohorts.map((cohort) => (
-              <button
-                key={cohort.id}
-                onClick={() => setSelectedCohortId(cohort.id)}
-                className={`p-4 rounded-2xl border text-left transition-all ${
-                  selectedCohortId === cohort.id
-                    ? 'bg-[#1BD183]/10 border-[#1BD183] shadow-sm ring-2 ring-[#1BD183]/20'
-                    : 'bg-white border-slate-200 hover:border-[#1BD183]/30 hover:shadow-sm'
-                }`}
-              >
-                <div
-                  className={`font-black text-sm mb-1 ${selectedCohortId === cohort.id ? 'text-[#1BD183]' : 'text-slate-700'}`}
-                >
-                  {cohort.title}
-                </div>
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <Calendar size={12} />
-                  {cohortReport && selectedCohortId === cohort.id
-                    ? cohortReport.learnerCount
-                    : cohort.studentIds.length}{' '}
-                  learners
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="w-full lg:w-72 space-y-3">
-          <div className="bg-slate-900 rounded-2xl p-5 text-white flex justify-between items-center">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
-                Active View
-              </div>
-              <div className="font-bold text-lg">{selectedCohortName}</div>
-              <div className="text-xs text-slate-400 mt-1">{selectedCohortMeta}</div>
-            </div>
-            <Users className="text-[#1BD183]" />
-          </div>
-          {/* <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex justify-between items-center">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">
-                Faculty Time Saved
-              </div>
-              <div className="font-black text-lg text-emerald-800">
-                {timeSavings.hoursThisWeek}h{' '}
-                <span className="text-xs font-medium opacity-70">
-                  this week
-                </span>
-              </div>
-            </div>
-            <Clock className="text-emerald-500" />
-          </div> */}
-        </div>
-      </div>
-    </div>
-  );
-
-  const OverviewDashboard = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Cohort Readiness"
-          value={`${analytics.avgReadiness}%`}
-          icon={<Target className="text-[#1BD183]" size={24} />}
-          color="emerald"
-          subtitle="USMLE Step 1 Projection"
-        />
-        <MetricCard
-          title="At Risk Students"
-          value={analytics.atRiskCount}
-          icon={<AlertTriangle className="text-rose-600" size={24} />}
-          color="rose"
-          subtitle="Early detection rate"
-        />
-        <MetricCard
-          title="Avg TAPR"
-          value={formatPacing(analytics.avgPacing)}
-          icon={<Clock className="text-amber-600" size={24} />}
-          color="amber"
-          subtitle="Pacing velocity"
-        />
-        <MetricCard
-          title="Coverage"
-          value={`${analytics.avgCoverage}%`}
-          icon={<Activity className="text-emerald-600" size={24} />}
-          color="emerald"
-          subtitle="Curriculum completion"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h4 className="font-black text-slate-900 uppercase tracking-tight">
-              Readiness Distribution
-            </h4>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowAtRiskOnly(!showAtRiskOnly)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors ${
-                  showAtRiskOnly
-                    ? 'bg-rose-100 text-rose-700'
-                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
-              >
-                {showAtRiskOnly ? 'Show All' : 'Filter At Risk'}
-              </button>
-            </div>
-          </div>
-          <CohortRiskChart data={readinessDistribution} />
-        </div>
-
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h4 className="font-black text-slate-900 uppercase tracking-tight">
-              Courses Mastery
-            </h4>
-            <div className="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg">
-              Weakest:{' '}
-              <span className="text-rose-600 font-black">
-                {weakestCourse?.system || 'No data'}
+                  {cohorts.map((cohort) => (
+                    <option key={cohort.id} value={cohort.id}>
+                      {cohort.title}
+                    </option>
+                  ))}
+                </Select>
               </span>
-            </div>
-          </div>
-          {courseMastery.length > 0 ? (
-            <SystemMasteryChart data={courseMastery} />
-          ) : (
-            <div className="min-h-[250px] flex items-center justify-center text-xs font-bold uppercase tracking-widest text-slate-400">
-              No course mastery data
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h4 className="font-black text-slate-900 uppercase tracking-tight">
-              Priority Alerts
-            </h4>
-            <span
-              className={`rounded-xl px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
-                criticalAlertsCount > 0
-                  ? 'bg-rose-100 text-rose-700'
-                  : 'bg-emerald-100 text-emerald-700'
-              }`}
+            </label>
+            <Button
+              icon={Download}
+              onClick={handleExportReport}
+              disabled={!cohortReport}
+              title="Download this cohort's metrics as JSON"
             >
-              {criticalAlertsCount} Critical
-            </span>
-          </div>
-
-          {alertCards.length > 0 ? (
-            <div className="space-y-4">
-              {alertCards.map((alert, index) => (
-                <div
-                  key={alert.id}
-                  className="overflow-hidden rounded-[1.5rem] border border-[#E7DFC6] bg-[#F4F0E2] shadow-sm"
-                >
-                  <div className="flex gap-0">
-                    <div className="w-1.5 shrink-0 bg-[#F59E0B]" aria-hidden="true" />
-                    <div className="flex-1 px-5 py-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="text-sm font-black text-slate-900">
-                            {alert.title}
-                          </div>
-                          <div className="mt-1 max-w-xl text-sm font-semibold text-slate-600">
-                            {alert.description}
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-[10px] font-black uppercase tracking-[0.2em] text-[#8A9BB8]">
-                          {index === 0 ? 'Just now' : '2 hours ago'}
-                        </div>
-                      </div>
-
-                      {alert.suggestedAction && (
-                        <button
-                          type="button"
-                          onClick={handleOpenInterventions}
-                          className="mt-5 flex w-full items-center justify-between border-t border-[#E0D7BC] pt-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-[#4F46E5] transition hover:text-[#4338CA]"
-                        >
-                          <span>{alert.suggestedAction}</span>
-                          <ArrowUpRight size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex min-h-[208px] flex-col justify-between rounded-[1.5rem] border border-emerald-100 bg-[linear-gradient(135deg,#F4FBF6_0%,#EDF7F1_100%)] px-6 py-6 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-                    <CheckCircle2 size={20} />
-                  </div>
-                  <div>
-                    <div className="text-sm font-black text-slate-900">
-                      No Priority Alerts
-                    </div>
-                    <div className="mt-1 max-w-md text-sm font-semibold leading-relaxed text-slate-600">
-                      This cohort has no critical readiness or pacing flags right now. Monitoring stays active as new mastery data arrives.
-                    </div>
-                  </div>
-                </div>
-                <div className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-                  Stable
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-between border-t border-emerald-200/80 pt-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                  Continue monitoring cohort signals
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLaunchAnalytics}
-                  className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#4F46E5] transition hover:text-[#4338CA]"
-                >
-                  Open Deep Analytics
-                  <ArrowUpRight size={14} />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col justify-between rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h4 className="font-black text-slate-900 uppercase tracking-tight">
-                Quick Actions
-              </h4>
-              <RefreshCw size={18} className="text-slate-400" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={handleOpenInterventions}
-                className="rounded-[1.35rem] bg-[#E9EDFB] px-5 py-5 text-left transition hover:bg-[#DEE5FB]"
-              >
-                <div className="text-sm font-black text-[#4338CA]">
-                  Schedule Review
-                </div>
-                <div className="mt-1 text-xs font-semibold text-[#6366F1]">
-                  Meet with at-risk students
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSendResources}
-                className="rounded-[1.35rem] bg-[#E4F2EC] px-5 py-5 text-left transition hover:bg-[#D9ECE4]"
-              >
-                <div className="text-sm font-black text-[#047857]">
-                  Send Resources
-                </div>
-                <div className="mt-1 text-xs font-semibold text-[#0F8A64]">
-                  Share study materials
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLaunchAnalytics}
-                className="rounded-[1.35rem] bg-[#F0EAF6] px-5 py-5 text-left transition hover:bg-[#E9E0F2] md:col-span-2"
-              >
-                <div className="flex items-center gap-2 text-sm font-black text-[#7C3AED]">
-                  <BarChart3 size={16} />
-                  Launch Deep Analytics
-                </div>
-                <div className="mt-1 text-xs font-semibold text-[#8B5CF6]">
-                  Open full student mastery dashboard
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <div className="flex items-start gap-4 rounded-[1.35rem] bg-[#352F8E] px-5 py-5 text-white shadow-lg shadow-[#352F8E]/15">
-              <Brain className="mt-0.5 shrink-0 text-[#A7B2FF]" size={22} />
-              <div>
-                <div className="mb-1 text-sm font-black uppercase tracking-[0.18em] text-[#A7B2FF]">
-                  SINA Insight
-                </div>
-                <div className="text-sm font-semibold leading-relaxed text-white">
-                  {weakestCourse ? (
-                    <>
-                      Cohort would benefit from a focused{' '}
-                      <strong>{weakestCourse.system} workshop</strong>. Estimated
-                      impact:{' '}
-                      <span className="font-black text-[#39E6A7]">
-                        +{Math.max(4, Math.round((80 - weakestCourse.mastery) / 3))}% readiness
-                      </span>
-                      .
-                    </>
-                  ) : (
-                    'Course-level insight will appear once detailed cohort metrics are available.'
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const InterventionsView = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-      <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
-          <div>
-            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-              Intervention Queue
-            </h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">
-              Course-recommended actions prioritized by impact
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-rose-200">
-              {interventions.filter((intervention) => intervention.priority === 'HIGH').length}{' '}
-              Critical
-            </span>
-            <button className="px-5 py-2.5 bg-[#1BD183] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#1BD183]/90 transition shadow-lg shadow-[#1BD183]/20 flex items-center gap-2 active:scale-95">
-              <Plus size={14} />
-              Add Custom
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {interventions.map((intervention) => (
-            <div
-              key={intervention.id}
-              className="p-6 border border-slate-200 rounded-[1.5rem] hover:border-emerald-200 hover:shadow-md transition-all group bg-white"
+              Export
+            </Button>
+            <Button
+              variant="primary"
+              icon={BarChart3}
+              onClick={handleLaunchAnalytics}
+              disabled={!selectedCohort}
             >
-              <div className="flex flex-col md:flex-row items-start justify-between gap-6">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                        intervention.priority === 'HIGH'
-                          ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                          : intervention.priority === 'MEDIUM'
-                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                            : 'bg-blue-100 text-blue-700 border border-blue-200'
-                      }`}
-                    >
-                      {intervention.priority} PRIORITY
-                    </div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">
-                      Targets {intervention.studentCount} students
-                    </div>
-                  </div>
-
-                  <h4 className="font-black text-slate-900 text-lg mb-2">
-                    {intervention.title}
-                  </h4>
-                  <p className="text-sm text-slate-600 font-medium leading-relaxed mb-4 max-w-2xl">
-                    {intervention.description}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <ClockIcon size={14} className="text-slate-400" />
-                      <span className="text-xs font-bold text-slate-700">
-                        {intervention.estimatedTime}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <TrendingUp size={14} className="text-emerald-500" />
-                      <span className="text-xs font-black text-emerald-600 uppercase tracking-wide">
-                        +{intervention.expectedImpact}% readiness
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Brain size={14} className="text-[#1BD183]" />
-                      <span className="text-xs font-black text-[#1BD183] uppercase tracking-wide">
-                        Confidence: {intervention.confidence}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 w-full md:w-auto">
-                  <button className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition shadow-lg">
-                    Implement
-                  </button>
-                  <button className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition">
-                    Schedule
-                  </button>
-                </div>
-              </div>
-
-            </div>
-          ))}
-
-          {interventions.length === 0 && (
-            <div className="p-8 text-center text-sm font-medium text-slate-500 bg-slate-50 rounded-[1.5rem]">
-              No intervention recommendations available for this cohort yet.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <h4 className="font-black text-slate-900 uppercase tracking-tight mb-6">
-            Intervention History
-          </h4>
-          <div className="space-y-3">
-            {alerts.slice(0, 3).map((alert) => (
-              <div
-                key={alert.id}
-                className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100"
-              >
-                <div>
-                  <div className="font-bold text-slate-900 text-sm">
-                    {alert.title}
-                  </div>
-                  <div className="text-xs font-medium text-slate-500">
-                    {alert.timeAgo}
-                  </div>
-                </div>
-                <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-                  {alert.priority}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-          <h4 className="font-black text-slate-900 uppercase tracking-tight mb-6">
-            Intervention Simulator
-          </h4>
-          <div className="space-y-5">
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                Select Intervention Type
-              </label>
-              <select className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-[#1BD183]">
-                {interventions.map((intervention) => (
-                  <option key={intervention.id}>{intervention.title}</option>
-                ))}
-                {interventions.length === 0 && <option>Targeted Workshop</option>}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                Expected Duration (hours)
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                defaultValue="3"
-                className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-[#1BD183]"
-              />
-            </div>
-            <div className="p-5 bg-[#1BD183]/10 rounded-2xl border border-[#1BD183]/20 text-center">
-              <div className="text-xs font-black text-[#1BD183] uppercase tracking-widest mb-1">
-                Projection
-              </div>
-              <div className="text-2xl font-black text-[#1BD183]">
-                +{interventions[0]?.expectedImpact || 0}% Readiness Impact
-              </div>
-              <div className="text-[10px] font-medium text-[#1BD183]/80 mt-2">
-                Based on current cohort metrics and recommended interventions
-              </div>
-            </div>
-            <button className="w-full py-4 bg-[#1BD183] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#1BD183]/90 transition shadow-lg flex items-center justify-center gap-2">
-              <Brain size={16} /> Simulate Impact
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+              Open in Mastery
+            </Button>
+          </>
+        ) : undefined
+      }
+    />
   );
 
   if (isCatalogLoading && cohorts.length === 0) {
     return (
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
-        Loading faculty dashboard…
-      </div>
+      <>
+        {header}
+        <Spinner label="Loading dashboard…" className="py-24" />
+      </>
     );
   }
 
   if (!selectedCohort) {
+    // Cohorts arrived but the selection effect hasn't run yet.
+    if (cohorts.length > 0) {
+      return (
+        <>
+          {header}
+          <Spinner label="Loading dashboard…" className="py-24" />
+        </>
+      );
+    }
     return (
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
-        No cohorts available yet.
-      </div>
+      <>
+        {header}
+        {catalogError ? (
+          <InlineAlert className="mt-6" title="Couldn't load cohorts">
+            {catalogError}
+          </InlineAlert>
+        ) : (
+          <EmptyState
+            icon={UsersRound}
+            title="No cohorts yet"
+            description="Create a cohort and add learners to see their readiness, pacing and coverage here."
+            action={
+              <Button variant="primary" onClick={() => navigate('/cohorts')}>
+                Go to cohorts
+              </Button>
+            }
+          />
+        )}
+      </>
     );
   }
 
-  return (
-    <div>
-      {/* <HeaderNavigation /> */}
+  const learnerCount = cohortReport?.learnerCount ?? selectedCohort.studentIds.length;
+  const courseCount = cohortReport?.courses.length ?? selectedCohort.courseIds.length;
+  const reportWindow = cohortReport?.window;
+  const cohortFacts = [
+    selectedCohort.term,
+    plural(learnerCount, 'learner'),
+    plural(courseCount, 'course'),
+    reportWindow
+      ? reportWindow.startsAt && reportWindow.endsAt
+        ? `${Math.round(Math.min(Math.max(reportWindow.elapsedFraction, 0), 1) * 100)}% of the term elapsed`
+        : 'No term dates set'
+      : null,
+  ].filter(Boolean);
 
-      <div className="pt-6 space-y-6">
-        {catalogError && (
-          <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800 shadow-sm">
-            {catalogError}
-          </div>
-        )}
+  const renderBody = () => {
+    if (!cohortReport) {
+      // A failed load is explained by the alert above; otherwise it's still loading.
+      if (cohortError && !isCohortLoading) return null;
+      return <Spinner label="Loading cohort metrics…" className="py-24" />;
+    }
 
-        {cohortError && (
-          <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700 shadow-sm">
-            {cohortError}
-          </div>
-        )}
+    const status = cohortReport.statusDistribution;
+    const behind = status.behind || 0;
+    const onTrack = status.on_track || 0;
+    const ahead = status.ahead || 0;
+    const pacingStatus =
+      learnerCount > 0 && Number.isFinite(analytics.avgPacing)
+        ? PACING_BADGE[getTAPRStatus(analytics.avgPacing).label]
+        : undefined;
+    const atRiskShare =
+      learnerCount > 0 ? Math.round((analytics.atRiskCount / learnerCount) * 100) : 0;
+    const objectivesInScope = cohortReport.universe.los;
 
-        {isCohortLoading && (
-          <div className="text-xs font-black uppercase tracking-widest text-slate-400">
-            Loading live cohort metrics…
-          </div>
-        )}
+    const bands = cohortReport.readinessDistribution;
+    const bandTotal = bands.high + bands.medium + bands.low + bands.critical;
+    const lowBands = bands.low + bands.critical;
+    const readinessTakeaway =
+      bandTotal === 0
+        ? 'No readiness data for this cohort yet.'
+        : lowBands === 0
+          ? `All ${plural(bandTotal, 'learner')} are in the medium or high band.`
+          : `${lowBands.toLocaleString()} of ${plural(bandTotal, 'learner')} ${lowBands === 1 ? 'is' : 'are'} in the low or critical band.`;
 
-        <CohortSelector />
+    const courseTakeaway = weakestCourse
+      ? strongestCourse
+        ? `${weakestCourse.system} is lowest at ${weakestCourse.mastery}%; ${strongestCourse.system} is highest at ${strongestCourse.mastery}%.`
+        : `${weakestCourse.system} is at ${weakestCourse.mastery}% average mastery.`
+      : 'Average mastery per course appears once learners answer items.';
 
-        <div className="mt-8">
-          {activeView === 'OVERVIEW' && <OverviewDashboard />}
-          {activeView === 'INTERVENTIONS' && <InterventionsView />}
+    return (
+      <div className="mt-6 space-y-6">
+        <dl aria-label="Cohort summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiTile
+            label="Readiness"
+            icon={Target}
+            value={`${analytics.avgReadiness}%`}
+            context="Cohort average, projected for USMLE Step 1"
+          >
+            <ProgressBar value={analytics.avgReadiness} max={100} label="Average readiness" />
+          </KpiTile>
+          <KpiTile
+            label="At risk"
+            icon={AlertTriangle}
+            attention={analytics.atRiskCount > 0}
+            value={analytics.atRiskCount.toLocaleString()}
+            context={
+              learnerCount > 0
+                ? `${atRiskShare}% of ${plural(learnerCount, 'learner')}`
+                : 'No learners yet'
+            }
+          >
+            <ProgressBar
+              value={analytics.atRiskCount}
+              max={learnerCount}
+              tone="amber"
+              label="Share of learners at risk"
+            />
+          </KpiTile>
+          <KpiTile
+            label="Pacing"
+            icon={Gauge}
+            value={formatPacing(analytics.avgPacing)}
+            status={
+              pacingStatus && <Badge tone={pacingStatus.tone}>{pacingStatus.label}</Badge>
+            }
+            context={`${behind.toLocaleString()} behind · ${onTrack.toLocaleString()} on track · ${ahead.toLocaleString()} ahead`}
+          >
+            <SegmentBar
+              segments={[
+                { key: 'behind', value: behind, className: 'bg-amber-500' },
+                { key: 'on-track', value: onTrack, className: 'bg-brand-500' },
+                { key: 'ahead', value: ahead, className: 'bg-sky-500' },
+              ]}
+            />
+          </KpiTile>
+          <KpiTile
+            label="Coverage"
+            icon={ListChecks}
+            value={`${analytics.avgCoverage}%`}
+            context={
+              objectivesInScope > 0
+                ? `Of ${plural(objectivesInScope, 'learning objective')} in scope`
+                : 'Curriculum completed'
+            }
+          >
+            <ProgressBar value={analytics.avgCoverage} max={100} label="Average coverage" />
+          </KpiTile>
+        </dl>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <DashboardPanel
+            title="Needs attention"
+            description="Flags from this cohort's readiness and pacing, plus course work waiting on you."
+            meta={
+              highPriorityCount > 0 ? (
+                <Badge tone="red" dot>
+                  {highPriorityCount} high priority
+                </Badge>
+              ) : attentionItems.length > 0 ? (
+                <span className="text-[13px] tabular-nums text-stone-500">
+                  {attentionItems.length}
+                </span>
+              ) : null
+            }
+            flush
+            footer={
+              <button
+                type="button"
+                onClick={handleSendResources}
+                className="group inline-flex items-center gap-1.5 rounded text-sm font-medium text-stone-700 transition hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              >
+                <Library size={15} className="text-stone-400" aria-hidden="true" />
+                Share study materials from Curricula
+                <ArrowRight
+                  size={15}
+                  className="transition group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </button>
+            }
+          >
+            <NeedsAttentionList
+              items={attentionItems}
+              empty={
+                <EmptyState
+                  compact
+                  icon={CheckCircle2}
+                  title="Nothing needs your attention"
+                  description="This cohort has no readiness or pacing flags right now. Monitoring continues as new mastery data arrives."
+                />
+              }
+            />
+          </DashboardPanel>
+
+          <DashboardPanel
+            title="Readiness distribution"
+            description={readinessTakeaway}
+            actions={
+              <SegmentedControl<ReadinessFilter>
+                label="Readiness bands shown"
+                size="sm"
+                value={showAtRiskOnly ? 'at-risk' : 'all'}
+                onChange={(value) => setShowAtRiskOnly(value === 'at-risk')}
+                options={[
+                  { value: 'all', label: 'All' },
+                  { value: 'at-risk', label: 'At risk', count: lowBands },
+                ]}
+              />
+            }
+          >
+            <CohortRiskChart data={readinessDistribution} height={240} />
+          </DashboardPanel>
         </div>
-      </div>
-    </div>
-  );
-};
 
-const MetricCard = ({
-  title,
-  value,
-  change,
-  icon,
-  color,
-  subtitle,
-}: {
-  title: string;
-  value: React.ReactNode;
-  change?: string;
-  icon: React.ReactNode;
-  color: 'emerald' | 'rose' | 'amber';
-  subtitle?: string;
-}) => {
-  const colorClasses = {
-    emerald: 'bg-[#1BD183]/10 text-[#1BD183]',
-    rose: 'bg-rose-50 text-rose-700',
-    amber: 'bg-amber-50 text-amber-700',
+        <DashboardPanel
+          title="Course mastery"
+          description={courseTakeaway}
+          footer={
+            weakestCourse ? (
+              <div className="flex items-start gap-3">
+                <span className="bg-ai-gradient flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white">
+                  <Sparkles size={14} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-stone-500">Sina insight</p>
+                  <p className="mt-0.5 text-sm leading-6 text-stone-700">
+                    This cohort would benefit from a focused{' '}
+                    <span className="font-medium text-stone-900">
+                      {weakestCourse.system} workshop
+                    </span>
+                    .
+                    {courseReviewImpact !== undefined && (
+                      <>
+                        {' '}
+                        Estimated impact:{' '}
+                        <span className="font-medium tabular-nums text-brand-700">
+                          +{courseReviewImpact}% readiness
+                        </span>
+                        .
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : undefined
+          }
+        >
+          {courseMastery.length > 0 ? (
+            <div
+              role="img"
+              aria-label={`Average mastery by course: ${courseMastery
+                .map((course) => `${course.system} ${course.mastery}%`)
+                .join(', ')}`}
+            >
+              <SystemMasteryChart data={courseMastery} />
+            </div>
+          ) : (
+            <EmptyState
+              compact
+              icon={BookOpen}
+              title="No course mastery yet"
+              description="Each course in this cohort appears here once its learners start answering items."
+            />
+          )}
+        </DashboardPanel>
+      </div>
+    );
   };
 
   return (
-    <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-4">
-        <div className={`p-3 rounded-2xl ${colorClasses[color]}`}>{icon}</div>
-        {change && (
-          <div
-            className={`text-xs font-black px-2 py-1 rounded-lg ${
-              change.startsWith('+')
-                ? 'bg-emerald-50 text-emerald-600'
-                : 'bg-rose-50 text-rose-600'
-            }`}
-          >
-            {change}
-          </div>
-        )}
-      </div>
-      <div className="text-3xl font-black text-slate-900 mb-1">{value}</div>
-      <div className="text-sm font-bold text-slate-700 uppercase tracking-tight">
-        {title}
-      </div>
-      {subtitle && (
-        <div className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
-          {subtitle}
+    <>
+      {header}
+
+      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-stone-500">
+        <UsersRound size={14} className="text-stone-400" aria-hidden="true" />
+        <span className="sr-only">{selectedCohort.title}: </span>
+        {cohortFacts.join(' · ')}
+      </p>
+
+      {(catalogError || cohortError) && (
+        <div className="mt-6 space-y-3">
+          {catalogError && (
+            <InlineAlert tone="warning" title="Some workspace data didn't load">
+              {catalogError}
+            </InlineAlert>
+          )}
+          {cohortError && (
+            <InlineAlert title="Couldn't load cohort metrics">{cohortError}</InlineAlert>
+          )}
         </div>
       )}
-    </div>
+
+      {renderBody()}
+    </>
   );
 };
 

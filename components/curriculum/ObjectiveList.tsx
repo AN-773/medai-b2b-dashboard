@@ -1,11 +1,23 @@
-
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Filter, ChevronRight, Check, Edit3, Trash2, Plus, ChevronDown, Loader2, Sparkles } from 'lucide-react';
+import { ChevronDown, ListChecks, Loader2, Pencil, Plus, Search, Sparkles, Target, Trash2 } from 'lucide-react';
 import { LearningObjective, Syndrome, Topic } from '@/types/TestsServiceTypes';
-import { useGlobal } from '@/contexts/GlobalContext';
 import { testsService } from '../../services/testsService';
 import CreateObjectiveModal from './CreateObjectiveModal';
-import ConfirmationModal from '../ConfirmationModal';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  Menu,
+  Spinner,
+  StatusDot,
+} from '@/components/ui';
+import {
+  EmptyFrame,
+  ListCard,
+  errorMessage,
+  plural,
+} from '@/components/curriculum-workbench/HierarchyRows';
 
 interface ObjectiveListProps {
   organSystemName: string;
@@ -28,39 +40,77 @@ interface ObjectiveListProps {
   curriculumMode?: 'STEP 1' | 'STEP 2';
 }
 
-const BLOOM_COLORS: Record<string, string> = {
-  'Remember': 'bg-slate-100 text-slate-600 border-slate-200',
-  'Understand': 'bg-blue-50 text-blue-600 border-blue-200',
-  'Apply': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-  'Analyze': 'bg-purple-50 text-purple-600 border-purple-200',
+/** Cognitive skill · disciplines · subject · linked items — the meta line under an objective. */
+const ObjectiveMetaLine: React.FC<{ objective: LearningObjective }> = ({ objective }) => {
+  const parts = [
+    objective.cognitiveSkill?.title,
+    objective.disciplines?.map((discipline) => discipline.title).join(', '),
+    objective.subject?.title,
+  ].filter((part): part is string => Boolean(part));
+  const itemCount = objective.questions?.length || 0;
+  if (parts.length === 0 && itemCount === 0) return null;
+
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-stone-500">
+      {parts.map((part, index) => (
+        <React.Fragment key={`${part}-${index}`}>
+          {index > 0 && (
+            <span aria-hidden="true" className="text-stone-300">
+              ·
+            </span>
+          )}
+          <span>{part}</span>
+        </React.Fragment>
+      ))}
+      {itemCount > 0 && (
+        <>
+          {parts.length > 0 && (
+            <span aria-hidden="true" className="text-stone-300">
+              ·
+            </span>
+          )}
+          <StatusDot tone="green">{plural(itemCount, 'item')}</StatusDot>
+        </>
+      )}
+    </span>
+  );
 };
 
+/**
+ * The learning objectives of a subtopic, in the same row style as a course's
+ * Objectives tab. Click a row to edit it; "Linked items" opens the items that
+ * assess it. Search, the Bloom filter and the page header live with the host.
+ */
 const ObjectiveList: React.FC<ObjectiveListProps> = ({
-  organSystemName, topic, subTopic, searchTerm, bloomFilter, setBloomFilter, onBack, onEdit, onDelete, onCreateObjective, onViewLinked, isLoading,
+  organSystemName, topic, subTopic, searchTerm, bloomFilter, onEdit, onDelete, onCreateObjective, onViewLinked, isLoading,
   currentPage = 1, totalItems = 0, itemsPerPage = 20, onPageChange, onRefresh, curriculumMode
 }: ObjectiveListProps) => {
-  const { cognitiveSkills } = useGlobal();
   const [editingObj, setEditingObj] = useState<LearningObjective | null>(null);
   const [isFetchingObj, setIsFetchingObj] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [fetchingId, setFetchingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<LearningObjective | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'manual' | 'generate'>('manual');
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const hasMorePages = currentPage < totalPages;
 
+  const allObjectives = topic?.objectives || [];
+
   const filteredObjectives = useMemo(() => {
     let filtered = topic?.objectives || [];
-    
+
     if (searchTerm) {
       const lowerQuery = searchTerm.toLowerCase();
-      filtered = filtered.filter(obj => 
+      filtered = filtered.filter(obj =>
         obj.title.toLowerCase().includes(lowerQuery)
       );
     }
 
     if (bloomFilter && bloomFilter !== 'All') {
-      filtered = filtered.filter(obj => 
+      filtered = filtered.filter(obj =>
         obj.cognitiveSkill?.title === bloomFilter
       );
     }
@@ -68,10 +118,10 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
     return filtered;
   }, [topic?.objectives, searchTerm, bloomFilter]);
 
-  const handleStartEdit = async (e: React.MouseEvent, obj: LearningObjective) => {
-    e.stopPropagation();
+  const handleStartEdit = async (obj: LearningObjective) => {
     try {
       setIsFetchingObj(true);
+      setFetchingId(obj.id);
       const fullObj = await testsService.getLearningObjective(obj.id?.split("/")?.pop() || "");
       setEditingObj(fullObj);
       setModalMode('manual');
@@ -84,167 +134,190 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
       setIsCreateModalOpen(true);
     } finally {
       setIsFetchingObj(false);
+      setFetchingId(null);
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setDeleteId(id);
+  const openCreate = (mode: 'manual' | 'generate') => {
+    setEditingObj(null);
+    setModalMode(mode);
+    setIsCreateModalOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (deleteId) {
-      onDelete(deleteId);
-      setDeleteId(null);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await Promise.resolve(onDelete(pendingDelete.id));
+    } catch (err) {
+      console.error('Failed to delete objective:', err);
+      setError(errorMessage(err, 'Could not delete this objective.'));
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
+  };
+
+  // Stable identity so the drawer doesn't reset while it's open.
+  const modalInitialData = useMemo(
+    () =>
+      editingObj
+        ? {
+            title: editingObj.title,
+            syndromeId: editingObj.syndromeId,
+            cognitiveSkillId: editingObj.cognitiveSkillId,
+            disciplines: editingObj.disciplines?.map((d) => d.id) || [],
+            exam: editingObj.exam,
+            organSystemId: editingObj.syndrome?.topic?.organSystemId,
+            topicId: editingObj.syndrome?.topicId,
+            subjectId: editingObj.subjectId,
+          }
+        : null,
+    [editingObj],
+  );
+
+  const canLoadMore = hasMorePages && !searchTerm && bloomFilter === 'All';
+  const remaining = Math.max(0, totalItems - filteredObjectives.length);
+  const isBloomFiltered = Boolean(bloomFilter) && bloomFilter !== 'All';
+  const isFiltering = Boolean(searchTerm) || isBloomFiltered;
+
+  const renderRow = (obj: LearningObjective) => {
+    const isFetchingThis = fetchingId === obj.id;
+    return (
+      <li key={obj.id} className="flex items-start gap-1 pr-2 transition-colors hover:bg-stone-50">
+        <button
+          type="button"
+          onClick={() => void handleStartEdit(obj)}
+          disabled={isFetchingObj}
+          className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-4 pr-2 text-left disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-sm font-medium leading-5 text-stone-900">
+              <span className="sr-only">Edit objective: </span>
+              {obj.title}
+            </span>
+            <ObjectiveMetaLine objective={obj} />
+          </span>
+          {isFetchingThis && (
+            <Loader2 size={16} className="mt-0.5 flex-shrink-0 animate-spin text-brand-600" aria-hidden="true" />
+          )}
+        </button>
+        <div className="flex flex-shrink-0 items-center gap-1 py-2.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={ListChecks}
+            onClick={() => onViewLinked(obj)}
+            aria-label={`Linked items for “${obj.title}”`}
+          >
+            <span className="hidden sm:inline">Linked items</span>
+          </Button>
+          <Menu
+            size="sm"
+            label="Objective actions"
+            items={[
+              {
+                label: 'Edit objective',
+                icon: Pencil,
+                disabled: isFetchingObj,
+                onSelect: () => void handleStartEdit(obj),
+              },
+              {
+                label: 'Delete objective',
+                icon: Trash2,
+                tone: 'danger',
+                disabled: isFetchingObj,
+                onSelect: () => setPendingDelete(obj),
+              },
+            ]}
+          />
+        </div>
+      </li>
+    );
+  };
+
+  const renderBody = () => {
+    // Full spinner only for a first page; "Load more" keeps the list on screen.
+    if (isLoading && (currentPage <= 1 || allObjectives.length === 0)) {
+      return <Spinner label="Loading objectives…" className="py-16" />;
+    }
+
+    if (allObjectives.length === 0) {
+      return (
+        <EmptyFrame>
+          <EmptyState
+            icon={Target}
+            title="No objectives yet"
+            description={`Write what learners should be able to do for ${subTopic?.title || topic.title}, or let AI draft one for you to review.`}
+            action={
+              onCreateObjective && (
+                <>
+                  <Button variant="primary" icon={Plus} onClick={() => openCreate('manual')}>
+                    New objective
+                  </Button>
+                  <Button variant="ai" icon={Sparkles} onClick={() => openCreate('generate')}>
+                    Generate with AI
+                  </Button>
+                </>
+              )
+            }
+          />
+        </EmptyFrame>
+      );
+    }
+
+    if (filteredObjectives.length === 0) {
+      const trimmed = searchTerm.trim();
+      return (
+        <ListCard>
+          <EmptyState
+            compact
+            icon={Search}
+            title="No matching objectives"
+            description={
+              trimmed
+                ? `Nothing matches “${trimmed}”${isBloomFiltered ? ` at the ${bloomFilter} level` : ''}.`
+                : `No loaded objectives are at the ${bloomFilter} level.`
+            }
+          />
+        </ListCard>
+      );
+    }
+
+    return (
+      <ListCard>
+        <ul aria-label="Learning objectives" className="divide-y divide-stone-100">
+          {filteredObjectives.map(renderRow)}
+        </ul>
+        <div className="flex min-h-11 items-center justify-between gap-3 border-t border-stone-100 px-4 text-[13px] text-stone-500">
+          <p className="tabular-nums">
+            {isFiltering
+              ? `${plural(filteredObjectives.length, 'match', 'matches')} in ${allObjectives.length.toLocaleString()} loaded`
+              : `${allObjectives.length.toLocaleString()} of ${plural(totalItems || allObjectives.length, 'objective')}`}
+          </p>
+          {canLoadMore && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ChevronDown}
+              loading={isLoading}
+              onClick={() => onPageChange?.(currentPage + 1)}
+            >
+              Load more
+              <span className="tabular-nums text-stone-400">{remaining.toLocaleString()}</span>
+            </Button>
+          )}
+        </div>
+      </ListCard>
+    );
   };
 
   return (
-    <div className="animate-in slide-in-from-right-8 duration-500 max-w-5xl mx-auto pb-20">
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-6 mb-10">
-        <div className="flex items-center gap-4 mb-8">
-            <button onClick={onBack} className="p-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-[1.2rem] transition-all shadow-sm group">
-            <ArrowLeft size={20} className="text-slate-400 group-hover:text-slate-900" />
-            </button>
-            <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{subTopic?.title || topic.title}</h2>
-            <div className="flex items-center gap-3 mt-2">
-                {subTopic && (
-                    <span className="px-3 py-1 bg-emerald-50 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                    {topic.title}
-                    </span>
-                )}
-                {!subTopic && (
-                    <span className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    {topic.syndromes?.length} Subtopics
-                    </span>
-                )}
-                <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                <span className="text-sm font-bold text-slate-400">{totalItems} Objectives</span>
-            </div>
-            </div>
-        </div>
+    <div className="space-y-3">
+      {error && <InlineAlert onDismiss={() => setError(null)}>{error}</InlineAlert>}
 
-        <div className="flex items-center gap-3">
-            <div className="relative group">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-                <select
-                  value={bloomFilter}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setBloomFilter(e.target.value)}
-                    className="pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-[#1BD183] appearance-none cursor-pointer hover:border-[#1BD183] transition-colors shadow-sm min-w-[140px]"
-                >
-                    <option value="All">All Types</option>
-                    {Object.keys(BLOOM_COLORS).map(level => (
-                        <option key={level} value={level}>{level}</option>
-                    ))}
-                </select>
-                <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={12} />
-            </div>
-
-            {onCreateObjective && (
-              <button
-                onClick={() => {
-                  setModalMode('manual');
-                  setIsCreateModalOpen(true);
-                }}
-                className="flex items-center gap-2 px-5 py-3 bg-[#191A19] border border-slate-200 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm active:scale-95 whitespace-nowrap"
-              >
-                <Plus size={16} />
-                Create Objective
-              </button>
-            )}
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1BD183] mb-4"></div>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Objectives...</p>
-        </div>
-      ) : (
-      <div className="space-y-6">
-        {filteredObjectives.map((obj: LearningObjective) => (
-          <div key={obj.id} className="relative group">
-              <div 
-                onClick={() => onViewLinked(obj)}
-                className="flex items-start gap-6 p-8 bg-white border border-slate-100 rounded-[2.5rem] hover:shadow-xl hover:border-emerald-100 transition-all duration-300 cursor-pointer"
-              >
-                <div className="pt-1">
-                  <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 font-black text-xs shadow-inner">
-                    {obj.id.split('-')[1] || 'OBJ'}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-3 mb-3">
-                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${BLOOM_COLORS[obj.cognitiveSkill?.title ?? ''] || 'bg-slate-100'}`}>
-                      {obj?.cognitiveSkill?.title}
-                    </span>
-                    {obj.disciplines?.map((discipline) => (
-                      <span
-                        key={discipline.id}
-                        className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border border-sky-200 bg-sky-50 text-sky-700"
-                      >
-                        {discipline.title}
-                      </span>
-                    ))}
-                    {(obj.questions?.length || 0) > 0 && (
-                      <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-lg">
-                        <Check size={10} /> {obj.questions?.length} Items
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-lg text-slate-800 leading-relaxed font-medium">{obj.title}</p>
-                </div>
-                
-                <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                  <button 
-                    onClick={(e: React.MouseEvent) => handleStartEdit(e, obj)}
-                    disabled={isFetchingObj}
-                    className="p-3 text-slate-400 hover:text-[#1BD183] hover:bg-emerald-50 rounded-xl transition-colors disabled:opacity-50"
-                    title="Edit Objective"
-                  >
-                    <Edit3 size={18} />
-                  </button>
-                  <button 
-                    className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50" 
-                    title="Delete Objective"
-                    disabled={isFetchingObj}
-                    onClick={(e: React.MouseEvent) => handleDeleteClick(e, obj.id)}
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-          </div>
-        ))}
-        
-        {filteredObjectives.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-                <Filter size={24} className="mb-2 opacity-50" />
-                <p className="text-xs font-black uppercase tracking-widest">No objectives found</p>
-            </div>
-        )}
-
-       
-        {/* Load More Button */}
-        {hasMorePages && !searchTerm && bloomFilter === 'All' && (
-          <button 
-            onClick={() => onPageChange?.(currentPage + 1)}
-            disabled={isLoading}
-            className="w-full py-6 bg-gradient-to-r from-[#1BA6D1]/5 to-[#1BD183]/5 border border-[#1BD183]/20 rounded-2xl flex items-center justify-center gap-3 text-[#1BD183] hover:from-[#1BA6D1]/10 hover:to-[#1BD183]/10 hover:border-[#1BD183]/40 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <ChevronDown size={20} className="group-hover:translate-y-0.5 transition-transform" />
-            )}
-            <span className="font-black text-xs uppercase tracking-widest">
-              {isLoading ? 'Loading...' : `Load More (${totalItems - filteredObjectives.length} remaining)`}
-            </span>
-          </button>
-        )}
-      </div>
-      )}
+      {renderBody()}
 
       <CreateObjectiveModal
         isOpen={isCreateModalOpen}
@@ -266,28 +339,25 @@ const ObjectiveList: React.FC<ObjectiveListProps> = ({
           }
         }}
         initialMode={modalMode}
-        initialData={editingObj ? {
-          title: editingObj.title,
-          syndromeId: editingObj.syndromeId,
-          cognitiveSkillId: editingObj.cognitiveSkillId,
-          disciplines: editingObj.disciplines?.map((d) => d.id) || [],
-          exam: editingObj.exam,
-          organSystemId: editingObj.syndrome?.topic?.organSystemId,
-          topicId: editingObj.syndrome?.topicId,
-          subjectId: editingObj.subjectId,
-        } : null}
+        initialData={modalInitialData}
         organSystemName={organSystemName}
         curriculumMode={curriculumMode}
       />
 
-      <ConfirmationModal
-        isOpen={!!deleteId}
-        title="Delete Objective"
-        message="Are you sure you want to delete this learning objective? This action cannot be undone."
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteId(null)}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete objective?"
+        description={
+          pendingDelete ? (
+            <>“{pendingDelete.title}” will be permanently deleted. This can’t be undone.</>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete objective"
+        busy={isDeleting}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => void confirmDelete()}
       />
     </div>
   );
