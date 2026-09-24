@@ -126,3 +126,26 @@ structure when redesigning another area.
 - **Outline editing** (`CourseModulesPanel`): the list *is* the page; rows
   open a `Drawer` editor with dirty tracking, a discard confirmation and a
   footer hint; small create/rename forms use `Dialog`.
+
+## Page contract (every routed page)
+
+The layout (`App.tsx`) already renders the sidebar, the white page sheet, a
+top bar with the breadcrumb (`Teaching › Cohorts`) and the content padding
+(`mx-auto max-w-[1400px] px-4 py-6 sm:px-8`). The sheet (`#page-scroll`) is
+the scroll container. A page therefore:
+
+1. Starts with `PageHeader` (title, one-sentence description, the page's
+   primary action on the right). Sections inside it use `SectionHeader`.
+2. Adds no outer card, border, background or padding of its own, and never
+   repeats the page title in another heading.
+3. Scrolls naturally. Avoid `h-[calc(100vh-…)]`; if a two-pane workspace
+   truly needs a fixed height, use `h-[calc(100dvh-6.5rem)] xl:h-[calc(100dvh-7.5rem)]`.
+4. Uses tabs (`SegmentedControl`, or underline tabs like `CourseStepNav`)
+   for sub-views, a `Drawer` for editing a record, a `Dialog` for short
+   forms and `ConfirmDialog` for anything destructive.
+5. Shows data-heavy lists as one bordered `rounded-xl` card of divided rows,
+   or as a table (`text-[13px]`, `border-b border-stone-100` rows, `stone-500`
+   header labels in sentence case, numbers right-aligned `tabular-nums`).
+6. Uses Recharts for charts with stone gridlines/axes and `brand-500`
+   (primary series), `sky-500`, `violet-500`, `amber-500` (further series);
+   red only for genuinely bad values.

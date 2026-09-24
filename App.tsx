@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Library, LineChart, X } from 'lucide-react';
+import { ChevronRight, Library, LineChart, X } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
 import MasteryLayout from './views/mastery/MasteryLayout';
@@ -16,7 +16,7 @@ import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
 import SidebarContent from './components/SidebarContent';
 import { ShellContext, TopBar } from './components/shell/TopBar';
-import { VIEW_LABELS } from './components/shell/navigation';
+import { VIEW_GROUPS, VIEW_LABELS } from './components/shell/navigation';
 import { Button, EmptyState } from './components/ui';
 import SettingsView from './views/SettingsView';
 import TenantManagementView from './views/TenantManagementView';
@@ -232,13 +232,21 @@ const DashboardLayout: React.FC = () => {
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white xl:rounded-xl xl:border xl:border-stone-200/80 xl:shadow-card">
           {!pageOwnsTopBar && (
             <TopBar>
-              <h1 className="truncate text-[15px] font-semibold text-stone-900">
-                {activeViewLabel}
-              </h1>
+              <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+                {VIEW_GROUPS[activeView] && !isLegacyCurriculumRoute && (
+                  <>
+                    <span className="hidden text-stone-400 sm:inline">{VIEW_GROUPS[activeView]}</span>
+                    <ChevronRight size={14} className="hidden flex-shrink-0 text-stone-300 sm:block" />
+                  </>
+                )}
+                <span className="truncate font-medium text-stone-900" aria-current="page">
+                  {activeViewLabel}
+                </span>
+              </nav>
             </TopBar>
           )}
           <div id="page-scroll" className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
-            <div className={pageOwnsTopBar ? 'min-h-full' : 'mx-auto w-full max-w-[1600px] p-4 sm:p-6'}>
+            <div className={pageOwnsTopBar ? 'min-h-full' : 'mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8'}>
             <Routes>
               <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
               {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}

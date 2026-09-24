@@ -99,3 +99,10 @@ export const VIEW_LABELS: Record<View, string> = {
   AGENTS: 'AI agents',
   BLUEPRINT: 'Blueprint builder',
 };
+
+/** Sidebar group of each view, for the breadcrumb ("Teaching › Cohorts"). */
+export const VIEW_GROUPS: Partial<Record<View, string>> = Object.fromEntries(
+  [...EDUCATOR_NAV, ...SUPERADMIN_NAV].flatMap((group) =>
+    group.label ? group.items.map((item) => [item.view, group.label] as const) : [],
+  ),
+);
