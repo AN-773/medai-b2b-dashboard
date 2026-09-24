@@ -1,28 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Building2,
-  Stethoscope,
-  Users,
-  BookOpen,
-  LineChart,
-  ClipboardList,
-  Settings,
-  ChevronRight,
-  Database,
-  Wand2,
-  Menu,
-  X,
-  GraduationCap,
-  Workflow,
-  Library,
-  Share2,
-  Ticket,
-  Contact,
-  BellRing
-} from 'lucide-react';
+import { Library, LineChart, X } from 'lucide-react';
 import QuestionBankHealth from './views/QuestionBankHealth';
 import FacultyDashboard from './views/FacultyDashboard';
 import MasteryLayout from './views/mastery/MasteryLayout';
@@ -36,6 +15,9 @@ import BankExplorerView from './views/BankExplorerView';
 import QuestionWorkbenchView from './views/QuestionWorkbenchView';
 import CurriculumAuditMap from './components/CurriculumAuditMap';
 import SidebarContent from './components/SidebarContent';
+import { ShellContext, TopBar } from './components/shell/TopBar';
+import { VIEW_LABELS } from './components/shell/navigation';
+import { Button, EmptyState } from './components/ui';
 import SettingsView from './views/SettingsView';
 import TenantManagementView from './views/TenantManagementView';
 import PromoCodesView from './views/PromoCodesView';
@@ -59,33 +41,21 @@ const LegacyCurriculumView: React.FC<LegacyCurriculumViewProps> = ({ homePath })
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-      <div className="rounded-full bg-amber-100 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700">
-        Legacy Page
-      </div>
-      <h3 className="mt-5 text-2xl font-black uppercase tracking-tight text-slate-900">
-        Curriculum Health has moved
-      </h3>
-      <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
-        This old curriculum page is no longer used. Open the new Curriculum Workbench to manage curricula, organ systems, topics, and objectives.
-      </p>
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-        <button
-          type="button"
-          onClick={() => navigate('/curricula')}
-          className="rounded-2xl bg-[#00AA55] px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-900/10 transition hover:bg-[#008f48]"
-        >
-          Open Curriculum Workbench
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(homePath)}
-          className="rounded-2xl border border-slate-200 bg-white px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50"
-        >
-          Back to dashboard
-        </button>
-      </div>
-    </div>
+    <EmptyState
+      icon={Library}
+      title="Curriculum health has moved"
+      description="This page is no longer used. Manage curricula, organ systems, topics and objectives in Curricula."
+      action={
+        <>
+          <Button variant="primary" onClick={() => navigate('/curricula')}>
+            Open curricula
+          </Button>
+          <Button variant="ghost" onClick={() => navigate(homePath)}>
+            Back to dashboard
+          </Button>
+        </>
+      }
+    />
   );
 };
 
@@ -194,51 +164,27 @@ const DashboardLayout: React.FC = () => {
   };
 
   const AssessmentPlaceholder = () => (
-    <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-      <LineChart size={64} className="mb-4 opacity-20" />
-      <p className="text-xl font-bold">Assessment Quality Analytics</p>
-      <p className="text-sm mt-2">Integrating QID-specific psychometrics from USMLE Content Outline.</p>
-    </div>
+    <EmptyState
+      icon={LineChart}
+      title="Assessment quality analytics"
+      description="Integrating QID-specific psychometrics from the USMLE content outline."
+    />
   );
 
-  const navItems = [
-    ...(isSuperadmin
-      ? [
-          { id: 'TENANTS', label: 'Tenant Management', icon: Building2 },
-          { id: 'PROMO_CODES', label: 'Promo Codes', icon: Ticket },
-          { id: 'TEAM_DIRECTORY', label: 'Team Cards', icon: Contact },
-          { id: 'NOTIFICATIONS', label: 'Notifications', icon: BellRing },
-          { id: 'STUDY_PLAN_AUDIT', label: 'Study Plan Audit', icon: Workflow },
-          { id: 'SETTINGS', label: 'Settings', icon: Settings },
-        ]
-      : [
-          { id: 'DASHBOARD', label: 'Mission Control', icon: LayoutDashboard },
-          { id: 'FACULTY', label: 'Faculty Command', icon: GraduationCap },
-          { id: 'STUDENTS', label: 'Student Registry', icon: Users },
-          { id: 'COHORTS', label: 'Cohorts', icon: Users },
-          { id: 'COURSES', label: 'Courses', icon: BookOpen },
-          { id: 'DISCIPLINES', label: 'Disciplines', icon: BookOpen },
-          { id: 'WORKBENCH', label: 'Item Workbench', icon: Wand2, highlight: true },
-          { id: 'BANK_EXPLORER', label: 'Item Repository', icon: Database },
-          { id: 'QB_HEALTH', label: 'QB Health', icon: Stethoscope },
-          { id: 'MASTERY', label: 'Student Mastery', icon: Users },
-          { id: 'CURRICULA', label: 'Curriculum Workbench', icon: Library },
-          { id: 'ASSESSMENT', label: 'Assessment Quality', icon: LineChart },
-          { id: 'BLUEPRINT', label: 'Blueprint Builder', icon: ClipboardList },
-        ]),
-  ];
-  const activeViewLabel =
-    isLegacyCurriculumRoute
-      ? 'Legacy Curriculum Page'
-      : navItems.find((n) => n.id === activeView)?.label || 'Mission Control';
+  const activeViewLabel = isLegacyCurriculumRoute
+    ? 'Legacy curriculum page'
+    : VIEW_LABELS[activeView];
+  // Pages that render their own top bar (breadcrumbs, context actions).
+  const pageOwnsTopBar = activeView === 'COURSES';
 
   return (
-    <div className="flex h-screen bg-[#F3F6F3] text-slate-900 overflow-hidden font-['Inter']">
-      {/* Desktop Sidebar */}
+    <ShellContext.Provider value={{ openMobileNav: () => setIsMobileMenuOpen(true) }}>
+    <div className="flex h-screen overflow-hidden bg-canvas font-sans text-stone-900">
+      {/* Desktop sidebar */}
       <aside
         className={`${
-          isSidebarCollapsed ? 'w-20' : 'w-64'
-        } hidden xl:flex flex-col shrink-0 h-full transition-[width] duration-300`}
+          isSidebarCollapsed ? 'w-[60px]' : 'w-60'
+        } hidden h-full shrink-0 flex-col transition-[width] duration-200 xl:flex`}
       >
         <SidebarContent
           activeView={activeView}
@@ -249,17 +195,17 @@ const DashboardLayout: React.FC = () => {
         />
       </aside>
 
-      {/* Mobile Drawer */}
+      {/* Mobile drawer */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 xl:hidden flex">
+        <div className="fixed inset-0 z-50 flex xl:hidden">
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-stone-900/30 animate-fade-in"
             onClick={() => setIsMobileMenuOpen(false)}
             aria-hidden="true"
-          ></div>
+          />
           <div
             id="mobile-sidebar"
-            className="relative w-72 max-w-[85vw] h-full bg-[#0F1110] shadow-2xl animate-in slide-in-from-left duration-300"
+            className="relative h-full w-72 max-w-[85vw] shadow-overlay animate-drawer-in"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
@@ -267,10 +213,10 @@ const DashboardLayout: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(false)}
-              className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-[#00AA55]"
+              className="absolute right-2 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 transition hover:bg-stone-200/60 hover:text-stone-900"
               aria-label="Close navigation menu"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
             <SidebarContent
               activeView={activeView}
@@ -281,43 +227,18 @@ const DashboardLayout: React.FC = () => {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto flex flex-col relative w-full">
-        <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-[#F3F6F3]/95 px-4 py-3 backdrop-blur xl:hidden">
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#00AA55]"
-            aria-label="Open navigation menu"
-            aria-controls="mobile-sidebar"
-            aria-expanded={isMobileMenuOpen}
-          >
-            <Menu size={22} />
-          </button>
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              MSAi Ecosystem
-            </div>
-            <div className="truncate text-sm font-black text-slate-900">
-              {activeViewLabel}
-            </div>
-          </div>
-        </div>
-        <div className="p-4 max-w-[1600px] mx-auto w-full">
-          <div className="hidden xl:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
-            MSAi Ecosystem <ChevronRight size={12} className="text-slate-300" />{' '}
-            {isLegacyCurriculumRoute ? 'Legacy Curriculum' : activeView.split('_').join(' ')}
-          </div>
-          <div className="flex flex-col xl:flex-row justify-between xl:items-end mb-6 gap-6">
-            <div>
-              <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-none">
+      {/* The page sheet */}
+      <main className="flex min-w-0 flex-1 flex-col xl:py-2 xl:pr-2">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white xl:rounded-xl xl:border xl:border-stone-200/80 xl:shadow-card">
+          {!pageOwnsTopBar && (
+            <TopBar>
+              <h1 className="truncate text-[15px] font-semibold text-stone-900">
                 {activeViewLabel}
-              </h2>
-             
-            </div>
-          </div>
-
-          <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+              </h1>
+            </TopBar>
+          )}
+          <div id="page-scroll" className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+            <div className={pageOwnsTopBar ? 'min-h-full' : 'mx-auto w-full max-w-[1600px] p-4 sm:p-6'}>
             <Routes>
               <Route path="/" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
               {/* <Route path="/dashboard" element={isSuperadmin ? <Navigate to="/tenants" replace /> : <AIAgentCenter />} /> */}
@@ -355,6 +276,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/settings" element={isSuperadmin ? <SettingsView /> : <Navigate to="/dashboard" replace />} />
               <Route path="*" element={<Navigate to={isSuperadmin ? "/tenants" : "/faculty"} replace />} />
             </Routes>
+            </div>
           </div>
         </div>
       </main>
@@ -364,6 +286,7 @@ const DashboardLayout: React.FC = () => {
         <CurriculumAuditMap onClose={() => setIsAuditMapOpen(false)} />
       )}
     </div>
+    </ShellContext.Provider>
   );
 };
 

@@ -1,5 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckSquare, FileText, Loader2, Square } from 'lucide-react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Check, FileText, Sparkles } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  InlineAlert,
+  Input,
+  SegmentedControl,
+  Select,
+  Spinner,
+  SwitchRow,
+  Textarea,
+  cn,
+} from '@/components/ui';
 import type { CourseUpload } from '@/types/CourseStudioTypes';
 import type {
   ModuleGenerationItemType,
@@ -8,8 +22,8 @@ import type {
 import { moduleGenerationMock } from '@/services/moduleGenerationService';
 import type { ModuleGenerationMockScenario } from '@/services/moduleGenerationService.mock';
 import { MODALITIES } from '@/components/academy/course-workbench/ObjectiveItemsList';
-import { inputClass, SectionLabel } from '../shared';
 import { MAX_INSTRUCTIONS_LENGTH } from './planUtils';
+import { WizardFooter } from './WizardFooter';
 
 interface OptionsStepProps {
   uploads: CourseUpload[];
@@ -29,6 +43,20 @@ const parseCount = (value: string) => {
   const parsed = Number(trimmed);
   return Number.isInteger(parsed) ? parsed : NaN;
 };
+
+const SectionHeading: React.FC<{
+  title: string;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ title, description, action }) => (
+  <div className="flex items-end justify-between gap-4">
+    <div className="min-w-0">
+      <h3 className="text-[15px] font-semibold text-stone-900">{title}</h3>
+      {description && <p className="mt-0.5 text-[13px] leading-5 text-stone-500">{description}</p>}
+    </div>
+    {action}
+  </div>
+);
 
 const OptionsStep: React.FC<OptionsStepProps> = ({
   uploads,
@@ -54,6 +82,8 @@ const OptionsStep: React.FC<OptionsStepProps> = ({
   const [scenario, setScenario] = useState<ModuleGenerationMockScenario | null>(
     () => moduleGenerationMock?.getScenario() ?? null,
   );
+  const moduleCountLabelId = useId();
+  const sessionsLabelId = useId();
 
   // Default to every completed upload until the teacher picks files.
   useEffect(() => {
@@ -73,6 +103,7 @@ const OptionsStep: React.FC<OptionsStepProps> = ({
   };
 
   const allSelected = uploads.length > 0 && uploads.every((upload) => selectedFileIds.has(upload.id));
+  const selectedCount = uploads.filter((upload) => selectedFileIds.has(upload.id)).length;
   const setAllFiles = (selected: boolean) => {
     touchedFilesRef.current = true;
     setSelectedFileIds(selected ? new Set(uploads.map((upload) => upload.id)) : new Set());
@@ -102,7 +133,7 @@ const OptionsStep: React.FC<OptionsStepProps> = ({
     if (min !== null && max !== null && !Number.isNaN(min) && !Number.isNaN(max) && min > max) {
       errors.push('Minimum sessions cannot be more than the maximum.');
     }
-    if (allowItemCreation && itemTypes.size === 0) errors.push('Pick at least one item type, or turn off item creation.');
+    if (allowItemCreation && itemTypes.size === 0) errors.push('Pick at least one item type, or turn off item drafting.');
     if (instructions.length > MAX_INSTRUCTIONS_LENGTH) {
       errors.push(`Instructions are limited to ${MAX_INSTRUCTIONS_LENGTH} characters.`);
     }
@@ -135,256 +166,247 @@ const OptionsStep: React.FC<OptionsStepProps> = ({
     onStart(options);
   };
 
-  const numberInputClass = `${inputClass} !w-24 !px-3 !py-2 text-center`;
+  const noFiles = uploads.length === 0;
+  const instructionsNearLimit = instructions.length > MAX_INSTRUCTIONS_LENGTH * 0.9;
+  const footerHint =
+    noFiles && !uploadsLoading ? (
+      'Upload course files first.'
+    ) : validation.length > 0 ? (
+      <span className="text-amber-700">{validation[0]}</span>
+    ) : (
+      'Runs in the background and usually takes a few minutes.'
+    );
 
   return (
     <>
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <SectionLabel>Source files</SectionLabel>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  Processed course files the AI reads. All are used by default.
-                </p>
-              </div>
-              {uploads.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setAllFiles(!allSelected)}
-                  className="flex-shrink-0 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700 hover:text-emerald-900"
-                >
+      <div className="space-y-8 px-6 py-6">
+        {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+        <Field
+          label="Instructions"
+          hint="Optional"
+          error={
+            instructions.length > MAX_INSTRUCTIONS_LENGTH
+              ? `${instructions.length.toLocaleString()} / ${MAX_INSTRUCTIONS_LENGTH.toLocaleString()} characters`
+              : null
+          }
+          description={
+            instructionsNearLimit
+              ? `${instructions.length.toLocaleString()} / ${MAX_INSTRUCTIONS_LENGTH.toLocaleString()} characters`
+              : 'Tell the AI how to group or order the course.'
+          }
+        >
+          {(id) => (
+            <Textarea
+              id={id}
+              value={instructions}
+              onChange={(event) => setInstructions(event.target.value)}
+              rows={3}
+              placeholder="e.g. Group by organ system; keep pharmacology in its own module."
+            />
+          )}
+        </Field>
+
+        <section>
+          <SectionHeading
+            title="Source files"
+            description="Processed course files the AI reads. All are used by default."
+            action={
+              uploads.length > 1 ? (
+                <Button variant="ghost" size="sm" onClick={() => setAllFiles(!allSelected)}>
                   {allSelected ? 'Clear' : 'Select all'}
-                </button>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {uploadsLoading && uploads.length === 0 ? (
-                <div className="flex items-center gap-2 py-6 text-sm font-semibold text-slate-500">
-                  <Loader2 size={15} className="animate-spin" /> Loading files…
-                </div>
-              ) : uploads.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">
-                  No processed files yet. Upload course files first.
-                </p>
-              ) : (
-                uploads.map((upload) => {
-                  const selected = selectedFileIds.has(upload.id);
-                  return (
-                    <button
-                      key={upload.id}
-                      type="button"
-                      onClick={() => toggleFile(upload.id)}
-                      aria-pressed={selected}
-                      className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
-                        selected
-                          ? 'border-emerald-200 bg-emerald-50/60'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      {selected ? (
-                        <CheckSquare size={17} className="mt-0.5 flex-shrink-0 text-emerald-600" />
-                      ) : (
-                        <Square size={17} className="mt-0.5 flex-shrink-0 text-slate-300" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
-                          <FileText size={13} className="flex-shrink-0 text-slate-400" />
-                          <span className="truncate">{upload.fileName || upload.identifier}</span>
-                        </span>
-                        {upload.briefTopics && upload.briefTopics.length > 0 ? (
-                          <span className="mt-1.5 flex flex-wrap gap-1">
-                            {upload.briefTopics.slice(0, 5).map((topic) => (
-                              <span
-                                key={topic}
-                                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500"
-                              >
-                                {topic}
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className="mt-1 block text-[11px] font-medium text-slate-400">
-                            No summary yet; the AI will use the file’s outline.
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <div className="space-y-5">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5">
-              <SectionLabel>Instructions (optional)</SectionLabel>
-              <textarea
-                value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
-                rows={4}
-                placeholder="e.g. Group by organ system; keep pharmacology in its own module."
-                className={`${inputClass} mt-3 resize-none`}
+                </Button>
+              ) : null
+            }
+          />
+          <div className="mt-3">
+            {uploadsLoading && noFiles ? (
+              <Spinner label="Loading files…" className="rounded-xl border border-stone-200 py-8" />
+            ) : noFiles ? (
+              <EmptyState
+                compact
+                icon={FileText}
+                title="No processed files yet"
+                description="Upload course files and wait for them to finish processing."
+                className="rounded-xl border border-dashed border-stone-200"
               />
-              {instructions.length > MAX_INSTRUCTIONS_LENGTH * 0.9 && (
-                <p className="mt-1 text-right text-[11px] font-bold text-slate-400">
-                  {instructions.length}/{MAX_INSTRUCTIONS_LENGTH}
-                </p>
-              )}
-            </section>
-
-            <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5">
-              <SectionLabel>Structure</SectionLabel>
-              <div>
-                <p className="text-sm font-bold text-slate-700">Number of modules</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {(['auto', 'fixed'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setModuleCountMode(mode)}
-                      aria-pressed={moduleCountMode === mode}
-                      className={`rounded-lg border px-3 py-2 text-xs font-black transition ${
-                        moduleCountMode === mode
-                          ? 'border-[#16324F] bg-[#16324F] text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      {mode === 'auto' ? 'Let AI decide' : 'Exactly'}
-                    </button>
-                  ))}
-                  {moduleCountMode === 'fixed' && (
-                    <input
-                      type="number"
-                      min={1}
-                      max={MAX_MODULE_COUNT}
-                      value={moduleCount}
-                      onChange={(event) => setModuleCount(event.target.value)}
-                      aria-label="Number of modules"
-                      className={numberInputClass}
-                    />
-                  )}
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-700">Sessions per module</p>
-                <div className="mt-2 flex items-center gap-2 text-xs font-bold text-slate-500">
-                  <input
-                    type="number"
-                    min={1}
-                    value={sessionsMin}
-                    onChange={(event) => setSessionsMin(event.target.value)}
-                    placeholder="Min"
-                    aria-label="Minimum sessions per module"
-                    className={numberInputClass}
-                  />
-                  to
-                  <input
-                    type="number"
-                    min={1}
-                    value={sessionsMax}
-                    onChange={(event) => setSessionsMax(event.target.value)}
-                    placeholder="Max"
-                    aria-label="Maximum sessions per module"
-                    className={numberInputClass}
-                  />
-                  <span className="font-medium text-slate-400">Blank = AI decides</span>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white p-5">
-              <label className="flex cursor-pointer items-start justify-between gap-3">
-                <span>
-                  <SectionLabel>New items</SectionLabel>
-                  <span className="mt-1 block text-xs font-medium text-slate-500">
-                    Let the AI draft items for objectives a session needs but that have none.
-                    Drafts become items only when you accept the plan.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={allowItemCreation}
-                  onChange={(event) => setAllowItemCreation(event.target.checked)}
-                  className="mt-1 h-4 w-4 flex-shrink-0 accent-[#1BD183]"
-                />
-              </label>
-              <div className={`mt-3 flex flex-wrap gap-2 ${allowItemCreation ? '' : 'pointer-events-none opacity-40'}`}>
-                {MODALITIES.map((modality) => {
-                  const active = itemTypes.has(modality.type);
-                  const Icon = modality.icon;
+            ) : (
+              <ul className="divide-y divide-stone-100 rounded-xl border border-stone-200">
+                {uploads.map((upload) => {
+                  const selected = selectedFileIds.has(upload.id);
+                  const name = upload.fileName || upload.identifier;
                   return (
-                    <button
-                      key={modality.type}
-                      type="button"
-                      onClick={() => toggleItemType(modality.type)}
-                      aria-pressed={active}
-                      disabled={!allowItemCreation}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.1em] transition ${
-                        active ? modality.badge : 'border-slate-200 bg-white text-slate-400'
-                      }`}
-                    >
-                      <Icon size={12} />
-                      {modality.plural}
-                    </button>
+                    <li key={upload.id}>
+                      <label className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-stone-50">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleFile(upload.id)}
+                          className="mt-0.5 h-4 w-4 flex-shrink-0 cursor-pointer rounded accent-brand-600"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-stone-900" title={name}>
+                            {name}
+                          </span>
+                          {upload.briefTopics && upload.briefTopics.length > 0 ? (
+                            <span className="mt-1.5 flex flex-wrap gap-1">
+                              {upload.briefTopics.slice(0, 5).map((topic) => (
+                                <Badge key={topic}>{topic}</Badge>
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="mt-0.5 block text-[13px] text-stone-500">
+                              No summary yet; the AI will use the file’s outline.
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </li>
                   );
                 })}
-              </div>
-            </section>
+              </ul>
+            )}
+          </div>
+          {uploads.length > 1 && (
+            <p className="mt-2 text-xs tabular-nums text-stone-500">
+              {selectedCount} of {uploads.length} selected
+            </p>
+          )}
+        </section>
 
-            {moduleGenerationMock && scenario && (
-              <section className="rounded-3xl border border-dashed border-amber-300 bg-amber-50/60 p-5">
-                <SectionLabel>Mock scenario (demo only)</SectionLabel>
-                <select
+        <section className="space-y-5">
+          <SectionHeading title="Structure" />
+          <div role="group" aria-labelledby={moduleCountLabelId}>
+            <p id={moduleCountLabelId} className="mb-1.5 text-[13px] font-medium text-stone-700">
+              Number of modules
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <SegmentedControl<'auto' | 'fixed'>
+                label="Number of modules"
+                value={moduleCountMode}
+                onChange={setModuleCountMode}
+                options={[
+                  { value: 'auto', label: 'Let AI decide' },
+                  { value: 'fixed', label: 'Set a number' },
+                ]}
+              />
+              {moduleCountMode === 'fixed' && (
+                <div className="w-20">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={MAX_MODULE_COUNT}
+                    value={moduleCount}
+                    onChange={(event) => setModuleCount(event.target.value)}
+                    aria-label="Number of modules"
+                    className="tabular-nums"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          <div role="group" aria-labelledby={sessionsLabelId}>
+            <p id={sessionsLabelId} className="mb-1.5 text-[13px] font-medium text-stone-700">
+              Sessions per module
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-[13px] text-stone-500">
+              <div className="w-20">
+                <Input
+                  type="number"
+                  min={1}
+                  value={sessionsMin}
+                  onChange={(event) => setSessionsMin(event.target.value)}
+                  placeholder="Min"
+                  aria-label="Minimum sessions per module"
+                  className="tabular-nums"
+                />
+              </div>
+              to
+              <div className="w-20">
+                <Input
+                  type="number"
+                  min={1}
+                  value={sessionsMax}
+                  onChange={(event) => setSessionsMax(event.target.value)}
+                  placeholder="Max"
+                  aria-label="Maximum sessions per module"
+                  className="tabular-nums"
+                />
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-stone-500">Leave blank to let the AI decide.</p>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <SwitchRow
+            checked={allowItemCreation}
+            onChange={setAllowItemCreation}
+            label="Draft missing items"
+            description="Let the AI draft items for objectives a session needs but that have none. Drafts become items only when you accept the plan."
+          />
+          {allowItemCreation && (
+            <div role="group" aria-label="Item types to draft" className="flex flex-wrap gap-2">
+              {MODALITIES.map((modality) => {
+                const active = itemTypes.has(modality.type);
+                const Icon = modality.icon;
+                return (
+                  <button
+                    key={modality.type}
+                    type="button"
+                    onClick={() => toggleItemType(modality.type)}
+                    aria-pressed={active}
+                    className={cn(
+                      'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      active
+                        ? 'border-brand-300 bg-brand-50 text-brand-800'
+                        : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-800',
+                    )}
+                  >
+                    {active ? <Check size={14} aria-hidden="true" /> : <Icon size={14} aria-hidden="true" />}
+                    {modality.plural}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {moduleGenerationMock && scenario && (
+          <section className="rounded-xl border border-dashed border-amber-300 bg-amber-50/50 p-4">
+            <Field label="Mock scenario" hint="Demo only">
+              {(id) => (
+                <Select
+                  id={id}
                   value={scenario}
                   onChange={(event) => setScenario(event.target.value as ModuleGenerationMockScenario)}
-                  className={`${inputClass} mt-3 !py-2`}
                 >
-                  {moduleGenerationMock.scenarios.map((option) => (
+                  {moduleGenerationMock!.scenarios.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
-                </select>
-              </section>
-            )}
-          </div>
-        </div>
+                </Select>
+              )}
+            </Field>
+          </section>
+        )}
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-slate-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 text-xs font-semibold">
-          {error ? (
-            <span className="flex items-start gap-1.5 text-rose-600">
-              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" /> {error}
-            </span>
-          ) : validation.length > 0 ? (
-            <span className="text-amber-700">{validation[0]}</span>
-          ) : (
-            <span className="text-slate-400">Runs in the background; it usually takes a few minutes.</span>
-          )}
-        </div>
-        <div className="flex flex-shrink-0 items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold text-slate-500 transition hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={isStarting || validation.length > 0 || uploads.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary-gradient px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:opacity-90 disabled:opacity-50"
-          >
-            {isStarting ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-            Start generating
-          </button>
-        </div>
-      </div>
+      <WizardFooter hint={footerHint}>
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          icon={Sparkles}
+          onClick={handleStart}
+          loading={isStarting}
+          disabled={validation.length > 0 || noFiles}
+        >
+          Start drafting
+        </Button>
+      </WizardFooter>
     </>
   );
 };

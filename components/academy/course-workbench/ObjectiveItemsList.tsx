@@ -1,12 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ChevronRight,
   ClipboardCheck,
-  ExternalLink,
   FileText,
   Layers,
-  Loader2,
   MonitorPlay,
+  RefreshCw,
 } from 'lucide-react';
+import {
+  Button,
+  EmptyState,
+  InlineAlert,
+  Spinner,
+  StatusDot,
+  type BadgeTone,
+} from '@/components/ui';
 import { testsService } from '@/services/testsService';
 import type { BackendApiItem } from '@/types/TestsServiceTypes';
 
@@ -56,11 +64,14 @@ export const MODALITIES: ModalitySpec[] = [
   },
 ];
 
-const STATUS_STYLES: Record<string, string> = {
-  live: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  draft: 'bg-slate-100 text-slate-500 border-slate-200',
-  pending: 'bg-amber-50 text-amber-700 border-amber-200',
+const STATUS_TONES: Record<string, BadgeTone> = {
+  live: 'green',
+  draft: 'neutral',
+  pending: 'amber',
 };
+
+const statusLabel = (status: string) =>
+  status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Draft';
 
 export const itemTitle = (item: BackendApiItem) =>
   item.lecture?.title ||
@@ -89,6 +100,8 @@ const ObjectiveItemsList: React.FC<ObjectiveItemsListProps> = ({
   const [items, setItems] = useState<BackendApiItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Local retry counter so a failed load can be retried without the host.
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,89 +129,92 @@ const ObjectiveItemsList: React.FC<ObjectiveItemsListProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [objectiveId, refreshSignal]);
+  }, [objectiveId, refreshSignal, retryTick]);
 
   const grouped = useMemo(
     () =>
       MODALITIES.map((modality) => ({
         modality,
         items: items.filter((item) => item.type === modality.type),
-      })),
+      })).filter((group) => group.items.length > 0),
     [items],
   );
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-10">
-        <Loader2 size={20} className="mb-2 animate-spin text-[#1BD183]" />
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          Loading items…
-        </p>
+      <div className="rounded-xl border border-stone-200 py-10">
+        <Spinner label="Loading items…" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <p className="py-8 text-center text-xs font-semibold text-rose-500">{error}</p>
+      <InlineAlert
+        tone="error"
+        action={
+          <Button size="sm" icon={RefreshCw} onClick={() => setRetryTick((tick) => tick + 1)}>
+            Retry
+          </Button>
+        }
+      >
+        {error}
+      </InlineAlert>
     );
   }
 
   if (items.length === 0) {
     return (
-      <p className="py-8 text-center text-xs font-medium text-slate-400">
-        No live content on this objective yet. Author an item above or accept an
-        AI draft to populate it.
-      </p>
+      <div className="rounded-xl border border-dashed border-stone-200">
+        <EmptyState
+          compact
+          icon={Layers}
+          title="No items yet"
+          description="Add an item above, or accept an AI draft to make it live on this objective."
+        />
+      </div>
     );
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-5">
+    <div className="min-w-0 divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
       {grouped.map(({ modality, items: group }) => {
-        if (group.length === 0) return null;
         const Icon = modality.icon;
         return (
-          <div key={modality.type} className="min-w-0 space-y-2">
-            <h4 className="flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-              <Icon size={12} /> {modality.plural}
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-500">
-                {group.length}
-              </span>
-            </h4>
-            {group.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onOpenItem(item)}
-                className="group flex w-full min-w-0 items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3.5 py-3 text-left transition hover:border-emerald-200 hover:shadow-sm"
-              >
-                <span
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${modality.badge}`}
-                >
-                  <Icon size={15} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-bold text-slate-800">
-                    {itemTitle(item)}
-                  </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate font-mono text-[10px] text-slate-400">
-                      {item.identifier || item.id.slice(0, 8)}
+          <div key={modality.type} className="min-w-0">
+            <h5 className="flex items-center gap-2 border-b border-stone-100 bg-stone-50/70 px-4 py-2 text-[13px] font-medium text-stone-700">
+              <Icon size={14} className="text-stone-500" />
+              {modality.plural}
+              <span className="tabular-nums text-stone-400">{group.length}</span>
+            </h5>
+            <ul className="divide-y divide-stone-100">
+              {group.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenItem(item)}
+                    className="group flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-stone-50 focus-visible:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-500"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-sm leading-5 text-stone-900">
+                        {itemTitle(item)}
+                      </span>
+                      <span className="mt-1 block truncate font-mono text-xs text-stone-400">
+                        {item.identifier || item.id.slice(0, 8)}
+                      </span>
                     </span>
-                    <span
-                      className={`rounded border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${STATUS_STYLES[item.status] || STATUS_STYLES.draft}`}
-                    >
-                      {item.status}
-                    </span>
-                  </span>
-                </span>
-                <ExternalLink
-                  size={14}
-                  className="flex-shrink-0 text-slate-300 transition group-hover:text-[#1BD183]"
-                />
-              </button>
-            ))}
+                    <StatusDot tone={STATUS_TONES[item.status] ?? 'neutral'}>
+                      {statusLabel(item.status)}
+                    </StatusDot>
+                    <ChevronRight
+                      size={16}
+                      className="flex-shrink-0 text-stone-300 transition-colors group-hover:text-stone-500"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         );
       })}

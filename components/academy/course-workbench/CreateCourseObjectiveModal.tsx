@@ -1,16 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import {
-  AlertCircle,
-  Check,
-  ChevronDown,
-  Layers,
-  Loader2,
-  PenLine,
-  Sparkles,
-  Wand2,
-  X,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { testsService } from '@/services/testsService';
 import { useGlobal } from '@/contexts/GlobalContext';
 import type {
@@ -25,9 +14,20 @@ import type {
   TeacherCourse,
   TeacherLearningObjective,
 } from '@/types/AcademyStudioTypes';
-import MultiSearchableSelect from '@/components/MultiSearchableSelect';
-import SearchableSelect from '@/components/SearchableSelect';
-import { bloomStyle, getErrorMessage } from './shared';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Drawer,
+  Field,
+  InlineAlert,
+  Select,
+  SegmentedControl,
+  Spinner,
+  Textarea,
+} from '@/components/ui';
+import { getErrorMessage } from './shared';
+import MultiSelectList from './objectives/MultiSelectList';
 
 type AuthoringMode = 'manual' | 'ai';
 
@@ -39,48 +39,7 @@ interface CreateCourseObjectiveModalProps {
   onCreated: (objective: TeacherLearningObjective) => Promise<void>;
 }
 
-const selectClass =
-  'w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#1BD183] focus:bg-white focus:ring-2 focus:ring-[#1BD183]/15 disabled:opacity-50';
-
-const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean }> = ({
-  children,
-  required,
-}) => (
-  <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-    {children}
-    {required && <span className="ml-1 text-rose-400">*</span>}
-  </label>
-);
-
-const NativeSelect: React.FC<{
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  loading?: boolean;
-  children: React.ReactNode;
-}> = ({ value, onChange, disabled, loading, children }) => (
-  <div className="relative">
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      disabled={disabled}
-      className={selectClass}
-    >
-      {children}
-    </select>
-    {loading ? (
-      <Loader2
-        size={16}
-        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-slate-400"
-      />
-    ) : (
-      <ChevronDown
-        size={16}
-        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-      />
-    )}
-  </div>
-);
+const FORM_ID = 'course-objective-form';
 
 const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
   isOpen,
@@ -92,6 +51,7 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
   const [mode, setMode] = useState<AuthoringMode>('manual');
   const [error, setError] = useState<string | null>(null);
+  const [isDiscardOpen, setDiscardOpen] = useState(false);
 
   // Reference data
   const [organSystems, setOrganSystems] = useState<OrganSystem[]>([]);
@@ -128,6 +88,7 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
   const resetForm = () => {
     setMode('manual');
     setError(null);
+    setDiscardOpen(false);
     setSelectedOrganSystemId('');
     setTopics([]);
     setSelectedTopicId('');
@@ -210,6 +171,20 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
     onClose();
   };
 
+  // Anything the educator typed or generated that closing would throw away.
+  const hasUnsavedWork = Boolean(
+    title.trim() || additionalContext.trim() || generated,
+  );
+
+  const requestClose = () => {
+    if (isBusy) return;
+    if (hasUnsavedWork) {
+      setDiscardOpen(true);
+      return;
+    }
+    handleClose();
+  };
+
   const bloomToCognitiveSkillId = (bloomLevel: string) =>
     cognitiveSkills.find(
       (skill) => skill.title.toLowerCase() === bloomLevel.toLowerCase(),
@@ -217,9 +192,6 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
 
   const organSystemName =
     organSystems.find((os) => os.id === selectedOrganSystemId)?.title || '';
-  const topicName = topics.find((t) => t.id === selectedTopicId)?.title || '';
-  const syndromeName =
-    syndromes.find((s) => s.id === selectedSyndromeId)?.title || '';
 
   const finalizeCreation = async (input: {
     title: string;
@@ -347,493 +319,360 @@ const CreateCourseObjectiveModal: React.FC<CreateCourseObjectiveModalProps> = ({
     }
   };
 
-  // ---- Live preview -------------------------------------------------------
-  const previewTitle = mode === 'ai' ? generated?.title || '' : title.trim();
-  const previewBloom =
-    mode === 'ai'
-      ? generated?.bloom_level || selectedBloom
-      : cognitiveSkills.find((s) => s.id === selectedCognitiveSkillId)?.title;
-  const previewDisciplines = useMemo(() => {
-    const ids = mode === 'ai' ? (selectedDisciplineId ? [selectedDisciplineId] : []) : selectedDisciplines;
-    return ids
-      .map((id) => disciplines.find((d) => d.id === id)?.title)
-      .filter((value): value is string => Boolean(value));
-  }, [mode, selectedDisciplineId, selectedDisciplines, disciplines]);
-
-  const checklist = [
-    { label: 'Objective text', done: Boolean(previewTitle) },
-    {
-      label: 'Cognitive skill',
-      done: mode === 'ai' ? Boolean(previewBloom) : Boolean(selectedCognitiveSkillId),
-    },
-  ];
-
-  if (!isOpen || typeof document === 'undefined') return null;
-
   const canGenerate = Boolean(selectedBloom && selectedDisciplineId);
-  const canSubmitManual = Boolean(
-    title.trim() && selectedCognitiveSkillId,
+  const canSubmitManual = Boolean(title.trim() && selectedCognitiveSkillId);
+
+  const footerHint =
+    mode === 'manual'
+      ? !title.trim()
+        ? 'Write the objective to continue'
+        : !selectedCognitiveSkillId
+          ? 'Choose a cognitive skill to continue'
+          : 'Ready to create'
+      : generated
+        ? 'Review and edit the draft before adding it'
+        : 'Generate a draft, then review it';
+
+  const disciplineOptions = disciplines.map((d) => ({ id: d.id, name: d.title }));
+
+  const renderManual = () => (
+    <form id={FORM_ID} onSubmit={handleManualSubmit} className="space-y-4">
+      <Field label="Objective">
+        {(id) => (
+          <Textarea
+            id={id}
+            rows={4}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="e.g. Explain the pathophysiology of acute coronary syndrome"
+            disabled={isSubmitting}
+          />
+        )}
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Cognitive skill" description="Bloom’s taxonomy level.">
+          {(id) => (
+            <Select
+              id={id}
+              value={selectedCognitiveSkillId}
+              onChange={(event) => setSelectedCognitiveSkillId(event.target.value)}
+              disabled={isSubmitting}
+            >
+              <option value="" disabled>
+                Select a cognitive skill
+              </option>
+              {cognitiveSkills?.map((skill) => (
+                <option key={skill.id} value={skill.id}>
+                  {skill.title}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <Field label="Subject" hint="Optional">
+          {(id) => (
+            <Select
+              id={id}
+              value={selectedSubjectId}
+              onChange={(event) => setSelectedSubjectId(event.target.value)}
+              disabled={isSubmitting}
+            >
+              <option value="">No subject</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.title}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+
+      <Field label="Disciplines" hint="Optional">
+        {(id) => (
+          <MultiSelectList
+            id={id}
+            options={disciplineOptions}
+            values={selectedDisciplines}
+            onChange={setSelectedDisciplines}
+            placeholder="Search disciplines"
+            emptyLabel="Loading disciplines…"
+            disabled={isSubmitting}
+          />
+        )}
+      </Field>
+    </form>
   );
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={handleClose}
-      />
+  const renderAi = () => {
+    if (isGenerating) {
+      return <Spinner label="Drafting your objective… this can take a few seconds." className="py-14" />;
+    }
 
-      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[1.75rem] bg-white shadow-2xl animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-7 py-5">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1BA6D1] to-[#1BD183] text-white shadow-lg shadow-[#1BD183]/25">
-              <Sparkles size={20} />
+    if (generated) {
+      return (
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-xl border border-stone-200 shadow-card transition focus-within:border-brand-500 focus-within:ring-[3px] focus-within:ring-brand-500/15">
+            <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 bg-stone-50 px-4 py-2">
+              <Badge tone="violet">AI draft</Badge>
+              <Badge>{generated.bloom_level}</Badge>
+              {generated.competency && (
+                <span className="text-xs text-stone-500">{generated.competency}</span>
+              )}
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xl font-black tracking-tight text-slate-900">
-                New learning objective
-              </h2>
-              <p className="truncate text-sm font-medium text-slate-500">
-                Adding to{' '}
-                <span className="font-bold text-slate-700">{course.title}</span>
-              </p>
-            </div>
+            <textarea
+              aria-label="Generated objective"
+              value={generated.title}
+              onChange={(event) => setGenerated({ ...generated, title: event.target.value })}
+              disabled={isSavingGenerated}
+              rows={4}
+              className="block w-full resize-none border-0 bg-white px-4 py-3 text-sm leading-6 text-stone-900 outline-none focus:ring-0 disabled:text-stone-400"
+            />
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isBusy}
-            className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ai"
+              size="sm"
+              icon={RefreshCw}
+              onClick={() => void handleGenerate()}
+              disabled={isSavingGenerated || !canGenerate}
+            >
+              Regenerate
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={SlidersHorizontal}
+              onClick={() => {
+                setGenerated(null);
+                setError(null);
+              }}
+              disabled={isSavingGenerated}
+            >
+              Change inputs
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Cognitive skill" description="Bloom’s taxonomy level.">
+            {(id) => (
+              <Select
+                id={id}
+                value={selectedBloom}
+                onChange={(event) => setSelectedBloom(event.target.value)}
+              >
+                <option value="" disabled>
+                  Select a cognitive skill
+                </option>
+                {cognitiveSkills?.map((skill) => (
+                  <option key={skill.id} value={skill.title}>
+                    {skill.title}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Discipline">
+            {(id) => (
+              <Select
+                id={id}
+                value={selectedDisciplineId}
+                onChange={(event) => setSelectedDisciplineId(event.target.value)}
+                disabled={disciplines.length === 0}
+              >
+                <option value="" disabled>
+                  {disciplines.length === 0 ? 'Loading disciplines…' : 'Select a discipline'}
+                </option>
+                {disciplines.map((discipline) => (
+                  <option key={discipline.id} value={discipline.id}>
+                    {discipline.title}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </div>
 
-        {/* Body */}
-        <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[1.55fr_1fr]">
-          {/* Form column */}
-          <div className="overflow-y-auto px-7 py-6 custom-scrollbar">
-            {error && (
-              <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-600 animate-in fade-in slide-in-from-top-1">
-                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" />
-                <p className="text-sm font-semibold">{error}</p>
-              </div>
+        <Field label="Additional context" hint="Optional">
+          {(id) => (
+            <Textarea
+              id={id}
+              rows={3}
+              value={additionalContext}
+              onChange={(event) => setAdditionalContext(event.target.value)}
+              placeholder="Steer the generator: focus areas, clinical setting, emphasis…"
+            />
+          )}
+        </Field>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="ai"
+            icon={Sparkles}
+            onClick={() => void handleGenerate()}
+            disabled={!canGenerate}
+          >
+            Generate objective
+          </Button>
+          {!canGenerate && (
+            <p className="text-[13px] text-stone-500">
+              Pick a Bloom level and a discipline first.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <Drawer
+        open={isOpen}
+        onClose={requestClose}
+        dismissible={!isBusy && !isDiscardOpen}
+        width="max-w-2xl"
+        title="New learning objective"
+        description={
+          <>
+            Adding to <span className="font-medium text-stone-700">{course.title}</span>
+          </>
+        }
+        footer={
+          <>
+            <p className="min-w-0 flex-1 truncate text-[13px] text-stone-500">{footerHint}</p>
+            <Button variant="ghost" onClick={requestClose} disabled={isBusy}>
+              Cancel
+            </Button>
+            {mode === 'manual' ? (
+              <Button
+                type="submit"
+                form={FORM_ID}
+                variant="primary"
+                icon={Check}
+                loading={isSubmitting}
+                disabled={!canSubmitManual}
+              >
+                Create and attach
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                icon={Check}
+                loading={isSavingGenerated}
+                disabled={!generated || !generated.title.trim() || isGenerating}
+                onClick={() => void handleSaveGenerated()}
+              >
+                Create and attach
+              </Button>
             )}
+          </>
+        }
+      >
+        <div className="space-y-6 px-6 py-5">
+          <SegmentedControl<AuthoringMode>
+            label="How to author the objective"
+            value={mode}
+            onChange={(next) => {
+              if (isBusy) return;
+              setMode(next);
+              setError(null);
+            }}
+            options={[
+              { value: 'manual', label: 'Write it' },
+              { value: 'ai', label: 'Generate with AI' },
+            ]}
+          />
 
-            {/* Placement */}
-            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              <Layers size={13} /> Placement
+          {error && (
+            <InlineAlert tone="error" onDismiss={() => setError(null)}>
+              {error}
+            </InlineAlert>
+          )}
+
+          {mode === 'manual' ? renderManual() : renderAi()}
+
+          <section className="space-y-4 border-t border-stone-100 pt-5">
+            <div>
+              <h3 className="text-sm font-medium text-stone-900">Placement</h3>
+              <p className="mt-0.5 text-[13px] text-stone-500">
+                Optional. Without a subtopic, the objective belongs to this course only.
+              </p>
             </div>
-            <div className="mt-3 space-y-4">
-              <div>
-                <FieldLabel>Organ system</FieldLabel>
-                <NativeSelect
-                  value={selectedOrganSystemId}
-                  onChange={handleOrganSystemChange}
-                  disabled={isBusy || isLoadingOrganSystems}
-                  loading={isLoadingOrganSystems}
-                >
-                  <option value="" disabled>
-                    {isLoadingOrganSystems ? 'Loading…' : 'Select an organ system'}
-                  </option>
-                  {organSystems.map((os) => (
-                    <option key={os.id} value={os.id}>
-                      {os.title}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-
-              {selectedOrganSystemId && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <FieldLabel>Topic</FieldLabel>
-                  <NativeSelect
-                    value={selectedTopicId}
-                    onChange={handleTopicChange}
-                    disabled={isBusy || isLoadingTopics}
-                    loading={isLoadingTopics}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Organ system">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={selectedOrganSystemId}
+                    onChange={(event) => void handleOrganSystemChange(event.target.value)}
+                    disabled={isBusy || isLoadingOrganSystems}
                   >
-                    <option value="" disabled>
-                      {isLoadingTopics ? 'Loading…' : 'Select a topic'}
-                    </option>
+                    <option value="">{isLoadingOrganSystems ? 'Loading…' : 'None'}</option>
+                    {organSystems.map((os) => (
+                      <option key={os.id} value={os.id}>
+                        {os.title}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Topic">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={selectedTopicId}
+                    onChange={(event) => void handleTopicChange(event.target.value)}
+                    disabled={isBusy || !selectedOrganSystemId || isLoadingTopics}
+                  >
+                    <option value="">{isLoadingTopics ? 'Loading…' : 'None'}</option>
                     {topics.map((topic) => (
                       <option key={topic.id} value={topic.id}>
                         {topic.title}
                       </option>
                     ))}
-                  </NativeSelect>
-                </div>
-              )}
-
-              {selectedTopicId && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <FieldLabel>Subtopic</FieldLabel>
-                  <NativeSelect
+                  </Select>
+                )}
+              </Field>
+              <Field label="Subtopic">
+                {(id) => (
+                  <Select
+                    id={id}
                     value={selectedSyndromeId}
-                    onChange={setSelectedSyndromeId}
-                    disabled={isBusy || isLoadingSyndromes}
-                    loading={isLoadingSyndromes}
+                    onChange={(event) => setSelectedSyndromeId(event.target.value)}
+                    disabled={isBusy || !selectedTopicId || isLoadingSyndromes}
                   >
-                    <option value="" disabled>
-                      {isLoadingSyndromes ? 'Loading…' : 'Select a subtopic'}
-                    </option>
+                    <option value="">{isLoadingSyndromes ? 'Loading…' : 'None'}</option>
                     {syndromes.map((syndrome) => (
                       <option key={syndrome.id} value={syndrome.id}>
                         {syndrome.title}
                       </option>
                     ))}
-                  </NativeSelect>
-                </div>
-              )}
-            </div>
-
-            {/* Authoring mode toggle */}
-            <div className="mt-7 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              <PenLine size={13} /> Author
-            </div>
-            <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-              {([
-                { id: 'manual' as const, label: 'Write it', icon: PenLine },
-                { id: 'ai' as const, label: 'Generate it', icon: Wand2 },
-              ]).map((tab) => {
-                const Icon = tab.icon;
-                const active = mode === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => {
-                      setMode(tab.id);
-                      setError(null);
-                    }}
-                    disabled={isBusy}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition disabled:opacity-50 ${
-                      active
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    <Icon size={14} /> {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Manual authoring */}
-            {mode === 'manual' && (
-              <form
-                id="course-objective-form"
-                onSubmit={handleManualSubmit}
-                className="mt-4 space-y-4"
-              >
-                <div>
-                  <FieldLabel required>Objective</FieldLabel>
-                  <textarea
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="e.g., Explain the pathophysiology of acute coronary syndrome…"
-                    disabled={isSubmitting}
-                    className="min-h-[110px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium leading-relaxed text-slate-800 outline-none transition focus:border-[#1BD183] focus:bg-white focus:ring-2 focus:ring-[#1BD183]/15 placeholder:text-slate-400 disabled:opacity-50"
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel required>Cognitive skill (Bloom's)</FieldLabel>
-                  <NativeSelect
-                    value={selectedCognitiveSkillId}
-                    onChange={setSelectedCognitiveSkillId}
-                    disabled={isSubmitting}
-                  >
-                    <option value="" disabled>
-                      Select a cognitive skill
-                    </option>
-                    {cognitiveSkills?.map((skill) => (
-                      <option key={skill.id} value={skill.id}>
-                        {skill.title}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-
-                <div>
-                  <FieldLabel>Disciplines</FieldLabel>
-                  <MultiSearchableSelect
-                    options={disciplines.map((d) => ({ id: d.id, name: d.title }))}
-                    values={selectedDisciplines}
-                    onChange={setSelectedDisciplines}
-                    placeholder={
-                      disciplines.length === 0
-                        ? 'Loading disciplines…'
-                        : 'Search and select disciplines…'
-                    }
-                    disabled={isSubmitting || disciplines.length === 0}
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel>Subject</FieldLabel>
-                  <NativeSelect
-                    value={selectedSubjectId}
-                    onChange={setSelectedSubjectId}
-                    disabled={isSubmitting}
-                  >
-                    <option value="">Optional — select a subject</option>
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.title}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-              </form>
-            )}
-
-            {/* AI authoring */}
-            {mode === 'ai' && (
-              <div className="mt-4 space-y-4">
-                {!generated && !isGenerating && (
-                  <>
-                    <div>
-                      <FieldLabel required>Cognitive skill (Bloom's)</FieldLabel>
-                      <NativeSelect
-                        value={selectedBloom}
-                        onChange={setSelectedBloom}
-                      >
-                        <option value="" disabled>
-                          Select a cognitive skill
-                        </option>
-                        {cognitiveSkills?.map((skill) => (
-                          <option key={skill.id} value={skill.title}>
-                            {skill.title}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </div>
-
-                    <div>
-                      <FieldLabel required>Discipline</FieldLabel>
-                      <SearchableSelect
-                        options={disciplines.map((d) => ({ id: d.id, name: d.title }))}
-                        value={selectedDisciplineId}
-                        onChange={setSelectedDisciplineId}
-                        placeholder="Search and select a discipline…"
-                        allOption={{ id: '', name: 'Select a discipline…' }}
-                      />
-                    </div>
-
-                    <div>
-                      <FieldLabel>Additional context</FieldLabel>
-                      <textarea
-                        value={additionalContext}
-                        onChange={(event) => setAdditionalContext(event.target.value)}
-                        placeholder="Steer the generator — focus areas, clinical setting, emphasis…"
-                        className="min-h-[80px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none transition focus:border-[#1BD183] focus:bg-white focus:ring-2 focus:ring-[#1BD183]/15 placeholder:text-slate-400"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGenerate}
-                      disabled={!canGenerate}
-                      className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] px-6 py-3.5 text-xs font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-[#1BD183]/20 transition hover:shadow-xl hover:shadow-[#1BD183]/30 active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
-                    >
-                      <Wand2 size={16} /> Generate objective
-                    </button>
-                    {!canGenerate && (
-                      <p className="text-center text-[11px] font-medium text-slate-400">
-                        Pick a Bloom level and discipline to generate a
-                        course-scoped objective.
-                      </p>
-                    )}
-                  </>
+                  </Select>
                 )}
-
-                {isGenerating && (
-                  <div className="flex flex-col items-center justify-center py-14">
-                    <div className="flex h-16 w-16 animate-pulse items-center justify-center rounded-2xl bg-gradient-to-br from-[#1BA6D1] to-[#1BD183] text-white shadow-lg shadow-[#1BD183]/25">
-                      <Wand2 size={28} />
-                    </div>
-                    <p className="mt-5 text-sm font-bold text-slate-700">
-                      Drafting your objective…
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-400">
-                      This can take a few seconds
-                    </p>
-                    <Loader2 size={22} className="mt-4 animate-spin text-[#1BD183]" />
-                  </div>
-                )}
-
-                {generated && !isGenerating && (
-                  <div className="space-y-3 animate-in fade-in zoom-in-95 duration-200">
-                    <div className="overflow-hidden rounded-2xl border border-slate-200">
-                      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${bloomStyle(generated.bloom_level)}`}
-                        >
-                          {generated.bloom_level}
-                        </span>
-                        {generated.competency && (
-                          <span className="text-[10px] font-semibold text-slate-400">
-                            {generated.competency}
-                          </span>
-                        )}
-                      </div>
-                      <textarea
-                        value={generated.title}
-                        onChange={(event) =>
-                          setGenerated({ ...generated, title: event.target.value })
-                        }
-                        disabled={isSavingGenerated}
-                        className="min-h-[96px] w-full resize-none border-0 px-4 py-4 text-sm font-medium leading-relaxed text-slate-800 outline-none focus:ring-0 disabled:opacity-60"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGenerated(null);
-                        setError(null);
-                      }}
-                      disabled={isSavingGenerated}
-                      className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50"
-                    >
-                      <Wand2 size={13} /> Regenerate
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Preview column */}
-          <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto border-l border-slate-100 bg-slate-50/60 px-6 py-6 custom-scrollbar md:flex">
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Live preview
-            </p>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              {previewTitle ? (
-                <p className="text-sm font-bold leading-relaxed text-slate-900">
-                  {previewTitle}
-                </p>
-              ) : (
-                <p className="text-sm font-medium italic leading-relaxed text-slate-400">
-                  Your objective will appear here as you build it.
-                </p>
-              )}
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {organSystemName && (
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                    {organSystemName}
-                  </span>
-                )}
-                {previewBloom && (
-                  <span
-                    className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${bloomStyle(previewBloom)}`}
-                  >
-                    {previewBloom}
-                  </span>
-                )}
-                {previewDisciplines.map((discipline) => (
-                  <span
-                    key={discipline}
-                    className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500"
-                  >
-                    {discipline}
-                  </span>
-                ))}
-              </div>
+              </Field>
             </div>
-
-            {(organSystemName || topicName || syndromeName) && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs font-semibold text-slate-500">
-                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Curriculum path
-                </p>
-                <div className="flex flex-wrap items-center gap-1.5 text-slate-700">
-                  <span>{organSystemName || '—'}</span>
-                  {topicName && <ChevronDown size={12} className="-rotate-90 text-slate-300" />}
-                  {topicName && <span>{topicName}</span>}
-                  {syndromeName && <ChevronDown size={12} className="-rotate-90 text-slate-300" />}
-                  {syndromeName && <span className="text-[#0f9d63]">{syndromeName}</span>}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-auto space-y-2">
-              {checklist.map((item) => (
-                <div key={item.label} className="flex items-center gap-2.5">
-                  <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full transition ${
-                      item.done
-                        ? 'bg-[#1BD183] text-white'
-                        : 'border border-slate-300 bg-white text-transparent'
-                    }`}
-                  >
-                    <Check size={12} />
-                  </span>
-                  <span
-                    className={`text-xs font-bold ${item.done ? 'text-slate-700' : 'text-slate-400'}`}
-                  >
-                    {item.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </aside>
+          </section>
         </div>
+      </Drawer>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-7 py-4">
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isBusy}
-            className="rounded-xl px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-
-          {mode === 'manual' ? (
-            <button
-              type="submit"
-              form="course-objective-form"
-              disabled={isSubmitting || !canSubmitManual}
-              className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] px-6 py-3 text-sm font-black text-white shadow-lg shadow-[#1BD183]/20 transition hover:shadow-xl hover:shadow-[#1BD183]/30 active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> Creating…
-                </>
-              ) : (
-                <>
-                  <Check size={16} /> Create &amp; attach
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSaveGenerated}
-              disabled={!generated || isSavingGenerated}
-              className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] px-6 py-3 text-sm font-black text-white shadow-lg shadow-[#1BD183]/20 transition hover:shadow-xl hover:shadow-[#1BD183]/30 active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
-            >
-              {isSavingGenerated ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> Saving…
-                </>
-              ) : (
-                <>
-                  <Check size={16} /> Create &amp; attach
-                </>
-              )}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+      <ConfirmDialog
+        open={isDiscardOpen}
+        title="Discard this objective?"
+        description="What you’ve written or generated here will be lost."
+        confirmLabel="Discard"
+        onCancel={() => setDiscardOpen(false)}
+        onConfirm={handleClose}
+      />
+    </>
   );
-
-  return createPortal(modalContent, document.body);
 };
 
 export default CreateCourseObjectiveModal;
