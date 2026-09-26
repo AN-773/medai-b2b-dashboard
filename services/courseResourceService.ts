@@ -1,6 +1,7 @@
 import { apiClient } from './apiClient';
 import { resourceIdentifier } from '@/utils/resourceId';
-import { uploadFileToBlobUrl } from '@/utils/blockBlobUpload';
+import { uploadToSignedTarget } from '@/utils/storageUpload';
+import type { S3MultipartApi } from '@/utils/s3MultipartUpload';
 import type {
   CourseResource,
   CourseResourceDownloadResponse,
@@ -26,6 +27,35 @@ interface UploadCourseResourcesResponse {
   resources?: CourseResource[];
 }
 
+/**
+ * S3 multipart endpoints for one course (STORAGE-S3-CONTRACT.md §5), used for
+ * files over 64 MiB when the upload-url response says `provider: "s3"`.
+ */
+export const courseResourceMultipartApi = (courseIdentifier: string): S3MultipartApi => {
+  const base = `/courses/${resourceIdentifier(courseIdentifier)}/resources/uploads/multipart`;
+  return {
+    create: (request, signal) =>
+      apiClient.post('TESTS', base, request, { signal }),
+    getPartUrls: async (uploadId, key, partNumbers, signal) => {
+      const response = await apiClient.post<{ parts?: { partNumber: number; url: string }[] }>(
+        'TESTS',
+        `${base}/${encodeURIComponent(uploadId)}/parts`,
+        { key, partNumbers },
+        { signal },
+      );
+      return response.parts ?? [];
+    },
+    complete: (uploadId, key, parts, signal) =>
+      apiClient.post('TESTS', `${base}/${encodeURIComponent(uploadId)}/complete`, { key, parts }, { signal }),
+    abort: async (uploadId, key) => {
+      await apiClient.delete<void>(
+        'TESTS',
+        `${base}/${encodeURIComponent(uploadId)}?key=${encodeURIComponent(key)}`,
+      );
+    },
+  };
+};
+
 export const courseResourceService = {
   listTeacherCourseResources: async (
     courseIdentifier: string,
@@ -43,6 +73,9 @@ export const courseResourceService = {
    * pushes to storage, and a commit call records the resource. Streaming a
    * multi-gigabyte lecture video through the API instead would buffer the whole
    * file to the container's temp disk before any of it reached storage.
+   *
+   * The mint response's `provider` picks the storage protocol (Azure SAS or
+   * S3 presigned; see utils/storageUpload.ts). Old servers omit it: Azure.
    *
    * Falls back to the multipart endpoint only when the backend answers 501,
    * which is how it reports a file store that cannot sign upload URLs (local
@@ -76,7 +109,9 @@ export const courseResourceService = {
       throw error;
     }
 
-    await uploadFileToBlobUrl(mint.uploadUrl, file, {
+    // The mint response says which store the URL is for; see utils/storageUpload.ts.
+    const { key: uploadPath } = await uploadToSignedTarget(mint, file, {
+      multipartApi: courseResourceMultipartApi(courseIdentifier),
       signal: options.signal,
       onProgress: options.onProgress
         ? (uploadedBytes) => {
@@ -91,7 +126,7 @@ export const courseResourceService = {
     const response = await apiClient.post<UploadCourseResourcesResponse>(
       'TESTS',
       `/courses/${identifier}/resources/commit`,
-      { uploadPath: mint.uploadPath, fileName: file.name, fileType },
+      { uploadPath, fileName: file.name, fileType },
       { signal: options.signal },
     );
 

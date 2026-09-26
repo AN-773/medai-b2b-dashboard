@@ -38,6 +38,13 @@ export interface CourseResourceUploadURLResponse {
   /** Storage path of the upload; hand it back when committing. */
   uploadPath: string;
   expiresAt: string;
+  /**
+   * Which store the URL points at. Absent on servers that predate the S3
+   * move, which means Azure.
+   */
+  provider?: 'azure' | 's3';
+  /** Headers to send, exactly, on a single-PUT upload to `uploadUrl`. */
+  uploadHeaders?: Record<string, string>;
 }
 
 export interface CommitCourseResourceUploadRequest {
