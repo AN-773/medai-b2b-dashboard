@@ -48,6 +48,9 @@ container's temp disk and does not begin writing to storage until the last byte 
 }
 ```
 
+The request carries `X-Upload-Providers: azure,s3` (also sent on multipart create). The
+server hands out an S3 URL only to clients that send it (shared contract §6a).
+
 `provider` and `uploadHeaders` come from the shared storage contract
 (`infra/docs/STORAGE-S3-CONTRACT.md` §5). With `provider: "s3"`, `uploadUrl` is a presigned
 S3 PUT URL.
@@ -83,8 +86,7 @@ headers `*`, and **exposing `ETag`** (the client reads each part's ETag to compl
 ##### S3 multipart (provider `s3`, file > 64 MiB)
 
 All on the Tests service, authenticated like `upload-url`. Base:
-`/courses/{identifier}/resources/uploads/multipart` (path provisional until the server
-lands; the shared contract writes it as `…/uploads/multipart`).
+`/courses/{identifier}/resources/uploads/multipart` (confirmed with the test-service side).
 
 | Call | Request | Response |
 |---|---|---|

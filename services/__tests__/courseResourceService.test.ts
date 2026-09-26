@@ -119,4 +119,37 @@ describe('courseResourceService.uploadTeacherCourseResource', () => {
     );
     expect(apiClient.post.mock.calls.some((c) => String(c[1]).endsWith('/commit'))).toBe(false);
   });
+
+  it('sends X-Upload-Providers: azure,s3 on upload-url and multipart create only', async () => {
+    FakeXhr.reset((request) => ({ status: 200, headers: { ETag: '"e"' } }));
+    apiClient.post.mockImplementation(async (_svc: string, path: string, body: any) => {
+      if (path.endsWith('/upload-url')) {
+        return { uploadUrl: 'https://u', uploadPath: 'course-resources/v.mp4', expiresAt: '', provider: 's3', uploadHeaders: { 'Content-Type': 'video/mp4' } };
+      }
+      if (path === `${BASE}/uploads/multipart`) {
+        return { uploadId: 'u1', key: body.key, partSize: 16 * MiB, partCount: 5 };
+      }
+      if (path.endsWith('/parts')) {
+        return { parts: body.partNumbers.map((n: number) => ({ partNumber: n, url: `https://b/k?partNumber=${n}` })) };
+      }
+      if (path.endsWith('/complete')) return { key: body.key };
+      if (path.endsWith('/commit')) return { resources: [] };
+      throw new Error(`unexpected ${path}`);
+    });
+
+    await courseResourceService.uploadTeacherCourseResource(
+      COURSE_ID,
+      new File([new Uint8Array(65 * MiB)], 'v.mp4', { type: 'video/mp4' }),
+    );
+
+    const headerFor = (suffix: string) =>
+      apiClient.post.mock.calls.find((c) => String(c[1]).endsWith(suffix))?.[3]?.headers?.['X-Upload-Providers'];
+    expect(headerFor('/upload-url')).toBe('azure,s3');
+    expect(headerFor('/uploads/multipart')).toBe('azure,s3');
+    expect(headerFor('/parts')).toBeUndefined();
+    expect(headerFor('/complete')).toBeUndefined();
+    expect(headerFor('/commit')).toBeUndefined();
+    // Never sent to storage itself.
+    expect(FakeXhr.requests.every((r) => !('X-Upload-Providers' in r.headers))).toBe(true);
+  });
 });
