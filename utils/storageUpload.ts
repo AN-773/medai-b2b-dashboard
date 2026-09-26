@@ -21,6 +21,15 @@ import { uploadS3Multipart, type S3MultipartApi } from './s3MultipartUpload';
 
 export type StorageProvider = 'azure' | 's3';
 
+/**
+ * Sent on every "get an upload URL" request and on multipart create
+ * (STORAGE-S3-CONTRACT.md §6a). Servers only hand out S3 URLs to clients that
+ * advertise `s3` here; everyone else keeps getting Azure.
+ */
+export const UPLOAD_PROVIDERS_HEADERS: Readonly<Record<string, string>> = Object.freeze({
+  'X-Upload-Providers': 'azure,s3',
+});
+
 export interface SignedUploadTarget {
   uploadUrl: string;
   /** Storage key the server minted; returned unchanged unless S3 multipart assigns another. */

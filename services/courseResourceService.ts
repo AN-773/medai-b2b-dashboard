@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 import { resourceIdentifier } from '@/utils/resourceId';
-import { uploadToSignedTarget } from '@/utils/storageUpload';
+import { UPLOAD_PROVIDERS_HEADERS, uploadToSignedTarget } from '@/utils/storageUpload';
 import type { S3MultipartApi } from '@/utils/s3MultipartUpload';
 import type { CourseResourceProcessingAction } from '@/types/DocumentProcessing';
 import type {
@@ -38,7 +38,7 @@ export const courseResourceMultipartApi = (courseIdentifier: string): S3Multipar
   const base = `/courses/${resourceIdentifier(courseIdentifier)}/resources/uploads/multipart`;
   return {
     create: (request, signal) =>
-      apiClient.post('TESTS', base, request, { signal }),
+      apiClient.post('TESTS', base, request, { signal, headers: { ...UPLOAD_PROVIDERS_HEADERS } }),
     getPartUrls: async (uploadId, key, partNumbers, signal) => {
       const response = await apiClient.post<{ parts?: { partNumber: number; url: string }[] }>(
         'TESTS',
@@ -101,7 +101,7 @@ export const courseResourceService = {
         'TESTS',
         `/courses/${identifier}/resources/upload-url`,
         { fileName: file.name, fileType, fileSize: file.size },
-        { signal: options.signal },
+        { signal: options.signal, headers: { ...UPLOAD_PROVIDERS_HEADERS } },
       );
     } catch (error) {
       if (statusOf(error) === 501) {
