@@ -39,9 +39,18 @@ container's temp disk and does not begin writing to storage until the last byte 
 {
   "uploadUrl": "https://<account>.blob.core.windows.net/<container>/course-resources/<ksuid>.mp4?sv=…",
   "uploadPath": "course-resources/<ksuid>.mp4",
-  "expiresAt": "2026-08-17T12:00:00Z"
+  "expiresAt": "2026-08-17T12:00:00Z",
+  "provider": "azure",                       // "azure" | "s3"; absent on older servers = "azure"
+  "uploadHeaders": {                         // send exactly these on a single PUT
+    "Content-Type": "video/mp4",
+    "x-ms-blob-type": "BlockBlob"            // azure only; for s3 just Content-Type
+  }
 }
 ```
+
+`provider` and `uploadHeaders` come from the shared storage contract
+(`infra/docs/STORAGE-S3-CONTRACT.md` §5). With `provider: "s3"`, `uploadUrl` is a presigned
+S3 PUT URL.
 
 | Status | Meaning |
 |--------|---------|
@@ -54,13 +63,40 @@ poor uplink, unlike the 15-minute download links.
 
 #### 2. Upload the bytes
 
-`utils/blockBlobUpload.ts` handles this. Files ≤ 64 MiB go up as one `PUT` with
-`x-ms-blob-type: BlockBlob`; larger files are staged as blocks (`comp=block`) and
-assembled with `comp=blocklist`, because Azure caps a single `PUT` at 256 MiB.
+`utils/storageUpload.ts` picks the protocol from `provider` and the file size:
 
-This requires a **CORS rule on the storage account** allowing `PUT` from the dashboard
+| provider | ≤ 64 MiB | > 64 MiB |
+|---|---|---|
+| absent / `azure` | one `PUT` (`utils/blockBlobUpload.ts`) | Azure blocks (`comp=block`, then `comp=blocklist`), because Azure caps a single `PUT` at 256 MiB |
+| `s3` | one `PUT` to the presigned URL | S3 multipart through the endpoints below (`utils/s3MultipartUpload.ts`) |
+
+A single `PUT` sends exactly `uploadHeaders`; an old server without them gets
+`x-ms-blob-type: BlockBlob` + `Content-Type` as before.
+
+**Azure** needs a **CORS rule on the storage account** allowing `PUT` from the dashboard
 origin with the `x-ms-blob-type`, `x-ms-blob-content-type`, and `content-type` headers.
 Without it the browser request fails before it reaches Azure.
+
+**S3** needs a bucket CORS rule allowing `PUT`/`GET`/`HEAD` from the dashboard origins,
+headers `*`, and **exposing `ETag`** (the client reads each part's ETag to complete).
+
+##### S3 multipart (provider `s3`, file > 64 MiB)
+
+All on the Tests service, authenticated like `upload-url`. Base:
+`/courses/{identifier}/resources/uploads/multipart` (path provisional until the server
+lands; the shared contract writes it as `…/uploads/multipart`).
+
+| Call | Request | Response |
+|---|---|---|
+| `POST {base}` | `{ key, contentType, size }` (`key` = `uploadPath` from step 1) | `{ uploadId, key, partSize, partCount }` |
+| `POST {base}/{uploadId}/parts` | `{ key, partNumbers: [n, …] }` | `{ parts: [{ partNumber, url }] }` |
+| `POST {base}/{uploadId}/complete` | `{ key, parts: [{ partNumber, etag }] }` | `{ key }` |
+| `DELETE {base}/{uploadId}?key=…` | — | abort |
+
+The client fetches part URLs in batches of 8 as it needs them, PUTs 4 parts at a time,
+retries a part up to 4 attempts on network errors, 403 (after fetching a fresh URL), 408,
+429 and 5xx, and aborts the upload on any failure or cancel. It commits (step 3) with the
+`key` that `complete` returned.
 
 #### 3. `POST /courses/{identifier}/resources/commit`
 
