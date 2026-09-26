@@ -10,9 +10,10 @@ pnpm run dev        # Start dev server (Vite, port 5173)
 pnpm run build      # Production build (Vite bundle only — no type check)
 pnpm run preview    # Preview production build
 npx tsc --noEmit    # Type-check (not part of the build)
+pnpm test           # Unit tests (Vitest, node environment)
 ```
 
-No test runner or linter is configured. A PostToolUse hook in `.claude/settings.json` type-checks edited `.ts`/`.tsx` files and reports errors belonging to the edited file.
+Vitest runs `**/__tests__/*.test.ts`; no linter is configured. A PostToolUse hook in `.claude/settings.json` type-checks edited `.ts`/`.tsx` files and reports errors belonging to the edited file.
 
 ## Architecture
 
