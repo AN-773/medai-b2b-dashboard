@@ -10,7 +10,7 @@
  */
 
 /** Files at or below this go up in one request. Azure's own ceiling is 256 MiB. */
-const SINGLE_SHOT_LIMIT = 64 * 1024 * 1024;
+export const SINGLE_SHOT_LIMIT = 64 * 1024 * 1024;
 
 const DEFAULT_BLOCK_SIZE = 8 * 1024 * 1024;
 
@@ -24,6 +24,13 @@ export interface BlockBlobUploadOptions {
   /** Called with the number of bytes confirmed sent so far. */
   onProgress?: (uploadedBytes: number) => void;
   signal?: AbortSignal;
+  /**
+   * Headers for the single-shot PUT, exactly as the server's `uploadHeaders`
+   * returned them. When absent (an older server) the PUT carries today's
+   * Azure headers. The block path ignores this: its per-block headers are
+   * part of the Azure protocol, not of the signed URL.
+   */
+  singleShotHeaders?: Record<string, string>;
 }
 
 export class BlobUploadError extends Error {
@@ -61,7 +68,7 @@ const withQuery = (uploadUrl: string, params: Record<string, string>) => {
  * Azure returns errors as XML. Surface the human-readable part when there is
  * one — an expired signature otherwise shows up as a bare 403.
  */
-const describeFailure = (status: number, body: string): string => {
+export const describeFailure = (status: number, body: string): string => {
   const code = body.match(/<Code>([^<]+)<\/Code>/)?.[1];
   if (code === 'AuthenticationFailed' || status === 403) {
     return 'The upload link expired or was rejected. Try uploading again.';
@@ -80,7 +87,7 @@ const describeFailure = (status: number, body: string): string => {
  */
 const blockId = (index: number) => btoa(`block-${String(index).padStart(6, '0')}`);
 
-interface PutRequest {
+export interface PutRequest {
   url: string;
   body: Blob;
   headers: Record<string, string>;
@@ -88,7 +95,18 @@ interface PutRequest {
   onProgress?: (loadedBytes: number) => void;
 }
 
-const put = ({ url, body, headers, signal, onProgress }: PutRequest): Promise<void> =>
+export interface PutResult {
+  status: number;
+  /** Reads a response header; cross-origin, only CORS-exposed ones are visible. */
+  getHeader: (name: string) => string | null;
+}
+
+/**
+ * One PUT through XMLHttpRequest (fetch has no upload progress). Resolves on
+ * 2xx; rejects with BlobUploadError otherwise, or BlobUploadAbortedError when
+ * `signal` fires.
+ */
+export const put = ({ url, body, headers, signal, onProgress }: PutRequest): Promise<PutResult> =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new BlobUploadAbortedError());
@@ -109,7 +127,7 @@ const put = ({ url, body, headers, signal, onProgress }: PutRequest): Promise<vo
     xhr.onload = () => {
       cleanup();
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
+        resolve({ status: xhr.status, getHeader: (name) => xhr.getResponseHeader(name) });
         return;
       }
       reject(new BlobUploadError(describeFailure(xhr.status, xhr.responseText || ''), xhr.status));
@@ -133,7 +151,7 @@ const put = ({ url, body, headers, signal, onProgress }: PutRequest): Promise<vo
     xhr.send(body);
   });
 
-const uploadSingleShot = async (
+export const uploadSingleShot = async (
   uploadUrl: string,
   file: File,
   contentType: string,
@@ -142,7 +160,7 @@ const uploadSingleShot = async (
   await put({
     url: uploadUrl,
     body: file,
-    headers: {
+    headers: options.singleShotHeaders ?? {
       'x-ms-blob-type': 'BlockBlob',
       'Content-Type': contentType,
     },
