@@ -24,7 +24,7 @@ import SubTopicGrid from '../components/curriculum/SubTopicGrid';
 import ObjectiveList from '../components/curriculum/ObjectiveList';
 import LinkedItemsPanel from '../components/curriculum/LinkedItemsPanel';
 import { identifierOf } from '../utils/resourceId';
-import { LearningObjective } from '../types';
+import type { LearningObjective } from '../types/TestsServiceTypes';
 
 const CurriculumWorkbenchView: React.FC = () => {
   const navigate = useNavigate();
@@ -58,7 +58,7 @@ const CurriculumWorkbenchView: React.FC = () => {
       topicId: content.activeTopicId,
       syndromeId: content.activeSubTopicId,
       learningObjectiveId: obj.id,
-      cognitiveSkillId: (obj as any).cognitiveSkillId || '',
+      cognitiveSkillId: obj.cognitiveSkillId || '',
     };
     if (redirectTo) context.redirect = redirectTo;
     setViewLinkedItems(null);

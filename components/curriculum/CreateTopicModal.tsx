@@ -11,7 +11,7 @@ interface CreateTopicModalProps {
     identifier?: string;
     organSystemId: string;
   }) => Promise<void>;
-  organSystems: OrganSystem[];
+  organSystems: Pick<OrganSystem, 'id' | 'title'>[];
   defaultSystemId?: string;
   initialData?: {
     name: string;

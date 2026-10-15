@@ -14,14 +14,23 @@ import type {
   SuggestionEvidenceChunk,
   SuggestionStatus,
 } from './CourseStudioTypes';
+import type {
+  ModuleGenerationReviewState,
+  ModuleGenerationStage,
+} from './ModuleGenerationTypes';
 
-export type CourseGenerationKind = 'items';
+export type CourseGenerationKind = 'items' | 'modules';
 
+/**
+ * Machine lifecycle only: queued -> processing -> completed | failed |
+ * cancelled. `cancelled` is used by modules jobs.
+ */
 export type CourseGenerationJobStatus =
   | 'queued'
   | 'processing'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 /**
  * Long-running generation job, mirroring `CohortStudyPlanJob`. Clients poll the
@@ -35,6 +44,17 @@ export interface CourseGenerationJob {
   courseId: string;
   kind: CourseGenerationKind;
   status: CourseGenerationJobStatus;
+  /** Modules jobs only: progress while processing. */
+  stage?: ModuleGenerationStage | null;
+  /** Modules jobs only: outcome once completed. */
+  reviewState?: ModuleGenerationReviewState | null;
+  /** Set when a cancel was requested for a processing job. */
+  cancelRequestedAt?: string | null;
+  /** Prompt tokens across every LLM call of the job. */
+  tokensIn?: number;
+  /** Completion tokens across every LLM call, including reasoning tokens. */
+  tokensOut?: number;
+  llmCalls?: number;
   triggerSource?: string;
   queuedCount: number;
   processingCount: number;

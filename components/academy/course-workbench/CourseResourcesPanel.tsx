@@ -15,17 +15,31 @@ import {
   Loader2,
   Presentation,
   RefreshCw,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
 } from 'lucide-react';
 import type { TeacherCourse } from '@/types/AcademyStudioTypes';
 import { courseResourceService } from '@/services/courseResourceService';
+import {
+  AGENT_MAX_UPLOAD_BYTES,
+  AGENT_MAX_UPLOAD_SIZE_LABEL,
+  formatSuffixLabels,
+  getCorpusUploadFormats,
+  isAcceptedUpload,
+  uploadAcceptAttribute,
+} from '@/services/agentV2Service';
+import type { AcceptedUploadFormat } from '@/services/agentV2Service';
+import { readCourseResourceKnowledgeBase } from '@/types/CourseResourceTypes';
 import type { CourseResource } from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import { SectionLabel } from './shared';
+import { useProgressiveCourseResources } from '@/hooks/useProgressiveCourseResources';
+import { isTextReady, needsCourseSync, shouldPollResource } from '@/utils/documentProcessing';
+import { ResourceProcessingStatus } from './ResourceProcessingStatus';
 
 interface CourseResourcesPanelProps {
   course: TeacherCourse;
@@ -38,15 +52,31 @@ type ApiRequestError = Error & {
 const PAGE_SIZE = 25;
 
 /**
- * Videos go straight to blob storage, so the ceiling is what a teacher can
- * realistically push over a campus uplink rather than a backend limit. The
- * Tests service enforces the same cap (COURSE_RESOURCE_MAX_UPLOAD_BYTES);
- * checking here as well means nobody waits out an hour-long upload to be told
- * no at the end.
+ * What a course resource may be is now what the tutor agent can read.
+ *
+ * The store behind this panel would take anything — the Tests service applies
+ * no MIME allowlist and its own ceiling was gigabyte-scale, sized for a lecture
+ * video pushed over a campus uplink. What it could not do is make any of it
+ * *searchable*: a file becomes answerable by a learner's tutor only by being
+ * ingested into a knowledge base, and that pipeline parses a specific set of
+ * document formats and refuses anything over 150 MiB.
+ *
+ * The gap between those two was the defect. A teacher could upload a 2 GB
+ * lecture recording, see it listed, and have every learner's tutor unable to
+ * quote a word of it — a success on screen and a file the product cannot use.
+ * So the picker is bounded by the pipeline rather than by the store, both ways:
+ * {@link AGENT_MAX_UPLOAD_BYTES} for the size, and the agent's own published
+ * format list for the type.
+ *
+ * **This is a narrowing, and video is what it removes.** Recordings already
+ * uploaded are untouched and still listed, downloadable and attached to their
+ * study plans; what changes is that a new one is refused here rather than
+ * accepted into a dead end. Making them searchable is a transcription step
+ * nobody has built, and until it exists this refusal is the honest answer.
+ *
+ * Checking here rather than leaving it to the backend means nobody waits out a
+ * long upload to be told no at the end.
  */
-const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
-const MAX_VIDEO_SIZE_LABEL = '2 GB';
-
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi'];
 
 type UploadItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'canceled';
@@ -65,15 +95,6 @@ const getStatus = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error
     ? Number((error as ApiRequestError).status)
     : undefined;
-
-const getListErrorMessage = (error: unknown) => {
-  const status = getStatus(error);
-  if (status === 404) return "We couldn't find this course.";
-  if (status === 500) {
-    return "Couldn't load files right now — try again in a moment.";
-  }
-  return error instanceof Error ? error.message : "Couldn't load files.";
-};
 
 const getUploadErrorMessage = (error: unknown) => {
   const status = getStatus(error);
@@ -118,8 +139,25 @@ const formatTimestamp = (value: string) => {
   }).format(date);
 };
 
-const fileTypeLabel = (value: string) => {
-  const trimmed = value.trim();
+const FILE_TYPE_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'text/plain': 'TXT',
+  'text/csv': 'CSV',
+  'text/markdown': 'MD',
+};
+
+const fileTypeLabel = (value: string, fileName: string) => {
+  const trimmed = value.split(';')[0].trim();
+  const knownLabel = FILE_TYPE_LABELS[trimmed.toLowerCase()];
+  if (knownLabel) return knownLabel;
+  const extension = /\.([a-z0-9]{1,10})$/i.exec(fileName)?.[1];
+  if (extension) return extension.toUpperCase();
   if (!trimmed) return 'File';
   return trimmed.includes('/') ? trimmed.split('/')[1].toUpperCase() : trimmed;
 };
@@ -130,6 +168,40 @@ const extensionOf = (fileName: string) =>
 const isVideoFile = (file: File) =>
   file.type.toLowerCase().startsWith('video/') ||
   VIDEO_EXTENSIONS.includes(extensionOf(file.name));
+
+/**
+ * Why this file cannot be a course resource, or `null` if it can.
+ *
+ * `accepted` is `null` when the agent could not be asked what it reads — no
+ * deployment configured, or the call failed. The type check is then skipped
+ * entirely rather than run against a guess: refusing a PDF because a format
+ * list did not load would be a worse failure than accepting a file the upload
+ * later answers `415` for. The size check still runs, because that number is
+ * known without asking.
+ */
+const rejectionFor = (
+  file: File,
+  accepted: readonly AcceptedUploadFormat[] | null,
+): string | null => {
+  if (accepted !== null && !isAcceptedUpload(file, accepted)) {
+    const kinds = formatSuffixLabels(accepted).join(', ');
+    if (isVideoFile(file)) {
+      return `Recordings can’t be added as course resources — a learner’s tutor can’t read one. Upload the slides or a transcript instead (${kinds}).`;
+    }
+    // A name with no dot has no extension to name back at the teacher, and
+    // `extensionOf` would hand back the whole filename for one.
+    const dot = file.name.lastIndexOf('.');
+    const kind =
+      dot > 0 ? `${file.name.slice(dot + 1).toUpperCase()} files aren’t` : 'That file isn’t';
+    return `${kind} something a learner’s tutor can read. Accepted: ${kinds}.`;
+  }
+
+  if (file.size > AGENT_MAX_UPLOAD_BYTES) {
+    return `This file is ${formatFileSize(file.size)} — the limit is ${AGENT_MAX_UPLOAD_SIZE_LABEL}. Split it into parts, or compress the images inside it.`;
+  }
+
+  return null;
+};
 
 const iconForResource = (resource: CourseResource) => {
   const type = (resource.fileType || '').toLowerCase();
@@ -157,6 +229,28 @@ const resourceKey = (resource: CourseResource) =>
 const identifierFor = (resource: CourseResource) =>
   resource.identifier || resourceIdentifier(resource.id);
 
+/*
+ * The tutor column (contracts/course-resources-contract.md, Contracts T1–T3).
+ *
+ * The Tests service ingests each eligible resource once per course into the
+ * knowledge base a learner's tutor searches, and reports where each file stands
+ * on `CourseResource.knowledgeBase`. The key is absent when Tests has no agent
+ * configured, and then none of this renders: the grid, the header and the copy
+ * stay exactly as they were before the feature.
+ */
+
+/** Container-based columns account for the workbench/sidebar's available width. */
+const RESOURCE_GRID_COLUMNS = 'course-resources-grid';
+const RESOURCE_GRID_COLUMNS_WITH_TUTOR = 'course-resources-grid-with-tutor';
+
+const getSyncErrorMessage = (error: unknown) => {
+  const status = getStatus(error);
+  if (status === 500) {
+    return 'Couldn’t send files to the tutor right now — try again in a moment.';
+  }
+  return error instanceof Error ? error.message : 'Couldn’t send files to the tutor.';
+};
+
 const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
@@ -166,20 +260,44 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     () => course.backendIdentifier || resourceIdentifier(course.id),
     [course.backendIdentifier, course.id],
   );
-  const [resources, setResources] = useState<CourseResource[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const { resources, total, isLoading, loadError, connectionStale, refresh, expectUpdate } =
+    useProgressiveCourseResources(courseIdentifier, page, PAGE_SIZE);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [resourceToDelete, setResourceToDelete] = useState<CourseResource | null>(
     null,
   );
   const [deletingResourceId, setDeletingResourceId] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  /**
+   * What the tutor agent will ingest. `null` until it answers, and permanently
+   * `null` where there is no agent — see `rejectionFor` on why that is not the
+   * same as an empty list.
+   */
+  const [acceptedFormats, setAcceptedFormats] = useState<
+    AcceptedUploadFormat[] | null
+  >(null);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  /**
+   * Set once the Tests service answers that it cannot sync (no agent, or no
+   * route). Kept for the life of the panel rather than per course, because it
+   * is a fact about the deployment.
+   */
+  const [syncUnsupported, setSyncUnsupported] = useState(false);
+  const syncControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setIsSyncing(false);
+    return () => {
+      syncControllerRef.current?.abort();
+      syncControllerRef.current = null;
+    };
+  }, [page]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageSize = useMemo(
@@ -187,44 +305,37 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     [resources],
   );
 
+  // The key's presence, not a recognised status, decides the column: absent
+  // means Tests has no agent, and then the table is exactly what it was.
+  const showTutorColumn = useMemo(
+    () => resources.some((resource) => resource.knowledgeBase != null),
+    [resources],
+  );
+  const hasProcessing = resources.some(shouldPollResource);
+  const needsSync = resources.some(needsCourseSync);
   const loadResources = useCallback(
     async (pageToLoad: number) => {
-      setIsLoading(true);
-      try {
-        const response = await courseResourceService.listTeacherCourseResources(
-          courseIdentifier,
-          { page: pageToLoad, limit: PAGE_SIZE },
-        );
-        setResources(response.resources ?? []);
-        setTotal(response.total ?? 0);
-        setPage(response.page ?? pageToLoad);
-        setLoadError(null);
-      } catch (error) {
-        setResources([]);
-        setTotal(0);
-        setLoadError(getListErrorMessage(error));
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [courseIdentifier],
+      if (pageToLoad !== page) setPage(pageToLoad);
+      else await refresh();
+    }, [page, refresh],
   );
 
-  useEffect(() => {
-    setPage(1);
-    setResources([]);
-    setTotal(0);
-    setLoadError(null);
-    setDeleteError(null);
-    setStatusMessage(null);
-    setUploadQueue([]);
-  }, [course.id]);
+  useEffect(() => () => {
+    syncControllerRef.current?.abort();
+    cancelRequestedRef.current = true;
+    abortRef.current?.abort();
+  }, []);
 
+  // Asked once per mount rather than per course: the answer is a fact about the
+  // deployment's parser, not about this course, and it does not change while a
+  // teacher moves between courses in the workbench.
   useEffect(() => {
-    void loadResources(page);
-  }, [loadResources, page]);
+    const controller = new AbortController();
+    void getCorpusUploadFormats({ signal: controller.signal }).then(setAcceptedFormats);
+    return () => controller.abort();
+  }, []);
 
-  // A video upload can outlast the teacher's patience with the tab, and closing
+  // A large upload can outlast the teacher's patience with the tab, and closing
   // it mid-transfer throws away everything sent so far.
   useEffect(() => {
     if (!isUploading) return;
@@ -250,18 +361,18 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       if (files.length === 0 || isUploading) return;
 
       const queue: UploadItem[] = files.map((file, index) => {
-        const isVideo = isVideoFile(file);
-        const tooLarge = isVideo && file.size > MAX_VIDEO_BYTES;
+        // Type before size, because it is the more useful thing to be told:
+        // a teacher whose 900 MB recording is refused for both reasons is not
+        // helped by "compress it", and the extension is what they can act on.
+        const rejection = rejectionFor(file, acceptedFormats);
         return {
           key: `${index}-${file.name}-${file.size}-${file.lastModified}`,
           fileName: file.name,
           fileSize: file.size,
-          isVideo,
-          status: tooLarge ? 'error' : 'pending',
+          isVideo: isVideoFile(file),
+          status: rejection ? 'error' : 'pending',
           percent: 0,
-          error: tooLarge
-            ? `This video is ${formatFileSize(file.size)} — the limit is ${MAX_VIDEO_SIZE_LABEL}. Compress it or split it into shorter clips.`
-            : undefined,
+          error: rejection ?? undefined,
         };
       });
 
@@ -273,6 +384,10 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
 
       let uploadedCount = 0;
       let lastUploadedName = '';
+      // Whether the Tests service said the tutor will index what landed. Only
+      // then does the success copy mention the tutor — and not for a file Tests
+      // already reported it cannot send, which its row chip explains instead.
+      let tutorWillIndex = false;
 
       // One file at a time: each upload already parallelises its own blocks, and
       // a failure part-way leaves the files that already landed untouched.
@@ -300,6 +415,12 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           );
           uploadedCount += 1;
           lastUploadedName = uploaded[0]?.fileName || item.fileName;
+          const uploadedTutorState = uploaded[0]
+            ? readCourseResourceKnowledgeBase(uploaded[0])
+            : null;
+          if (uploadedTutorState && uploadedTutorState.status !== 'ineligible') {
+            tutorWillIndex = true;
+          }
           updateUploadItem(item.key, { status: 'done', percent: 100 });
         } catch (error) {
           if (controller.signal.aborted || error instanceof BlobUploadAbortedError) {
@@ -328,10 +449,16 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       );
 
       if (uploadedCount > 0) {
+        const single = uploadedCount === 1;
+        const available = single
+          ? `“${lastUploadedName}” is available to learners.`
+          : `${uploadedCount} files are available to learners.`;
         setStatusMessage(
-          uploadedCount === 1
-            ? `“${lastUploadedName}” is now available to learners.`
-            : `${uploadedCount} files are now available to learners.`,
+          tutorWillIndex
+            ? `${available} Processing will continue automatically.`
+            : single
+              ? `“${lastUploadedName}” is now available to learners.`
+              : `${uploadedCount} files are now available to learners.`,
         );
         if (page === 1) {
           await loadResources(1);
@@ -340,7 +467,14 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         }
       }
     },
-    [courseIdentifier, isUploading, loadResources, page, updateUploadItem],
+    [
+      acceptedFormats,
+      courseIdentifier,
+      isUploading,
+      loadResources,
+      page,
+      updateUploadItem,
+    ],
   );
 
   const cancelUploads = () => {
@@ -415,8 +549,62 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     }
   };
 
+  const refreshResources = () => {
+    void loadResources(page);
+  };
+
+  /**
+   * Contract T2. Only queues work on the Tests side, so the reload afterwards
+   * shows statuses moving rather than finished; polling picks up from there.
+   */
+  const syncToTutor = async () => {
+    if (syncControllerRef.current) return;
+    const controller = new AbortController();
+    syncControllerRef.current = controller;
+    setIsSyncing(true);
+    setSyncError(null);
+    setStatusMessage(null);
+    try {
+      const result =
+        await courseResourceService.syncTeacherCourseResourcesToTutor(courseIdentifier, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (result === 'unsupported') {
+        setSyncUnsupported(true);
+        return;
+      }
+      setStatusMessage(
+        'Processing requested. Files will update automatically.',
+      );
+      resources.filter(needsCourseSync).forEach(expectUpdate);
+      await loadResources(page);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setSyncError(getSyncErrorMessage(error));
+    } finally {
+      if (!controller.signal.aborted) {
+        syncControllerRef.current = null;
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  // A page of ready files cannot certify that the rest of the course is done.
+  const showSyncButton = !syncUnsupported && (showTutorColumn || needsSync);
+
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={refreshResources}
+      disabled={isLoading}
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
+      Refresh
+    </button>
+  );
+
   return (
-    <div className="space-y-7">
+    <div className="course-resources-panel space-y-7">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
@@ -435,15 +623,29 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void loadResources(page)}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
-          Refresh
-        </button>
+        {/* The wrapper exists only with the sync action, so a deployment with no
+            tutor keeps the header's markup exactly as it was. */}
+        {showSyncButton ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void syncToTutor()}
+              disabled={isSyncing || isLoading}
+              title="Start or retry processing for course files"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#1BD183]/40 bg-[#1BD183]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 transition hover:border-[#1BD183] hover:bg-[#1BD183]/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSyncing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              Process files
+            </button>
+            {refreshButton}
+          </div>
+        ) : (
+          refreshButton
+        )}
       </div>
 
       {/* Upload drop zone */}
@@ -452,6 +654,13 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           ref={fileInputRef}
           type="file"
           multiple
+          // Omitted entirely when the agent could not be asked, rather than set
+          // to a guessed list: an `accept` built from nothing would hide files
+          // the parser reads. A drop is checked by `rejectionFor` either way —
+          // this attribute only makes the browser's own picker agree with it.
+          {...(acceptedFormats
+            ? { accept: uploadAcceptAttribute(acceptedFormats) }
+            : {})}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -501,9 +710,10 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                   : 'Drag files here, or click to browse'}
             </p>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-              PDFs, slides, handouts, and lecture videos (MP4, MOV, WebM — up to{' '}
-              {MAX_VIDEO_SIZE_LABEL}). Uploads start right away — no publish
-              step.
+              {acceptedFormats
+                ? `Readings, slides and handouts — ${formatSuffixLabels(acceptedFormats).join(', ')}, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`
+                : `Readings, slides and handouts, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`}{' '}
+              Uploads start right away — no publish step.
             </p>
           </div>
         </div>
@@ -593,7 +803,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         )}
 
         {statusMessage && (
-          <p className="mt-3 text-sm font-semibold text-emerald-700">
+          <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">
             {statusMessage}
           </p>
         )}
@@ -601,6 +811,12 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
             <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
             <p className="font-medium">{deleteError}</p>
+          </div>
+        )}
+        {syncError && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+            <p className="font-medium">{syncError}</p>
           </div>
         )}
       </div>
@@ -614,6 +830,17 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
               {total}
             </span>
           )}
+          {hasProcessing && (
+            <span className="text-xs font-medium text-slate-500">
+              Processing files…
+            </span>
+          )}
+        </div>
+
+        <div role="status" aria-live="polite">
+          {connectionStale && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Reconnecting to check progress…
+          </p>}
         </div>
 
         <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
@@ -644,17 +871,22 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                 No files yet
               </p>
               <p className="mt-2 max-w-md text-xs font-medium leading-5 text-slate-500">
-                Add the readings, slides, handouts, and lecture videos learners
-                should be able to open from this course.
+                Add the readings, slides and handouts learners should be able to
+                open from this course.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <div className="min-w-[680px]">
-                <div className="grid grid-cols-[minmax(0,1.8fr)_120px_110px_190px_110px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+            <div>
+              <div>
+                <div
+                  className={`course-resources-header ${
+                    showTutorColumn ? RESOURCE_GRID_COLUMNS_WITH_TUTOR : RESOURCE_GRID_COLUMNS
+                  } gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400`}
+                >
                   <p>File</p>
                   <p>Type</p>
                   <p>Size</p>
+                  {showTutorColumn && <p>Status</p>}
                   <p>Added</p>
                   <p className="text-right">Action</p>
                 </div>
@@ -663,26 +895,39 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
                     const Icon = iconForResource(resource);
                     const identifier = identifierFor(resource);
                     const isDeleting = deletingResourceId === identifier;
+                    const textUnavailable = resource.knowledgeBase != null && !isTextReady(resource.knowledgeBase);
                     return (
                       <div
                         key={resourceKey(resource)}
-                        className="grid grid-cols-[minmax(0,1.8fr)_120px_110px_190px_110px] items-center gap-4 px-5 py-4"
+                        className={`grid grid-cols-2 ${
+                          showTutorColumn
+                            ? RESOURCE_GRID_COLUMNS_WITH_TUTOR
+                            : RESOURCE_GRID_COLUMNS
+                        } items-center gap-4 px-5 py-4 ${textUnavailable ? 'bg-slate-50/70' : ''}`}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                        <div className="course-resources-wide flex min-w-0 items-center gap-3">
+                          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 ${textUnavailable ? 'text-slate-300' : 'text-slate-500'}`}>
                             <Icon size={16} />
                           </div>
-                          <p className="truncate text-sm font-semibold text-slate-900">
+                          <p title={resource.fileName} className={`min-w-0 break-words text-sm font-semibold ${textUnavailable ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                             {resource.fileName}
                           </p>
                         </div>
-                        <p className="text-sm font-medium text-slate-600">
-                          {fileTypeLabel(resource.fileType)}
+                        <p title={resource.fileType} className="min-w-0 break-words text-sm font-medium text-slate-600">
+                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Type:</span>
+                          {fileTypeLabel(resource.fileType, resource.fileName)}
                         </p>
-                        <p className="text-sm font-medium text-slate-600">
+                        <p className="whitespace-nowrap text-sm font-medium text-slate-600">
+                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Size:</span>
                           {formatFileSize(resource.fileSize)}
                         </p>
-                        <p className="text-sm font-medium text-slate-600">
+                        {showTutorColumn && (
+                          <div className="course-resources-wide min-w-0">
+                            <ResourceProcessingStatus resource={resource} />
+                          </div>
+                        )}
+                        <p className="min-w-0 break-words text-sm font-medium text-slate-600">
+                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Added:</span>
                           {formatTimestamp(resource.createdAt)}
                         </p>
                         <div className="flex justify-end">
@@ -751,7 +996,11 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
         title="Remove file"
         message={
           resourceToDelete
-            ? `Remove “${resourceToDelete.fileName}”? Learners will no longer see it in study plans linked to this course. This can’t be undone.`
+            ? `Remove “${resourceToDelete.fileName}”? Learners will no longer see it in study plans linked to this course. This can’t be undone.${
+                resourceToDelete.knowledgeBase != null
+                  ? ' Their tutor will stop using it from their next question.'
+                  : ''
+              }`
             : ''
         }
         confirmLabel="Remove file"
@@ -763,4 +1012,9 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
   );
 };
 
-export default CourseResourcesPanel;
+// Course changes remount all mutation state; old requests cannot target new rows.
+const ScopedCourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => (
+  <CourseResourcesPanel key={course.backendIdentifier || course.id} course={course} />
+);
+
+export default ScopedCourseResourcesPanel;

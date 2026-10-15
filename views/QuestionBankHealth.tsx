@@ -358,7 +358,7 @@ const QuestionBankHealth: React.FC = () => {
 
            <MultiSearchableSelect
              label="Organ Systems"
-             options={organSystems.map(x => ({ id: x.id, name: x.title || x.name || x.id }))}
+             options={organSystems.map(x => ({ id: x.id, name: x.title || x.id }))}
              values={selectedOrganSystems}
              onChange={(v) => { setSelectedOrganSystems(v); setSelectedTopics([]); setPage(1); }}
              placeholder={filtersLoading ? "Loading..." : "Filter systems..."}
@@ -367,7 +367,7 @@ const QuestionBankHealth: React.FC = () => {
 
            <MultiSearchableSelect
              label="Topics"
-             options={topics.map(x => ({ id: x.id, name: x.title || x.name || x.id  }))}
+             options={topics.map(x => ({ id: x.id, name: x.title || x.id }))}
              values={selectedTopics}
              onChange={(v) => { setSelectedTopics(v); setPage(1); }}
              placeholder={selectedOrganSystems.length === 0 ? "Select System First" : "Filter topics..."}

@@ -42,6 +42,12 @@ import {
 import SessionItemDetailModal from '@/components/academy/course-workbench/SessionItemDetailModal';
 import HoverTooltip from '@/components/academy/course-workbench/HoverTooltip';
 import { inputClass, SectionLabel } from './shared';
+import {
+  CreateWithAIButton,
+  ModuleGenerationBanner,
+  ModuleGenerationWizard,
+  useModuleGenerationLauncher,
+} from './module-generation';
 
 interface CourseModulesPanelProps {
   course: TeacherCourse;
@@ -562,6 +568,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
       }
     }
   }, [course, hydrateEligibleItems]);
+
+  const moduleGeneration = useModuleGenerationLauncher(course, loadPanelData);
 
   useEffect(() => {
     loadRequestIdRef.current += 1;
@@ -1807,6 +1815,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
         </div>
       )}
 
+      <ModuleGenerationBanner {...moduleGeneration.bannerProps} />
+
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center text-sm font-semibold text-slate-500">
           <Loader2 size={16} className="mr-2 animate-spin" />
@@ -1825,6 +1835,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                   </span>
                 )}
               </div>
+              <CreateWithAIButton {...moduleGeneration.buttonProps} compact className="ml-auto" />
               <button
                 type="button"
                 onClick={startNewModule}
@@ -1854,6 +1865,7 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
                   <Plus size={13} />
                   New module
                 </button>
+                <CreateWithAIButton {...moduleGeneration.buttonProps} className="mt-2" />
               </div>
             ) : (
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-2 custom-scrollbar xl:pr-1">
@@ -2078,6 +2090,8 @@ const CourseModulesPanel: React.FC<CourseModulesPanelProps> = ({
         item={previewItem}
         onClose={() => setPreviewItem(null)}
       />
+
+      <ModuleGenerationWizard {...moduleGeneration.wizardProps} />
     </div>
   );
 };

@@ -1,9 +1,12 @@
 import { apiClient } from './apiClient';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { uploadFileToBlobUrl } from '@/utils/blockBlobUpload';
+import type { CourseResourceProcessingAction } from '@/types/DocumentProcessing';
 import type {
   CourseResource,
   CourseResourceDownloadResponse,
+  CourseResourceKnowledgeBaseSyncResponse,
+  CourseResourceKnowledgeProcessingResponse,
   CourseResourceListResponse,
   CourseResourceUploadURLResponse,
   ListCourseResourcesParams,
@@ -30,10 +33,12 @@ export const courseResourceService = {
   listTeacherCourseResources: async (
     courseIdentifier: string,
     params: ListCourseResourcesParams = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<CourseResourceListResponse> =>
     apiClient.get<CourseResourceListResponse>(
       'TESTS',
       `/courses/${resourceIdentifier(courseIdentifier)}/resources?${buildListQuery(params)}`,
+      { signal: options.signal, timeout: 30_000 },
     ),
 
   /**
@@ -129,6 +134,52 @@ export const courseResourceService = {
     );
 
     return response.resources ?? [];
+  },
+
+  /**
+   * Asks the Tests service to (re)send this course's resources to the tutor
+   * (Contract T2): anything `not_synced` or `failed`, plus study plans not yet
+   * linked. Idempotent, and it only queues — statuses move on later reads.
+   *
+   * `'unsupported'` for 404 and 501: the Tests service has no agent configured,
+   * or predates the route. Either way the caller should stop offering the
+   * action rather than show an error. Any other failure throws.
+   */
+  syncTeacherCourseResourcesToTutor: async (
+    courseIdentifier: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<'accepted' | 'unsupported'> => {
+    try {
+      await apiClient.post<CourseResourceKnowledgeBaseSyncResponse>(
+        'TESTS',
+        `/courses/${resourceIdentifier(courseIdentifier)}/resources/knowledge-base/sync`,
+        undefined,
+        { signal: options.signal, timeout: 30_000 },
+      );
+      return 'accepted';
+    } catch (error) {
+      const status = statusOf(error);
+      if (status === 404 || status === 501) return 'unsupported';
+      throw error;
+    }
+  },
+
+  /** Tests owns authorization and the agent credential. Acknowledgment is not completion.
+   * The Tests base URL includes its deployment prefix (normally /local).
+   * Do not prepend /local again or send the browser directly to the agent.
+   */
+  requestTeacherCourseResourceProcessing: async (
+    courseIdentifier: string,
+    courseResourceIdentifier: string,
+    action: CourseResourceProcessingAction,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CourseResourceKnowledgeProcessingResponse> => {
+    return apiClient.post<CourseResourceKnowledgeProcessingResponse>(
+      'TESTS',
+      `/courses/${encodeURIComponent(resourceIdentifier(courseIdentifier))}/resources/${encodeURIComponent(resourceIdentifier(courseResourceIdentifier))}/knowledge-base/${action}`,
+      undefined,
+      { signal: options.signal, timeout: 30_000 },
+    );
   },
 
   deleteTeacherCourseResource: async (

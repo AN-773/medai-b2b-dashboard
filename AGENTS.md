@@ -6,12 +6,16 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ```bash
 pnpm install        # Install dependencies
-pnpm run dev        # Start dev server (Vite, port 3000)
-pnpm run build      # Production build (TypeScript check + Vite bundle)
+pnpm run dev        # Start dev server (Vite, port 5173)
+pnpm run typecheck  # Full TypeScript check
+pnpm run build      # Production Vite bundle (typecheck is a separate command)
+pnpm run test:progressive-files # Compile focused tests and run Node's test runner
 pnpm run preview    # Preview production build
 ```
 
-No test runner or linter is configured.
+Progressive-file tests use the existing TypeScript compiler and Node's test runner.
+No external test runner or linter is configured. `pnpm-workspace.yaml` approves only
+the existing esbuild dependency's install script for project-local pnpm startup.
 
 ## Architecture
 
