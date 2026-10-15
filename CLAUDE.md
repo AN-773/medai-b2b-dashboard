@@ -26,6 +26,8 @@ Progressive-file tests use the existing TypeScript compiler and Node's test runn
 - `VITE_TUTOR_API_URL` — Content/learning service
 - `VITE_TEST_API_URL` — Tests/questions service
 
+The values live in one file per deployed site, picked by the Vite mode: `.env.university` (university.medicalstudent.ai, PRODUCTION backends, `vite build --mode university`) and `.env.dashboard` (dashboard.medicalstudent.ai, TEST backends, `vite build --mode dashboard`; `pnpm dev` uses it too). `vite.config.ts` refuses a build in any other mode or with an address missing.
+
 Auth token stored in `localStorage` as `msai_educator_token`, auto-injected on requests. 401 responses trigger redirect to `/login`.
 
 Service modules in `services/`: `iamService`, `tutorService`, `testsService`, `questionService`, `geminiService` (Google Gemini integration).
