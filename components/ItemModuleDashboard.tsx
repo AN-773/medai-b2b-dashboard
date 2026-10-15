@@ -1,20 +1,18 @@
-
-import React from 'react';
-import { 
-  Plus, 
-  MessageSquare, 
-  AlertCircle,
-  CheckCircle2,
-  FileEdit,
-  AlertTriangle,
-  ArrowRight,
-  Trash2,
-  MonitorPlay,
-  FileText,
-  ClipboardCheck,
-  Layers
-} from 'lucide-react';
-import { Question, BloomsLevel, Issue, ItemType } from '../types';
+import React, { useState } from 'react';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { ArrowUpRight, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Question, Issue, ItemType } from '../types';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Menu,
+  ProgressBar,
+  StatusDot,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
+import { ITEM_TYPE_SPEC } from '@/components/workbench/itemTypes';
 
 interface ItemModuleDashboardProps {
   onCreateClick: () => void;
@@ -31,10 +29,50 @@ interface ItemModuleDashboardProps {
   itemType: ItemType;
 }
 
-const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({ 
-  onCreateClick, 
-  onViewAllClick, 
-  onEditClick, 
+const PAGE_SIZE = 10;
+
+const STATUS: Record<Question['status'], { label: string; tone: BadgeTone }> = {
+  Published: { label: 'Live', tone: 'green' },
+  Draft: { label: 'Draft', tone: 'neutral' },
+  Archived: { label: 'Archived', tone: 'neutral' },
+};
+
+const SEVERITY_TONE: Record<Issue['severity'], BadgeTone> = {
+  High: 'red',
+  Medium: 'amber',
+  Low: 'neutral',
+};
+
+const relativeTime = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : formatDistanceToNowStrict(date, { addSuffix: true });
+};
+
+interface FigureProps {
+  label: string;
+  value: number;
+  detail?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
+const Figure: React.FC<FigureProps> = ({ label, value, detail, children }) => (
+  <div className="min-w-0 p-5">
+    <p className="text-[13px] text-stone-500">{label}</p>
+    <p className="mt-2 text-[28px] font-semibold leading-none tracking-[-0.02em] text-stone-900 tabular-nums">
+      {value.toLocaleString()}
+    </p>
+    {detail && <p className="mt-2 text-xs text-stone-500">{detail}</p>}
+    {children}
+  </div>
+);
+
+/** The workbench's Items tab: bank figures for one item type and its recent items. */
+const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
+  onCreateClick,
+  onViewAllClick,
+  onEditClick,
   onDelete,
   onIssueClick,
   onItemClick,
@@ -43,224 +81,243 @@ const ItemModuleDashboard: React.FC<ItemModuleDashboardProps> = ({
   totalDraftQuestions,
   totalLiveQuestions,
   issues,
-  itemType
+  itemType,
 }) => {
-  
-  // Dynamic Terminology Configuration
-  const config = {
-    [ItemType.MCQ]: {
-      singular: 'Question',
-      plural: 'Questions',
-      header: 'Questions Dashboard',
-      subtitle: 'Overview of MCQ bank health and activity.',
-      mainIcon: ClipboardCheck,
-      tableCol: 'Question Stem',
-      statsLabel: 'Total Questions'
-    },
-    [ItemType.SAQ]: {
-      singular: 'SAQ',
-      plural: 'SAQs',
-      header: 'SAQ Dashboard',
-      subtitle: 'Tracking short-answer content performance.',
-      mainIcon: FileText,
-      tableCol: 'Prompt Text',
-      statsLabel: 'Total SAQs'
-    },
-    [ItemType.FLASHCARD]: {
-      singular: 'Flashcard',
-      plural: 'Flashcards',
-      header: 'Flashcards Dashboard',
-      subtitle: 'Spaced-repetition recall cards and active-recall prompts.',
-      mainIcon: Layers,
-      tableCol: 'Front (Prompt)',
-      statsLabel: 'Total Flashcards'
-    },
-    [ItemType.LECTURE]: {
-      singular: 'Lecture',
-      plural: 'Lectures',
-      header: 'Lectures Dashboard',
-      subtitle: 'Audit and engagement overview for instructional materials.',
-      mainIcon: MonitorPlay,
-      tableCol: 'Lecture Title',
-      statsLabel: 'Total Lectures'
-    }
-  }[itemType];
+  const spec = ITEM_TYPE_SPEC[itemType];
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [pendingDelete, setPendingDelete] = useState<Question | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const stats = [
-    { 
-      label: config.statsLabel, 
-      value: totalQuestions, 
-      icon: config.mainIcon, 
-      color: 'text-blue-600', 
-      bg: 'bg-blue-50' 
-    },
-    { 
-      label: 'Published', 
-      value: totalLiveQuestions, 
-      icon: CheckCircle2, 
-      color: 'text-green-600', 
-      bg: 'bg-green-50' 
-    },
-    { 
-      label: 'Drafts', 
-      value: totalDraftQuestions, 
-      icon: AlertCircle, 
-      color: 'text-amber-600', 
-      bg: 'bg-amber-50' 
-    },
-    { 
-      label: 'Open Issues', 
-      value: issues.length, 
-      icon: MessageSquare, 
-      color: 'text-purple-600', 
-      bg: 'bg-purple-50' 
-    },
-  ];
+  const total = totalQuestions ?? questions.length;
+  const live = totalLiveQuestions ?? 0;
+  const drafts = totalDraftQuestions ?? 0;
+  const activeIssues = issues.filter((issue) => issue.status === 'Open').slice(0, 5);
+  const visibleQuestions = questions.slice(0, visibleCount);
 
-  const activeIssues = issues.filter(i => i.status === 'Open').slice(0, 5);
+  const openItem = (question: Question) =>
+    onItemClick ? onItemClick(question) : onEditClick(question);
 
-  const handleDelete = (e: React.MouseEvent, identifier?: string) => {
-    e.stopPropagation();
-    if (!identifier) {
-      return;
-    }
-    if (window.confirm(`Are you sure you want to delete this ${config.singular.toLowerCase()}? This action cannot be undone.`)) {
-      onDelete(identifier);
+  const confirmDelete = async () => {
+    const identifier = pendingDelete?.identifier;
+    if (!identifier) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(identifier);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Dynamic Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">{config.header}</h2>
-          <p className="text-slate-500 text-sm font-medium">{config.subtitle}</p>
-        </div>
-        <button 
-          onClick={onCreateClick}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-primary-gradient text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-emerald-100 active:scale-95"
+    <div className="space-y-6">
+      {/* Bank figures for this type */}
+      <div
+        className={cn(
+          'grid divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card sm:divide-x sm:divide-y-0',
+          issues.length > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3',
+        )}
+      >
+        <Figure label={`${spec.plural} in the bank`} value={total} detail={spec.description} />
+        <Figure
+          label="Live"
+          value={live}
+          detail={total > 0 ? `${Math.round((live / total) * 100)}% of ${spec.plural}` : 'None yet'}
         >
-          <Plus size={16} />
-          Create {config.singular}
-        </button>
+          <ProgressBar value={live} max={total} className="mt-3" label={`Live ${spec.plural}`} />
+        </Figure>
+        <Figure label="Drafts" value={drafts} detail="Draft or pending review" />
+        {issues.length > 0 && (
+          <Figure label="Open issues" value={issues.filter((issue) => issue.status === 'Open').length} />
+        )}
       </div>
 
-      {/* Stats Cards with Dynamic Labeling */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
-          <div key={index} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 group hover:border-emerald-200 transition-colors">
-            <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
-              <stat.icon size={24} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-2xl font-black text-slate-900">{stat.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {activeIssues.length > 0 && (
+        <section aria-labelledby="workbench-open-issues">
+          <h3 id="workbench-open-issues" className="mb-3 text-[15px] font-semibold text-stone-900">
+            Open issues
+          </h3>
+          <ul className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+            {activeIssues.map((issue) => (
+              <li key={issue.id}>
+                <button
+                  type="button"
+                  onClick={() => onIssueClick(issue)}
+                  className="group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-stone-50 focus-visible:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-stone-900">{issue.title}</span>
+                    <span className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-stone-500">
+                      {issue.description}
+                    </span>
+                  </span>
+                  <StatusDot tone={SEVERITY_TONE[issue.severity]}>{issue.severity}</StatusDot>
+                  <ChevronRight
+                    size={16}
+                    className="mt-0.5 flex-shrink-0 text-stone-300 transition-colors group-hover:text-stone-500"
+                    aria-hidden="true"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      <div className="gap-6">
-        {/* Main List with Dynamic Table Headings */}
-        <div className="xl:col-span-2 bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h3 className="font-black text-slate-900 uppercase tracking-tight">Recent {config.plural}</h3>
-            <button 
-              onClick={onViewAllClick}
-              className="text-[10px] font-black uppercase tracking-widest text-[#1BD183] hover:text-[#17a76d] transition"
-            >
-              View all {config.plural.toLowerCase()}
-            </button>
+      {/* Recent items */}
+      <section
+        aria-labelledby="workbench-recent-items"
+        className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+          <div className="min-w-0">
+            <h3 id="workbench-recent-items" className="text-[15px] font-semibold text-stone-900">
+              Recent {spec.plural}
+            </h3>
           </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <tr>
-                  <th className="px-4 xl:px-6 py-4">{config.tableCol}</th>
-                  <th className="px-4 xl:px-6 py-4">Status</th>
-                  <th className="hidden xl:table-cell px-6 py-4">Revised</th>
-                  <th className="px-4 xl:px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {questions.slice(0, 8).map((q) => (
-                  <tr key={q.id} 
-                    onClick={() => onItemClick?.(q)}
-                    className="hover:bg-slate-50 transition-colors group cursor-pointer"
-                  >
-                    <td className="px-4 xl:px-6 py-4 max-w-xs truncate font-bold text-slate-900">{q.text}</td>
-                    <td className="px-4 xl:px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight
-                         ${q.status === 'Published' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
-                         <span className={`w-1 h-1 rounded-full ${q.status === 'Published' ? 'bg-emerald-500' : 'bg-slate-500'}`}></span>
-                        {q.status}
-                      </span>
-                    </td>
-                    <td className="hidden xl:table-cell px-6 py-4 text-xs font-medium text-slate-400">{new Date(q.createdAt).toLocaleDateString()}</td>
-                    <td className="px-4 xl:px-6 py-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-100 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onEditClick(q); }}
-                          className="p-2 text-slate-400 hover:bg-[#1BD183]/50 hover:text-[#1BD183] rounded-xl transition-colors"
-                        >
-                          <FileEdit size={16} />
-                        </button>
-                        <button 
-                          onClick={(e) => handleDelete(e, q.identifier)}
-                          disabled={!q.identifier}
-                          className="p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" iconRight={ArrowUpRight} onClick={onViewAllClick}>
+              View all in item bank
+            </Button>
+            <Button size="sm" icon={Plus} onClick={onCreateClick}>
+              New {spec.label}
+            </Button>
           </div>
         </div>
 
-        {/* Alerts Side Panel */}
-        {/* <div className="bg-white p-4 xl:p-6 rounded-[2rem] border border-slate-200 shadow-sm h-full">
-          <h3 className="font-black text-slate-900 uppercase tracking-tight mb-6 flex justify-between items-center">
-            <span>Agent Alerts</span>
-            {activeIssues.length > 0 && (
-               <span className="text-[9px] font-black bg-rose-500 text-white px-2 py-0.5 rounded-lg">{activeIssues.length} ACTIVE</span>
+        {questions.length === 0 ? (
+          <EmptyState
+            icon={spec.icon}
+            title={`No ${spec.plural} yet`}
+            description={`Write your first ${spec.label} here. Everything you save goes to your item bank.`}
+            action={
+              <Button variant="primary" icon={Plus} onClick={onCreateClick}>
+                New {spec.label}
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <div
+              aria-hidden="true"
+              className="hidden items-center gap-4 border-b border-stone-100 bg-stone-50/60 py-2 pl-4 pr-10 text-xs font-medium text-stone-500 sm:flex"
+            >
+              <span className="flex-1">{spec.textLabel}</span>
+              <span className="w-20">Status</span>
+              <span className="hidden w-28 text-right md:block">Created</span>
+            </div>
+            <ul className="divide-y divide-stone-100">
+              {visibleQuestions.map((question) => {
+                const status = STATUS[question.status] ?? STATUS.Draft;
+                const created = relativeTime(question.createdAt);
+                const title = question.text.trim();
+                return (
+                  <li
+                    key={question.id}
+                    className="group flex items-center gap-1 pr-2 transition-colors hover:bg-stone-50"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openItem(question)}
+                      className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            'line-clamp-2 text-sm leading-5',
+                            title ? 'text-stone-900' : 'text-stone-400',
+                          )}
+                        >
+                          {title || `Untitled ${spec.label}`}
+                        </span>
+                        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-stone-500">
+                          <span className="truncate font-mono text-stone-400">
+                            {question.identifier || question.id.slice(0, 8)}
+                          </span>
+                          {question.tags.length > 0 && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="truncate">{question.tags.slice(0, 3).join(', ')}</span>
+                            </>
+                          )}
+                          {created && (
+                            <span className="flex-shrink-0 md:hidden">
+                              <span aria-hidden="true">· </span>
+                              {created}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="w-20 flex-shrink-0">
+                        <StatusDot tone={status.tone}>{status.label}</StatusDot>
+                      </span>
+                      <span className="hidden w-28 flex-shrink-0 text-right text-xs text-stone-500 md:block">
+                        {created}
+                      </span>
+                    </button>
+                    <Menu
+                      size="sm"
+                      label={`Actions for ${spec.label} ${question.identifier || ''}`.trim()}
+                      items={[
+                        {
+                          label: 'Edit',
+                          icon: Pencil,
+                          onSelect: () => onEditClick(question),
+                        },
+                        {
+                          label: 'Delete',
+                          icon: Trash2,
+                          tone: 'danger',
+                          disabled: !question.identifier,
+                          hint: question.identifier ? undefined : 'This item has no identifier yet',
+                          onSelect: () => setPendingDelete(question),
+                        },
+                      ]}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 px-4 py-2.5 text-[13px] text-stone-500">
+              <span className="tabular-nums">
+                Showing {visibleQuestions.length.toLocaleString()} of {total.toLocaleString()}
+              </span>
+              {visibleCount < questions.length ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+                >
+                  Show more
+                </Button>
+              ) : total > questions.length ? (
+                <Button variant="ghost" size="sm" iconRight={ArrowUpRight} onClick={onViewAllClick}>
+                  See the rest in the item bank
+                </Button>
+              ) : null}
+            </div>
+          </>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title={`Delete this ${spec.label}?`}
+        description={
+          <>
+            {pendingDelete?.text.trim() && (
+              <span className="mb-2 line-clamp-2 block font-medium text-stone-900">
+                {pendingDelete.text.trim()}
+              </span>
             )}
-          </h3>
-          <div className="space-y-4">
-            {activeIssues.map((issue) => (
-              <div 
-                key={issue.id}
-                onClick={() => onIssueClick(issue)}
-                className="flex gap-3 items-start p-4 rounded-2xl hover:bg-slate-50 cursor-pointer transition-colors group border border-slate-100 hover:border-emerald-100 shadow-sm"
-              >
-                <div className={`mt-1 flex-shrink-0 ${issue.severity === 'High' ? 'text-rose-500' : 'text-amber-500'}`}>
-                  <AlertTriangle size={18} fill={issue.severity === 'High' ? "currentColor" : "none"} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start">
-                    <p className={`text-xs font-black uppercase tracking-tight ${issue.severity === 'High' ? 'text-rose-900' : 'text-slate-800'}`}>
-                      {issue.title}
-                    </p>
-                    <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 text-emerald-400 transition-opacity transform group-hover:translate-x-1" />
-                  </div>
-                  <p className="text-[10px] text-slate-500 line-clamp-2 mt-1 italic font-medium">"{issue.description}"</p>
-                </div>
-              </div>
-            ))}
-            {activeIssues.length === 0 && (
-              <div className="text-center py-20 text-slate-400">
-                <CheckCircle2 size={48} strokeWidth={1} className="mx-auto mb-3 text-emerald-100" />
-                <p className="text-[10px] font-black uppercase tracking-widest">Queue Status: Optimal</p>
-              </div>
-            )}
-          </div>
-        </div> */}
-      </div>
+            It will be permanently removed from the item bank. This can't be undone.
+          </>
+        }
+        confirmLabel={`Delete ${spec.label}`}
+        busy={isDeleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 };

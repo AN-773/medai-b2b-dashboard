@@ -1,25 +1,91 @@
-
-import React, { useState, useMemo } from 'react';
-import { 
-  ShieldCheck, AlertTriangle, RefreshCw, CheckCircle, Sparkles, 
-  ChevronRight, Ban, Activity, Info, X, TrendingDown, Users,
-  ArrowRightLeft, Check, Wand2
-} from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell,
-  LineChart, Line
+import React, { useState } from 'react';
+import { ArrowRight, Check, ChevronRight, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
 } from 'recharts';
 import { BackendItem } from '../types';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  IconButton,
+  InlineAlert,
+  Spinner,
+  StatusDot,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
 
 interface ItemIntegrityViewProps {
   items: BackendItem[];
   onUpdate: (item: BackendItem) => void;
 }
 
+// Recharts needs literal colours: stone-200 gridlines, stone-500 axis labels,
+// stone-900 tooltip values. The series itself uses currentColor (brand-500).
+const CHART_GRID = '#e7e5e4';
+const CHART_AXIS = '#78716c';
+const CHART_TEXT = '#1c1917';
+
+const STATUS_TONE: Record<BackendItem['status'], BadgeTone> = {
+  Published: 'green',
+  Draft: 'neutral',
+  Archived: 'neutral',
+};
+
+const STATUS_LABEL: Record<BackendItem['status'], string> = {
+  Published: 'Live',
+  Draft: 'Draft',
+  Archived: 'Archived',
+};
+
+const optionLetter = (index: number) => String.fromCharCode(65 + index);
+
+interface OptionListProps {
+  options: { text: string; isCorrect: boolean }[];
+  columns?: boolean;
+}
+
+const OptionList: React.FC<OptionListProps> = ({ options, columns = false }) => (
+  <ol className={cn('grid gap-2', columns && 'md:grid-cols-2')}>
+    {options.map((option, index) => (
+      <li
+        key={index}
+        className={cn(
+          'flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm',
+          option.isCorrect ? 'border-brand-200 bg-brand-50/70' : 'border-stone-200 bg-white',
+        )}
+      >
+        <span
+          className={cn(
+            'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-xs font-semibold',
+            option.isCorrect
+              ? 'bg-brand-600 text-white'
+              : 'bg-stone-100 text-stone-500 ring-1 ring-inset ring-stone-200',
+          )}
+        >
+          {optionLetter(index)}
+        </span>
+        <span className="min-w-0 flex-1 text-stone-800">{option.text}</span>
+        {option.isCorrect && (
+          <Check size={15} className="flex-shrink-0 text-brand-700" aria-label="Correct answer" />
+        )}
+      </li>
+    ))}
+  </ol>
+);
+
+/** Audit queue: pick an item, get a writing-flaw and psychometric report plus a suggested rewrite. */
 const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }) => {
   const [auditingId, setAuditingId] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<any | null>(null);
-  /* 
+  /*
   {
     integrityScore: 58,
     flaws: [
@@ -42,7 +108,7 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
   const [selectedItem, setSelectedItem] = useState<BackendItem | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
-  // Simulated Drift History for a professional look
+  // Simulated drift history until psychometrics are wired to the audit.
   const driftHistory = [
     { month: 'Jan', pValue: 0.72 },
     { month: 'Feb', pValue: 0.68 },
@@ -85,234 +151,304 @@ const ItemIntegrityView: React.FC<ItemIntegrityViewProps> = ({ items, onUpdate }
     }, 1200);
   };
 
-  const distractorData = useMemo(() => {
-    if (!selectedItem || !selectedItem.options) return [];
-    return selectedItem.options.map((opt, i) => ({
-      name: `Option ${opt.label}`,
-      value: opt.isCorrect ? 65 : (i === 1 ? 28 : (i === 2 ? 5 : 2)),
-      isCorrect: opt.isCorrect
-    }));
-  }, [selectedItem]);
+  const renderQueue = () => (
+    <section
+      aria-labelledby="integrity-queue"
+      className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+    >
+      <div className="border-b border-stone-200 px-4 py-3">
+        <h3 id="integrity-queue" className="text-[15px] font-semibold text-stone-900">
+          Items to audit
+        </h3>
+        <p className="mt-0.5 text-[13px] text-stone-500">
+          {items.length > 0
+            ? `${items.length.toLocaleString()} ${items.length === 1 ? 'item' : 'items'} · select one to run an audit`
+            : 'Nothing to audit for this type'}
+        </p>
+      </div>
+      {items.length > 0 ? (
+        <ul className="divide-y divide-stone-100">
+          {items.map((item) => {
+            const isSelected = selectedItem?.id === item.id;
+            const hasStats = typeof item.pValue === 'number' || typeof item.sampleSize === 'number';
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => void handleAudit(item)}
+                  aria-current={isSelected ? 'true' : undefined}
+                  className={cn(
+                    'group relative flex w-full items-start gap-3 px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
+                    isSelected ? 'bg-stone-50' : 'hover:bg-stone-50',
+                  )}
+                >
+                  {isSelected && (
+                    <span className="absolute inset-y-0 left-0 w-0.5 bg-brand-500" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-2 text-sm leading-5 text-stone-900">
+                      {item.stem || <span className="text-stone-400">Untitled item</span>}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-stone-500">
+                      <span className="font-mono text-stone-400">
+                        {item.identifier || item.id.slice(0, 8)}
+                      </span>
+                      {hasStats && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          {typeof item.pValue === 'number' && (
+                            <span className="tabular-nums">P {item.pValue.toFixed(2)}</span>
+                          )}
+                          {typeof item.sampleSize === 'number' && (
+                            <span className="tabular-nums">
+                              {item.sampleSize.toLocaleString()} attempts
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </span>
+                  </span>
+                  <StatusDot tone={STATUS_TONE[item.status] ?? 'neutral'}>
+                    {STATUS_LABEL[item.status] ?? item.status}
+                  </StatusDot>
+                  {auditingId === item.id ? (
+                    <Loader2 size={16} className="mt-0.5 flex-shrink-0 animate-spin text-brand-600" />
+                  ) : (
+                    <ChevronRight
+                      size={16}
+                      className="mt-0.5 flex-shrink-0 text-stone-300 transition-colors group-hover:text-stone-500"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyState
+          compact
+          icon={ShieldCheck}
+          title="No items to audit"
+          description="Items of this type show up here once they're in the bank."
+        />
+      )}
+    </section>
+  );
 
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-in fade-in duration-500 h-[750px]">
-      {/* Flag Queue Sidebar */}
-      <div className="xl:col-span-4 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-          <div className="flex justify-between items-center">
-            <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-              <Ban size={18} className="text-rose-500" />
-              Integrity Flag Queue
+  const renderReport = () => (
+    <div className="space-y-6">
+      {/* Report */}
+      <section
+        aria-labelledby="integrity-report"
+        className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+      >
+        <div className="flex items-start gap-3 border-b border-stone-200 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h3 id="integrity-report" className="text-[15px] font-semibold text-stone-900">
+              Audit report
             </h3>
-            <span className="text-[10px] font-black bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg">DRIFTING</span>
+            <p className="mt-0.5 truncate font-mono text-xs text-stone-400">
+              {selectedItem?.identifier || selectedItem?.id}
+            </p>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-            {items.length} items flagged for review
-          </p>
+          <IconButton icon={X} size="sm" label="Close report" onClick={() => setAuditResult(null)} />
         </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-50 custom-scrollbar">
-          {items.length > 0 ? items.map(item => (
-            <button 
-              key={item.id}
-              onClick={() => handleAudit(item)}
-              className={`w-full p-8 text-left hover:bg-slate-50 transition-all group border-l-4 ${
-                selectedItem?.id === item.id ? 'bg-emerald-50 border-[#1BD183]' : 'border-transparent'
-              }`}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-[9px] font-black text-[#1BD183] uppercase tracking-[0.2em]">{item.id}</span>
-                <div className="flex items-center gap-1.5">
-                   <TrendingDown size={12} className="text-rose-400" />
-                   <span className="text-[8px] font-black text-rose-500 uppercase">P-Drift</span>
-                </div>
+
+        <div className="grid gap-6 p-5 md:grid-cols-2">
+          <div className="space-y-5">
+            <div>
+              <p className="text-[13px] text-stone-500">Integrity score</p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-[28px] font-semibold leading-none tracking-[-0.02em] text-stone-900 tabular-nums">
+                  {auditResult.integrityScore}
+                </span>
+                <span className="text-sm text-stone-500">/ 100</span>
+                <Badge tone={auditResult.integrityScore > 70 ? 'green' : 'red'} dot className="ml-1">
+                  {auditResult.integrityScore > 70 ? 'Sound' : 'Needs work'}
+                </Badge>
               </div>
-              <p className="text-sm font-bold text-slate-800 line-clamp-2 leading-snug mb-3">{item.stem}</p>
-              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
-                       <Users size={12} className="text-slate-300" />
-                       <span>{item.sampleSize || 312} attempts</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                       <Activity size={12} className="text-slate-300" />
-                       <span>P: {(item.pValue || 0.64).toFixed(2)}</span>
-                    </div>
-                 </div>
-                 {auditingId === item.id ? <RefreshCw className="animate-spin text-[#1BD183]" size={16} /> : <ChevronRight size={16} className="text-slate-200 group-hover:text-[#1BD183] group-hover:translate-x-1 transition-all" />}
+            </div>
+            <div>
+              <p className="mb-2 text-sm font-semibold text-stone-900">Flaws found</p>
+              <ul className="space-y-2">
+                {auditResult.flaws.map((flaw: string, i: number) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm leading-6 text-stone-700">
+                    <span className="mt-2.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-500" aria-hidden="true" />
+                    {flaw}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-semibold text-stone-900">Difficulty over time</p>
+            <div className="h-36 w-full text-brand-500">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={driftHistory} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fill: CHART_AXIS, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={{ stroke: CHART_GRID }}
+                  />
+                  <YAxis
+                    domain={[0.4, 0.8]}
+                    tick={{ fill: CHART_AXIS, fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <RechartsTooltip
+                    contentStyle={{
+                      borderRadius: 8,
+                      border: `1px solid ${CHART_GRID}`,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: CHART_AXIS }}
+                    itemStyle={{ color: CHART_TEXT }}
+                    formatter={(value) => [Number(value).toFixed(2), 'P-value']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="pValue"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: 'currentColor', strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-3 flex items-center gap-3 text-[13px]">
+              <div className="flex-1 rounded-lg border border-stone-200 px-3 py-2">
+                <p className="text-xs text-stone-500">Baseline P</p>
+                <p className="font-semibold text-stone-900 tabular-nums">0.72</p>
               </div>
-            </button>
-          )) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-300 p-10 text-center">
-              <ShieldCheck size={48} className="mb-4 opacity-20" />
-              <p className="text-sm font-black uppercase tracking-widest">No Integrity Flags</p>
-              <p className="text-xs font-medium mt-1">Bank health is currently optimal.</p>
+              <ArrowRight size={15} className="flex-shrink-0 text-stone-300" aria-hidden="true" />
+              <div className="flex-1 rounded-lg border border-red-200 bg-red-50/60 px-3 py-2">
+                <p className="text-xs text-red-700">Current P</p>
+                <p className="font-semibold text-red-700 tabular-nums">0.58</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Suggested rewrite */}
+      <section
+        aria-labelledby="integrity-rewrite"
+        className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+      >
+        <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 px-5 py-4">
+          <h3 id="integrity-rewrite" className="mr-1 text-[15px] font-semibold text-stone-900">
+            Suggested rewrite
+          </h3>
+          <Badge tone="violet" icon={Sparkles}>
+            AI
+          </Badge>
+          <Badge tone="amber" dot>
+            Needs review
+          </Badge>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div>
+            <p className="mb-1.5 text-[13px] font-medium text-stone-500">Stem</p>
+            <p className="text-[15px] leading-7 text-stone-900">{auditResult.reconstructedItem.stem}</p>
+          </div>
+          <div>
+            <p className="mb-2 text-[13px] font-medium text-stone-500">Options</p>
+            <OptionList options={auditResult.reconstructedItem.options} columns />
+          </div>
+          {auditResult.suggestedRemedy && (
+            <div className="rounded-lg bg-stone-50 p-4">
+              <p className="mb-1 text-[13px] font-medium text-stone-500">Why this rewrite</p>
+              <p className="text-sm leading-6 text-stone-700">{auditResult.suggestedRemedy}</p>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Main Audit workspace */}
-      <div className="xl:col-span-8 overflow-y-auto custom-scrollbar pr-2 pb-10">
-        {auditResult ? (
-          <div className="space-y-8 animate-in slide-in-from-right-10 duration-700">
-            {/* Report Header HUD */}
-            <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none scale-150">
-                  <ShieldCheck size={300} />
-               </div>
-               
-               <div className="relative z-10 flex justify-between items-start mb-10">
-                 <div className="flex items-center gap-6">
-                   <div className={`w-20 h-20 rounded-3xl flex flex-col items-center justify-center font-black shadow-2xl ${
-                     auditResult.integrityScore > 70 ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-rose-500 shadow-rose-500/20'
-                   }`}>
-                     <span className="text-3xl leading-none">{auditResult.integrityScore}</span>
-                     <span className="text-[8px] uppercase mt-1 tracking-widest opacity-80 font-black">Score</span>
-                   </div>
-                   <div>
-                     <h3 className="text-2xl font-black uppercase tracking-tight">Integrity Audit: {selectedItem?.id}</h3>
-                     <p className="text-emerald-300 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Sina Intelligence Report</p>
-                   </div>
-                 </div>
-                 <button onClick={() => setAuditResult(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition">
-                   <X size={20} />
-                 </button>
-               </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 px-5 py-3">
+          <p className="mr-auto text-[13px] text-stone-500">
+            Applying replaces the item's stem and options.
+          </p>
+          <Button variant="ghost" onClick={() => setAuditResult(null)} disabled={isApplying}>
+            Dismiss
+          </Button>
+          <Button variant="primary" icon={Check} loading={isApplying} onClick={applyRemedy}>
+            {isApplying ? 'Applying…' : 'Apply rewrite'}
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
 
-               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-10">
-                 <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-rose-400 uppercase tracking-[0.2em]">
-                      <AlertTriangle size={14} /> Structural Flaws Detected
-                    </div>
-                    <ul className="space-y-3">
-                      {auditResult.flaws.map((flaw: string, i: number) => (
-                        <li key={i} className="flex items-start gap-4 p-4 bg-white/5 border border-white/5 rounded-2xl group hover:bg-white/10 transition-colors">
-                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-2 shrink-0 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
-                          <p className="text-xs font-medium text-slate-300 leading-relaxed">{flaw}</p>
-                        </li>
-                      ))}
-                    </ul>
-                 </div>
+  const renderDetail = () => {
+    if (auditResult) return renderReport();
 
-                 <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">
-                      <Activity size={14} /> Psychometric Analysis
-                    </div>
-                    <div className="bg-white/5 rounded-[2rem] p-6 border border-white/5">
-                      <div className="h-32 w-full mb-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={driftHistory}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                            <XAxis dataKey="month" hide />
-                            <YAxis domain={[0.4, 0.8]} hide />
-                            <Line type="monotone" dataKey="pValue" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1' }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="flex items-center gap-4">
-                         <div className="flex-1 p-3 bg-white/5 rounded-xl border border-white/5">
-                            <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Baseline P</p>
-                            <p className="text-lg font-black">0.72</p>
-                         </div>
-                         <ArrowRightLeft className="text-[#1BD183] opacity-50" size={16} />
-                         <div className="flex-1 p-3 bg-white/5 rounded-xl border border-rose-500/20">
-                            <p className="text-[8px] font-black text-rose-400 uppercase mb-1">Current P</p>
-                            <p className="text-lg font-black text-rose-500">0.58</p>
-                         </div>
-                      </div>
-                    </div>
-                 </div>
-               </div>
-            </div>
+    if (!selectedItem) {
+      return (
+        <div className="rounded-xl border border-dashed border-stone-200 bg-white">
+          <EmptyState
+            icon={ShieldCheck}
+            title="Select an item to audit"
+            description="An audit checks the stem and distractors for writing flaws and compares how the item performs now with its baseline, then suggests a rewrite."
+            className="min-h-[360px]"
+          />
+        </div>
+      );
+    }
 
-            {/* Comparison Workspace */}
-            <div className="bg-white rounded-[3rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-               <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <div>
-                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">Proposed Remediation</h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Review Sina's suggested optimization</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                     <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">High Reliability Reconstruction</span>
-                     <Sparkles size={18} className="text-emerald-500" />
-                  </div>
-               </div>
+    if (auditingId === selectedItem.id) {
+      return (
+        <div className="rounded-xl border border-stone-200 bg-white py-24">
+          <Spinner label="Auditing item…" />
+        </div>
+      );
+    }
 
-               <div className="p-10 space-y-10">
-                  <div className="space-y-4">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Optimized Clinical Stem</p>
-                     <p className="text-xl font-bold text-slate-900 leading-relaxed font-serif">
-                       {auditResult.reconstructedItem.stem}
-                     </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {auditResult.reconstructedItem.options.map((opt: any, i: number) => (
-                      <div key={i} className={`flex items-center justify-between p-5 rounded-[1.5rem] border transition-all ${
-                        opt.isCorrect ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-slate-100 bg-white'
-                      }`}>
-                         <div className="flex items-center gap-5">
-                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${
-                             opt.isCorrect ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : 'bg-slate-100 text-slate-400'
-                           }`}>
-                             {String.fromCharCode(65+i)}
-                           </div>
-                           <span className="text-xs font-bold text-slate-800">{opt.text}</span>
-                         </div>
-                         {opt.isCorrect && <CheckCircle size={16} className="text-emerald-500" />}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="p-8 bg-emerald-50 border border-emerald-100 rounded-[2.5rem] flex gap-6 items-start">
-                    <div className="p-3 bg-primary-gradient rounded-2xl text-white shadow-lg shrink-0">
-                      <Wand2 size={24} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest mb-1">Psychometric Remediation Logic</p>
-                      <p className="text-sm font-medium text-slate-600 leading-relaxed italic">"{auditResult.suggestedRemedy}"</p>
-                    </div>
-                  </div>
-               </div>
-
-               <div className="p-8 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row gap-6 items-center justify-between">
-                  <div className="flex items-center gap-3">
-                     <ShieldCheck size={20} className="text-emerald-600" />
-                     <span className="text-xs font-bold text-slate-500 italic">Institutional standards alignment confirmed by Sina Auditor.</span>
-                  </div>
-                  <button 
-                    onClick={applyRemedy}
-                    disabled={isApplying}
-                    className="w-full md:w-auto px-12 py-5 bg-primary-gradient disabled:opacity-50 text-white rounded-[2rem] font-black uppercase tracking-widest transition shadow-2xl shadow-[#1BD183]/30 flex items-center justify-center gap-4 active:scale-95"
-                  >
-                    {isApplying ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
-                    {isApplying ? 'COMMITTING TO BANK...' : 'Deploy Reconstruction'}
-                  </button>
-               </div>
-            </div>
+    return (
+      <section
+        aria-labelledby="integrity-selected"
+        className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+      >
+        <div className="flex items-start gap-3 border-b border-stone-200 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h3 id="integrity-selected" className="text-[15px] font-semibold text-stone-900">
+              Selected item
+            </h3>
+            <p className="mt-0.5 truncate font-mono text-xs text-stone-400">
+              {selectedItem.identifier || selectedItem.id}
+            </p>
           </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200 p-20 text-center space-y-6 group">
-             <div className="w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-200 group-hover:scale-110 transition-transform duration-500">
-                <ShieldCheck size={64} strokeWidth={1} />
-             </div>
-             <div>
-                <h3 className="text-2xl font-black text-slate-400 uppercase tracking-tight">Audit Engine Standby</h3>
-                <p className="text-sm text-slate-400 font-medium max-w-md mt-2 mx-auto leading-relaxed italic">
-                  Select an item from the flagged queue on the left to trigger a multi-factor content and psychometric sweep.
-                </p>
-             </div>
-             <div className="flex gap-4">
-                <div className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 shadow-sm">
-                   <div className="w-2 h-2 rounded-full bg-rose-500" /> P-Drift Detection
-                </div>
-                <div className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 shadow-sm">
-                   <div className="w-2 h-2 rounded-full bg-[#1BD183]" /> NFD Identification
-                </div>
-             </div>
+          <IconButton icon={X} size="sm" label="Clear selection" onClick={() => setSelectedItem(null)} />
+        </div>
+        <div className="space-y-5 p-5">
+          <InlineAlert tone="info">
+            Automated audits aren't connected yet, so there's no report for this item.
+          </InlineAlert>
+          <div>
+            <p className="mb-1.5 text-[13px] font-medium text-stone-500">Stem</p>
+            <p className="text-[15px] leading-7 text-stone-900">
+              {selectedItem.stem || <span className="text-stone-400">No stem</span>}
+            </p>
           </div>
-        )}
-      </div>
+          {selectedItem.options && selectedItem.options.length > 0 && (
+            <div>
+              <p className="mb-2 text-[13px] font-medium text-stone-500">Options</p>
+              <OptionList options={selectedItem.options} />
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      {renderQueue()}
+      <div className="min-w-0 xl:sticky xl:top-6">{renderDetail()}</div>
     </div>
   );
 };

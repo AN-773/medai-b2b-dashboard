@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Cropper, { Area } from 'react-easy-crop';
-import { Loader2, Maximize2, RotateCcw, X, ZoomIn } from 'lucide-react';
+import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Button, Dialog, Field, InlineAlert } from '@/components/ui';
 
 interface PhotoCropModalProps {
   /** Data URI of the source image, or null when the modal is closed. */
@@ -103,103 +103,87 @@ const PhotoCropModal: React.FC<PhotoCropModalProps> = ({ imageSrc, onCancel, onC
     onCancel();
   };
 
-  if (!imageSrc) return null;
+  const isAtDefault = zoom === 1 && crop.x === 0 && crop.y === 0;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden font-['Inter']">
-        <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-100">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Position the photo</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Drag to move, scroll or use the slider to zoom.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleCancel}
-            aria-label="Cancel"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+  return (
+    <Dialog
+      open={Boolean(imageSrc)}
+      onClose={handleCancel}
+      dismissible={!isRendering}
+      width="max-w-lg"
+      title="Position the photo"
+      description="Drag to move. Scroll or use the slider to zoom."
+      footer={
+        <>
+          <Button
+            variant="ghost"
+            icon={RotateCcw}
+            onClick={reset}
+            disabled={isRendering || isAtDefault}
+            className="mr-auto -ml-2"
           >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="relative h-72 bg-slate-900">
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={1}
-            cropShape="round"
-            showGrid={false}
-            restrictPosition
-            minZoom={1}
-            maxZoom={4}
-            zoomSpeed={0.2}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={handleCropComplete}
-          />
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <ZoomIn size={15} className="text-slate-400 shrink-0" />
-            <input
-              type="range"
-              min={1}
-              max={4}
-              step={0.01}
-              value={zoom}
-              onChange={(event) => setZoom(Number(event.target.value))}
-              aria-label="Zoom"
-              className="flex-1 h-1 accent-slate-900 cursor-pointer"
+            Reset
+          </Button>
+          <Button variant="ghost" onClick={handleCancel} disabled={isRendering}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => void handleConfirm()}
+            disabled={!croppedArea}
+            loading={isRendering}
+          >
+            Use photo
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="relative h-80 overflow-hidden rounded-lg bg-stone-900">
+          {imageSrc && (
+            <Cropper
+              image={imageSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              restrictPosition
+              minZoom={1}
+              maxZoom={4}
+              zoomSpeed={0.2}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={handleCropComplete}
             />
-            <button
-              type="button"
-              onClick={reset}
-              title="Reset"
-              aria-label="Reset"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 shrink-0"
-            >
-              <RotateCcw size={15} />
-            </button>
-          </div>
-
-          <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Maximize2 size={12} className="shrink-0" />
-            Saved as a {OUTPUT_SIZE}×{OUTPUT_SIZE} square — the circle shows the visible area.
-          </p>
-
-          {error && (
-            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
           )}
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={isRendering || !croppedArea}
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-            >
-              {isRendering && <Loader2 size={15} className="animate-spin" />}
-              Use photo
-            </button>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="inline-flex items-center justify-center h-10 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-          </div>
         </div>
+
+        <Field
+          label="Zoom"
+          description={`Saved as a ${OUTPUT_SIZE}×${OUTPUT_SIZE} square — the circle shows what's visible on the card.`}
+        >
+          {(id) => (
+            <div className="flex items-center gap-3">
+              <ZoomOut size={15} className="flex-shrink-0 text-stone-400" aria-hidden="true" />
+              <input
+                id={id}
+                type="range"
+                min={1}
+                max={4}
+                step={0.01}
+                value={zoom}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                className="h-1 flex-1 cursor-pointer accent-stone-900"
+              />
+              <ZoomIn size={15} className="flex-shrink-0 text-stone-400" aria-hidden="true" />
+            </div>
+          )}
+        </Field>
+
+        {error && <InlineAlert onDismiss={() => setError('')}>{error}</InlineAlert>}
       </div>
-    </div>,
-    document.body
+    </Dialog>
   );
 };
 

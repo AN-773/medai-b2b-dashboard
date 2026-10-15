@@ -1,25 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  File as FileIcon,
-  FileArchive,
-  FileAudio,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  FolderOpen,
-  Loader2,
-  Presentation,
-  RefreshCw,
-  Sparkles,
-  Trash2,
-  UploadCloud,
-  X,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw, ScanText, Upload } from 'lucide-react';
 import type { TeacherCourse } from '@/types/AcademyStudioTypes';
 import { courseResourceService } from '@/services/courseResourceService';
 import {
@@ -35,11 +15,22 @@ import { readCourseResourceKnowledgeBase } from '@/types/CourseResourceTypes';
 import type { CourseResource } from '@/types/CourseResourceTypes';
 import { resourceIdentifier } from '@/utils/resourceId';
 import { BlobUploadAbortedError } from '@/utils/blockBlobUpload';
-import ConfirmationModal from '@/components/ConfirmationModal';
-import { SectionLabel } from './shared';
 import { useProgressiveCourseResources } from '@/hooks/useProgressiveCourseResources';
-import { isTextReady, needsCourseSync, shouldPollResource } from '@/utils/documentProcessing';
-import { ResourceProcessingStatus } from './ResourceProcessingStatus';
+import { needsCourseSync, shouldPollResource } from '@/utils/documentProcessing';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  IconButton,
+  InlineAlert,
+  SectionHeader,
+  Spinner,
+} from '@/components/ui';
+import { VIDEO_EXTENSIONS, extensionOf, formatFileSize } from './resources/fileDisplay';
+import { UploadQueue, type UploadItem } from './resources/UploadQueue';
+import { DropOverlay, EmptyDropzone } from './resources/Dropzone';
+import { ResourceRow } from './resources/ResourceRow';
+import { StatusNote } from './resources/StatusNote';
 
 interface CourseResourcesPanelProps {
   course: TeacherCourse;
@@ -51,7 +42,7 @@ type ApiRequestError = Error & {
 
 const PAGE_SIZE = 25;
 
-/**
+/*
  * What a course resource may be is now what the tutor agent can read.
  *
  * The store behind this panel would take anything — the Tests service applies
@@ -77,19 +68,6 @@ const PAGE_SIZE = 25;
  * Checking here rather than leaving it to the backend means nobody waits out a
  * long upload to be told no at the end.
  */
-const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi'];
-
-type UploadItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'canceled';
-
-interface UploadItem {
-  key: string;
-  fileName: string;
-  fileSize: number;
-  isVideo: boolean;
-  status: UploadItemStatus;
-  percent: number;
-  error?: string;
-}
 
 const getStatus = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error
@@ -117,53 +95,6 @@ const getDeleteErrorMessage = (error: unknown) => {
   }
   return error instanceof Error ? error.message : "Couldn't remove that file.";
 };
-
-const formatFileSize = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const exponent = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  );
-  const value = bytes / 1024 ** exponent;
-  const digits = value >= 10 || exponent === 0 ? 0 : 1;
-  return `${value.toFixed(digits)} ${units[exponent]}`;
-};
-
-const formatTimestamp = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
-};
-
-const FILE_TYPE_LABELS: Record<string, string> = {
-  'application/pdf': 'PDF',
-  'application/msword': 'DOC',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-  'application/vnd.ms-powerpoint': 'PPT',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
-  'application/vnd.ms-excel': 'XLS',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-  'text/plain': 'TXT',
-  'text/csv': 'CSV',
-  'text/markdown': 'MD',
-};
-
-const fileTypeLabel = (value: string, fileName: string) => {
-  const trimmed = value.split(';')[0].trim();
-  const knownLabel = FILE_TYPE_LABELS[trimmed.toLowerCase()];
-  if (knownLabel) return knownLabel;
-  const extension = /\.([a-z0-9]{1,10})$/i.exec(fileName)?.[1];
-  if (extension) return extension.toUpperCase();
-  if (!trimmed) return 'File';
-  return trimmed.includes('/') ? trimmed.split('/')[1].toUpperCase() : trimmed;
-};
-
-const extensionOf = (fileName: string) =>
-  (fileName.split('.').pop() || '').toLowerCase();
 
 const isVideoFile = (file: File) =>
   file.type.toLowerCase().startsWith('video/') ||
@@ -203,26 +134,6 @@ const rejectionFor = (
   return null;
 };
 
-const iconForResource = (resource: CourseResource) => {
-  const type = (resource.fileType || '').toLowerCase();
-  const ext = extensionOf(resource.fileName);
-  const has = (...needles: string[]) =>
-    needles.some((needle) => type.includes(needle) || ext === needle);
-
-  if (has('pdf')) return FileText;
-  if (type.startsWith('image/') || has('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'))
-    return FileImage;
-  if (type.startsWith('video/') || has(...VIDEO_EXTENSIONS))
-    return FileVideo;
-  if (type.startsWith('audio/') || has('mp3', 'wav', 'm4a', 'ogg'))
-    return FileAudio;
-  if (has('spreadsheet', 'excel', 'csv', 'xls', 'xlsx')) return FileSpreadsheet;
-  if (has('presentation', 'powerpoint', 'ppt', 'pptx')) return Presentation;
-  if (has('zip', 'rar', '7z', 'gzip', 'compressed')) return FileArchive;
-  if (has('word', 'document', 'doc', 'docx', 'txt', 'rtf')) return FileText;
-  return FileIcon;
-};
-
 const resourceKey = (resource: CourseResource) =>
   resource.id || resource.identifier || resource.fileId || resource.fileName;
 
@@ -230,18 +141,14 @@ const identifierFor = (resource: CourseResource) =>
   resource.identifier || resourceIdentifier(resource.id);
 
 /*
- * The tutor column (contracts/course-resources-contract.md, Contracts T1–T3).
+ * The Sina status (contracts/course-resources-contract.md, Contracts T1–T3).
  *
  * The Tests service ingests each eligible resource once per course into the
  * knowledge base a learner's tutor searches, and reports where each file stands
  * on `CourseResource.knowledgeBase`. The key is absent when Tests has no agent
- * configured, and then none of this renders: the grid, the header and the copy
- * stay exactly as they were before the feature.
+ * configured, and then none of this renders: no status column, no Process
+ * files action.
  */
-
-/** Container-based columns account for the workbench/sidebar's available width. */
-const RESOURCE_GRID_COLUMNS = 'course-resources-grid';
-const RESOURCE_GRID_COLUMNS_WITH_TUTOR = 'course-resources-grid-with-tutor';
 
 const getSyncErrorMessage = (error: unknown) => {
   const status = getStatus(error);
@@ -251,11 +158,17 @@ const getSyncErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Couldn’t send files to the tutor.';
 };
 
+const hasDraggedFiles = (event: React.DragEvent) =>
+  Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
 const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const cancelRequestedRef = useRef(false);
+  /** Files behind failed/canceled queue rows, so Retry can send them again. */
+  const retryFilesRef = useRef(new Map<string, File>());
+  const uploadBatchRef = useRef(0);
   const courseIdentifier = useMemo(
     () => course.backendIdentifier || resourceIdentifier(course.id),
     [course.backendIdentifier, course.id],
@@ -305,8 +218,8 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     [resources],
   );
 
-  // The key's presence, not a recognised status, decides the column: absent
-  // means Tests has no agent, and then the table is exactly what it was.
+  // The key's presence, not a recognised status, decides the status column:
+  // absent means Tests has no agent, and then no Sina status renders at all.
   const showTutorColumn = useMemo(
     () => resources.some((resource) => resource.knowledgeBase != null),
     [resources],
@@ -356,28 +269,43 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     [],
   );
 
+  /**
+   * `replacingKey` is set by Retry: that row alone is swapped for the new
+   * attempt and the other rows stay. A fresh pick or drop starts a new queue.
+   */
   const uploadFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], replacingKey?: string) => {
       if (files.length === 0 || isUploading) return;
+
+      uploadBatchRef.current += 1;
+      const batch = uploadBatchRef.current;
+      if (!replacingKey) retryFilesRef.current.clear();
 
       const queue: UploadItem[] = files.map((file, index) => {
         // Type before size, because it is the more useful thing to be told:
         // a teacher whose 900 MB recording is refused for both reasons is not
         // helped by "compress it", and the extension is what they can act on.
         const rejection = rejectionFor(file, acceptedFormats);
+        const key = `${batch}-${index}-${file.name}-${file.size}-${file.lastModified}`;
+        if (!rejection) retryFilesRef.current.set(key, file);
         return {
-          key: `${index}-${file.name}-${file.size}-${file.lastModified}`,
+          key,
           fileName: file.name,
           fileSize: file.size,
           isVideo: isVideoFile(file),
           status: rejection ? 'error' : 'pending',
           percent: 0,
           error: rejection ?? undefined,
+          retryable: !rejection,
         };
       });
 
       cancelRequestedRef.current = false;
-      setUploadQueue(queue);
+      setUploadQueue((current) =>
+        replacingKey
+          ? [...current.filter((item) => item.key !== replacingKey), ...queue]
+          : queue,
+      );
       setDeleteError(null);
       setStatusMessage(null);
       setIsUploading(true);
@@ -385,8 +313,8 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       let uploadedCount = 0;
       let lastUploadedName = '';
       // Whether the Tests service said the tutor will index what landed. Only
-      // then does the success copy mention the tutor — and not for a file Tests
-      // already reported it cannot send, which its row chip explains instead.
+      // then does the success copy mention processing — and not for a file Tests
+      // already reported it cannot send, which its row status explains instead.
       let tutorWillIndex = false;
 
       // One file at a time: each upload already parallelises its own blocks, and
@@ -421,6 +349,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
           if (uploadedTutorState && uploadedTutorState.status !== 'ineligible') {
             tutorWillIndex = true;
           }
+          retryFilesRef.current.delete(item.key);
           updateUploadItem(item.key, { status: 'done', percent: 100 });
         } catch (error) {
           if (controller.signal.aborted || error instanceof BlobUploadAbortedError) {
@@ -440,7 +369,7 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Finished rows would only repeat what the table below now shows, so keep
+      // Finished rows would only repeat what the list below now shows, so keep
       // just the ones the teacher still has to deal with.
       setUploadQueue((current) =>
         current.filter(
@@ -482,6 +411,18 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     abortRef.current?.abort();
   };
 
+  const retryUpload = (key: string) => {
+    const file = retryFilesRef.current.get(key);
+    if (!file || isUploading) return;
+    retryFilesRef.current.delete(key);
+    void uploadFiles([file], key);
+  };
+
+  const dismissUpload = (key: string) => {
+    retryFilesRef.current.delete(key);
+    setUploadQueue((current) => current.filter((entry) => entry.key !== key));
+  };
+
   const openFilePicker = () => {
     if (isUploading) return;
     fileInputRef.current?.click();
@@ -492,11 +433,17 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
     void uploadFiles(files);
   };
 
+  // Files can be dropped anywhere over the panel, not just on the empty state.
   const handleDragEnter = (event: React.DragEvent) => {
     event.preventDefault();
-    if (isUploading) return;
+    if (isUploading || !hasDraggedFiles(event)) return;
     dragDepth.current += 1;
     setIsDragging(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = isUploading ? 'none' : 'copy';
   };
 
   const handleDragLeave = (event: React.DragEvent) => {
@@ -591,420 +538,203 @@ const CourseResourcesPanel: React.FC<CourseResourcesPanelProps> = ({ course }) =
   // A page of ready files cannot certify that the rest of the course is done.
   const showSyncButton = !syncUnsupported && (showTutorColumn || needsSync);
 
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={refreshResources}
-      disabled={isLoading}
-      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <RefreshCw size={14} className={isLoading ? 'animate-spin' : undefined} />
-      Refresh
-    </button>
-  );
+  const formatsHint = acceptedFormats
+    ? `${formatSuffixLabels(acceptedFormats).join(', ')} · up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each`
+    : `Up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} per file`;
+
+  const showList = !loadError && !isLoading && resources.length > 0;
+
+  const headerMeta =
+    !loadError && !isLoading && total > 0 ? (
+      <>
+        <Badge className="tabular-nums">
+          {total} {total === 1 ? 'file' : 'files'}
+        </Badge>
+        {hasProcessing && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-stone-500">
+            <Loader2 size={12} className="animate-spin text-sky-500" aria-hidden="true" />
+            Processing files…
+          </span>
+        )}
+      </>
+    ) : undefined;
 
   return (
-    <div className="course-resources-panel space-y-7">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#16324F] text-white">
-            <FolderOpen size={16} />
-          </div>
-          <div>
-            <SectionLabel>Course resources</SectionLabel>
-            <h3 className="text-lg font-black tracking-tight text-slate-900">
-              Files learners can open
-            </h3>
-            <p className="mt-0.5 text-sm font-medium text-slate-500">
-              Anything you add here appears in every study plan linked to this
-              course.
-            </p>
-          </div>
-        </div>
+    <div
+      className="relative"
+      data-testid="course-resources-panel"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        // Omitted entirely when the agent could not be asked, rather than set
+        // to a guessed list: an `accept` built from nothing would hide files
+        // the parser reads. A drop is checked by `rejectionFor` either way —
+        // this attribute only makes the browser's own picker agree with it.
+        {...(acceptedFormats
+          ? { accept: uploadAcceptAttribute(acceptedFormats) }
+          : {})}
+        onChange={handleFileChange}
+      />
 
-        {/* The wrapper exists only with the sync action, so a deployment with no
-            tutor keeps the header's markup exactly as it was. */}
-        {showSyncButton ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void syncToTutor()}
-              disabled={isSyncing || isLoading}
-              title="Start or retry processing for course files"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#1BD183]/40 bg-[#1BD183]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 transition hover:border-[#1BD183] hover:bg-[#1BD183]/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSyncing ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
+      <div className="space-y-5">
+        <SectionHeader
+          title="Resources"
+          description="Files learners and Sina can draw on for this course — slides, notes, readings."
+          meta={headerMeta}
+          actions={
+            <>
+              <IconButton
+                icon={RefreshCw}
+                label="Refresh"
+                onClick={refreshResources}
+                disabled={isLoading}
+              />
+              {showSyncButton && (
+                <Button
+                  variant="secondary"
+                  icon={ScanText}
+                  onClick={() => void syncToTutor()}
+                  loading={isSyncing}
+                  disabled={isLoading}
+                  title="Start or retry processing for course files"
+                >
+                  Process files
+                </Button>
               )}
-              Process files
-            </button>
-            {refreshButton}
-          </div>
-        ) : (
-          refreshButton
-        )}
-      </div>
-
-      {/* Upload drop zone */}
-      <div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          // Omitted entirely when the agent could not be asked, rather than set
-          // to a guessed list: an `accept` built from nothing would hide files
-          // the parser reads. A drop is checked by `rejectionFor` either way —
-          // this attribute only makes the browser's own picker agree with it.
-          {...(acceptedFormats
-            ? { accept: uploadAcceptAttribute(acceptedFormats) }
-            : {})}
-          onChange={handleFileChange}
-          className="hidden"
+              <Button variant="primary" icon={Upload} onClick={openFilePicker} loading={isUploading}>
+                {isUploading ? 'Uploading…' : 'Upload files'}
+              </Button>
+            </>
+          }
         />
 
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={openFilePicker}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              openFilePicker();
-            }
-          }}
-          onDragEnter={handleDragEnter}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          aria-disabled={isUploading}
-          className={`flex flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed px-6 py-9 text-center transition ${
-            isUploading
-              ? 'cursor-progress border-slate-200 bg-slate-50'
-              : isDragging
-                ? 'cursor-copy border-[#1BD183] bg-[#1BD183]/10'
-                : 'cursor-pointer border-slate-300 bg-slate-50 hover:border-[#1BD183] hover:bg-[#1BD183]/5'
-          }`}
-        >
-          <div className="pointer-events-none flex flex-col items-center">
-            <div
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                isDragging
-                  ? 'bg-[#1BD183] text-[#06241a]'
-                  : 'bg-white text-[#16324F] shadow-sm'
-              }`}
-            >
-              {isUploading ? (
-                <Loader2 size={22} className="animate-spin" />
-              ) : (
-                <UploadCloud size={22} />
-              )}
-            </div>
-            <p className="mt-4 text-sm font-black text-slate-800">
-              {isUploading
-                ? 'Uploading…'
-                : isDragging
-                  ? 'Drop to upload'
-                  : 'Drag files here, or click to browse'}
-            </p>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-              {acceptedFormats
-                ? `Readings, slides and handouts — ${formatSuffixLabels(acceptedFormats).join(', ')}, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`
-                : `Readings, slides and handouts, up to ${AGENT_MAX_UPLOAD_SIZE_LABEL} each.`}{' '}
-              Uploads start right away — no publish step.
-            </p>
-          </div>
-        </div>
-
-        {/* Upload queue — one row per file, so a long video shows real progress */}
-        {uploadQueue.length > 0 && (
-          <div className="mt-3 space-y-2 rounded-[1.25rem] border border-slate-200 bg-white p-3">
-            {uploadQueue.map((item) => {
-              const Icon =
-                item.status === 'done'
-                  ? Check
-                  : item.status === 'error'
-                    ? AlertTriangle
-                    : item.isVideo
-                      ? FileVideo
-                      : FileIcon;
-              return (
-                <div key={item.key} className="rounded-xl bg-slate-50 px-3 py-2.5">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                        item.status === 'done'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : item.status === 'error'
-                            ? 'bg-rose-100 text-rose-600'
-                            : 'bg-white text-slate-500'
-                      }`}
-                    >
-                      <Icon size={15} />
-                    </div>
-                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
-                      {item.fileName}
-                    </p>
-                    <p className="flex-shrink-0 text-xs font-black tabular-nums text-slate-500">
-                      {item.status === 'uploading'
-                        ? `${item.percent}%`
-                        : item.status === 'pending'
-                          ? 'Queued'
-                          : item.status === 'canceled'
-                            ? 'Canceled'
-                            : formatFileSize(item.fileSize)}
-                    </p>
-                    {item.status === 'uploading' && (
-                      <button
-                        type="button"
-                        onClick={cancelUploads}
-                        title="Cancel upload"
-                        className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-rose-200 hover:text-rose-600"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    {!isUploading &&
-                      (item.status === 'error' || item.status === 'canceled') && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setUploadQueue((current) =>
-                              current.filter((entry) => entry.key !== item.key),
-                            )
-                          }
-                          title="Dismiss"
-                          className="flex-shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                  </div>
-
-                  {item.status === 'uploading' && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#1BA6D1] to-[#1BD183] transition-[width] duration-200"
-                        style={{ width: `${item.percent}%` }}
-                      />
-                    </div>
-                  )}
-                  {item.error && (
-                    <p className="mt-1.5 text-xs font-medium leading-5 text-rose-600">
-                      {item.error}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {statusMessage && (
-          <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">
-            {statusMessage}
-          </p>
+        {syncError && (
+          <InlineAlert onDismiss={() => setSyncError(null)}>{syncError}</InlineAlert>
         )}
         {deleteError && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
-            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
-            <p className="font-medium">{deleteError}</p>
-          </div>
+          <InlineAlert onDismiss={() => setDeleteError(null)}>{deleteError}</InlineAlert>
         )}
-        {syncError && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
-            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
-            <p className="font-medium">{syncError}</p>
+        {statusMessage && (
+          <StatusNote onDismiss={() => setStatusMessage(null)}>{statusMessage}</StatusNote>
+        )}
+        {connectionStale && (
+          <InlineAlert tone="warning">Reconnecting to check progress…</InlineAlert>
+        )}
+
+        {uploadQueue.length > 0 && (
+          <UploadQueue
+            items={uploadQueue}
+            isUploading={isUploading}
+            onCancel={cancelUploads}
+            onRetry={retryUpload}
+            onDismiss={dismissUpload}
+          />
+        )}
+
+        {loadError ? (
+          <InlineAlert
+            title="Couldn’t load files"
+            action={
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={RefreshCw}
+                onClick={() => void loadResources(page)}
+                className="-my-0.5"
+              >
+                Try again
+              </Button>
+            }
+          >
+            {loadError}
+          </InlineAlert>
+        ) : isLoading ? (
+          <Spinner label="Loading files…" className="py-16" />
+        ) : resources.length === 0 ? (
+          <EmptyDropzone
+            isDragging={isDragging}
+            isUploading={isUploading}
+            formatsHint={formatsHint}
+            onBrowse={openFilePicker}
+          />
+        ) : null}
+
+        {showList && (
+          <div>
+            <ul
+              aria-label="Course files"
+              className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+            >
+              {resources.map((resource) => (
+                <ResourceRow
+                  key={resourceKey(resource)}
+                  resource={resource}
+                  showStatus={showTutorColumn}
+                  isDeleting={deletingResourceId === identifierFor(resource)}
+                  removeDisabled={Boolean(deletingResourceId)}
+                  onRemove={setResourceToDelete}
+                />
+              ))}
+            </ul>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+              <p className="min-w-0 text-[13px] text-stone-500">
+                <span className="tabular-nums">
+                  {totalPages > 1
+                    ? `${formatFileSize(pageSize)} on this page · Page ${page} of ${totalPages}`
+                    : `${formatFileSize(pageSize)} in total`}
+                </span>
+                <span className="text-stone-400"> · Drag files onto this list to add more</span>
+              </p>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    icon={ChevronLeft}
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={page <= 1 || isLoading}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    size="sm"
+                    iconRight={ChevronRight}
+                    onClick={() =>
+                      setPage((current) => Math.min(totalPages, current + 1))
+                    }
+                    disabled={page >= totalPages || isLoading}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Attached files */}
-      <section>
-        <div className="flex items-center gap-2">
-          <SectionLabel>Attached files</SectionLabel>
-          {total > 0 && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-500">
-              {total}
-            </span>
-          )}
-          {hasProcessing && (
-            <span className="text-xs font-medium text-slate-500">
-              Processing files…
-            </span>
-          )}
-        </div>
+      {isDragging && <DropOverlay formatsHint={formatsHint} />}
 
-        <div role="status" aria-live="polite">
-          {connectionStale && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Reconnecting to check progress…
-          </p>}
-        </div>
-
-        <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
-          {loadError ? (
-            <div className="flex flex-col items-start gap-4 px-5 py-6">
-              <div className="flex items-start gap-3 text-rose-700">
-                <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
-                <p className="font-semibold">{loadError}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void loadResources(page)}
-                className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-700 transition hover:bg-rose-100"
-              >
-                <RefreshCw size={14} />
-                Try again
-              </button>
-            </div>
-          ) : isLoading ? (
-            <div className="flex min-h-[220px] items-center justify-center text-sm font-semibold text-slate-500">
-              <Loader2 size={16} className="mr-2 animate-spin" />
-              Loading files…
-            </div>
-          ) : resources.length === 0 ? (
-            <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
-              <FolderOpen size={30} className="text-slate-300" />
-              <p className="mt-4 text-sm font-black text-slate-700">
-                No files yet
-              </p>
-              <p className="mt-2 max-w-md text-xs font-medium leading-5 text-slate-500">
-                Add the readings, slides and handouts learners should be able to
-                open from this course.
-              </p>
-            </div>
-          ) : (
-            <div>
-              <div>
-                <div
-                  className={`course-resources-header ${
-                    showTutorColumn ? RESOURCE_GRID_COLUMNS_WITH_TUTOR : RESOURCE_GRID_COLUMNS
-                  } gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400`}
-                >
-                  <p>File</p>
-                  <p>Type</p>
-                  <p>Size</p>
-                  {showTutorColumn && <p>Status</p>}
-                  <p>Added</p>
-                  <p className="text-right">Action</p>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {resources.map((resource) => {
-                    const Icon = iconForResource(resource);
-                    const identifier = identifierFor(resource);
-                    const isDeleting = deletingResourceId === identifier;
-                    const textUnavailable = resource.knowledgeBase != null && !isTextReady(resource.knowledgeBase);
-                    return (
-                      <div
-                        key={resourceKey(resource)}
-                        className={`grid grid-cols-2 ${
-                          showTutorColumn
-                            ? RESOURCE_GRID_COLUMNS_WITH_TUTOR
-                            : RESOURCE_GRID_COLUMNS
-                        } items-center gap-4 px-5 py-4 ${textUnavailable ? 'bg-slate-50/70' : ''}`}
-                      >
-                        <div className="course-resources-wide flex min-w-0 items-center gap-3">
-                          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 ${textUnavailable ? 'text-slate-300' : 'text-slate-500'}`}>
-                            <Icon size={16} />
-                          </div>
-                          <p title={resource.fileName} className={`min-w-0 break-words text-sm font-semibold ${textUnavailable ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                            {resource.fileName}
-                          </p>
-                        </div>
-                        <p title={resource.fileType} className="min-w-0 break-words text-sm font-medium text-slate-600">
-                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Type:</span>
-                          {fileTypeLabel(resource.fileType, resource.fileName)}
-                        </p>
-                        <p className="whitespace-nowrap text-sm font-medium text-slate-600">
-                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Size:</span>
-                          {formatFileSize(resource.fileSize)}
-                        </p>
-                        {showTutorColumn && (
-                          <div className="course-resources-wide min-w-0">
-                            <ResourceProcessingStatus resource={resource} />
-                          </div>
-                        )}
-                        <p className="min-w-0 break-words text-sm font-medium text-slate-600">
-                          <span className="course-resources-mobile-label mr-1 text-xs text-slate-500">Added:</span>
-                          {formatTimestamp(resource.createdAt)}
-                        </p>
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setResourceToDelete(resource)}
-                            disabled={Boolean(deletingResourceId)}
-                            title="Remove file"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-600 transition hover:border-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {isDeleting ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={13} />
-                            )}
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {!loadError && resources.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-medium text-slate-500">
-              {total} file{total === 1 ? '' : 's'} · {formatFileSize(pageSize)} on
-              this page
-              {totalPages > 1 ? ` · page ${page} of ${totalPages}` : ''}
-            </p>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={page <= 1 || isLoading}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ChevronLeft size={14} />
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPage((current) => Math.min(totalPages, current + 1))
-                  }
-                  disabled={page >= totalPages || isLoading}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      <ConfirmationModal
-        isOpen={resourceToDelete !== null}
-        variant="danger"
-        title="Remove file"
-        message={
+      <ConfirmDialog
+        open={resourceToDelete !== null}
+        title="Remove this file?"
+        description={
           resourceToDelete
-            ? `Remove “${resourceToDelete.fileName}”? Learners will no longer see it in study plans linked to this course. This can’t be undone.${
+            ? `“${resourceToDelete.fileName}” will be removed from this course, and learners will no longer see it in linked study plans. This can’t be undone.${
                 resourceToDelete.knowledgeBase != null
-                  ? ' Their tutor will stop using it from their next question.'
+                  ? ' Sina will stop using it from learners’ next question.'
                   : ''
               }`
             : ''
         }
         confirmLabel="Remove file"
-        cancelLabel="Keep file"
         onConfirm={() => void confirmDeleteResource()}
         onCancel={() => setResourceToDelete(null)}
       />

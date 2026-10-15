@@ -1,14 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CloudOff,
-  Info,
-  Loader2,
-  Save,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { Check, CheckCircle2, CloudOff, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { Badge, Button, ConfirmDialog, InlineAlert, cn } from '@/components/ui';
 import { moduleGenerationCourseData } from '@/services/moduleGenerationService';
 import type { CourseGenerationJob } from '@/types/CourseAITypes';
 import type { CourseUpload } from '@/types/CourseStudioTypes';
@@ -18,13 +10,13 @@ import type {
   ModuleGenerationJob,
   ModulePlan,
 } from '@/types/ModuleGenerationTypes';
-import ConfirmationModal from '@/components/ConfirmationModal';
 import SessionItemDetailModal, {
   type SessionItemDetail,
 } from '@/components/academy/course-workbench/SessionItemDetailModal';
 import PlanTree from './PlanTree';
 import { countPlan } from './planUtils';
 import { type PlanSaveState, useModulePlanEditor } from './useModulePlanEditor';
+import { WizardFooter } from './WizardFooter';
 
 interface ReviewStepProps {
   job: ModuleGenerationJob;
@@ -90,6 +82,8 @@ const SAVE_LABELS: Record<PlanSaveState, string> = {
   error: 'Not saved',
 };
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 const ReviewStep: React.FC<ReviewStepProps> = ({
   job,
   uploads,
@@ -132,166 +126,129 @@ const ReviewStep: React.FC<ReviewStepProps> = ({
   const canAccept =
     !busy && editor.localIssues.length === 0 && !hasStaleRefs && editor.saveState !== 'saving';
 
+  const saveTone =
+    editor.saveState === 'saved'
+      ? 'text-stone-500'
+      : editor.saveState === 'saving' || editor.saveState === 'dirty'
+        ? 'text-stone-600'
+        : 'text-amber-700';
+
   return (
     <>
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-slate-600">
-              <span className="font-black text-slate-900">{counts.modules}</span> modules ·{' '}
-              <span className="font-black text-slate-900">{counts.sessions}</span> sessions ·{' '}
-              <span className="font-black text-slate-900">{counts.items}</span> items
-              {counts.newItems > 0 && (
-                <>
-                  {' '}
-                  (<span className="font-black text-emerald-700">{counts.newItems} new</span>)
-                </>
-              )}
-            </p>
-            <div className="flex items-center gap-2 text-xs font-bold">
-              <span
-                className={`flex items-center gap-1.5 ${
-                  editor.saveState === 'saved'
-                    ? 'text-slate-400'
-                    : editor.saveState === 'saving' || editor.saveState === 'dirty'
-                      ? 'text-slate-500'
-                      : 'text-amber-700'
-                }`}
-              >
-                {editor.saveState === 'saving' ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : editor.saveState === 'saved' ? (
-                  <CheckCircle2 size={13} />
-                ) : (
-                  <CloudOff size={13} />
-                )}
-                {SAVE_LABELS[editor.saveState]}
-              </span>
-              {(editor.saveState === 'dirty' || editor.saveState === 'error') && (
-                <button
-                  type="button"
-                  onClick={() => void editor.save()}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.1em] text-slate-600 transition hover:border-slate-300"
-                >
-                  <Save size={12} /> Save
-                </button>
-              )}
-            </div>
+      <div className="space-y-4 px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] tabular-nums text-stone-500">
+            <span>
+              <span className="font-medium text-stone-900">{plural(counts.modules, 'module')}</span>
+              {' · '}
+              {plural(counts.sessions, 'session')}
+              {' · '}
+              {plural(counts.items, 'item')}
+            </span>
+            {counts.newItems > 0 && (
+              <Badge tone="violet" icon={Sparkles} title="Drafted by AI; created when you accept">
+                {counts.newItems} new
+              </Badge>
+            )}
           </div>
-
-          {warnings.length > 0 && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-amber-700">
-                <AlertTriangle size={14} /> Notes from the AI
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-medium text-amber-800">
-                {warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {editor.strippedNotice && (
-            <div
-              role="status"
-              className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800"
-            >
-              <Info size={16} className="mt-0.5 flex-shrink-0" />
-              <span className="min-w-0 flex-1">{editor.strippedNotice}</span>
-              <button
-                type="button"
-                onClick={editor.dismissStrippedNotice}
-                title="Dismiss"
-                className="flex-shrink-0 opacity-60 transition hover:opacity-100"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-
-          {editor.message && (
-            <div
-              role="alert"
-              className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold ${
-                editor.message.tone === 'error'
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border-sky-200 bg-sky-50 text-sky-800'
-              }`}
-            >
-              {editor.message.tone === 'error' ? (
-                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+          <div className="flex items-center gap-2">
+            <span role="status" className={cn('flex items-center gap-1.5 text-xs', saveTone)}>
+              {editor.saveState === 'saving' ? (
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+              ) : editor.saveState === 'saved' ? (
+                <CheckCircle2 size={13} aria-hidden="true" />
               ) : (
-                <Info size={16} className="mt-0.5 flex-shrink-0" />
+                <CloudOff size={13} aria-hidden="true" />
               )}
-              <span className="min-w-0 flex-1">{editor.message.text}</span>
-              <button
-                type="button"
-                onClick={editor.dismissMessage}
-                title="Dismiss"
-                className="flex-shrink-0 opacity-60 transition hover:opacity-100"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-
-          <PlanTree
-            plan={editor.plan}
-            staleIds={editor.staleIds}
-            issues={issues}
-            existingItems={existingItems}
-            suggestionsById={suggestionsById}
-            uploadNames={uploadNames}
-            objectiveTitles={objectiveTitles}
-            disabled={busy}
-            onEdit={editor.edit}
-            onPreview={setPreviewItem}
-          />
+              {SAVE_LABELS[editor.saveState]}
+            </span>
+            {(editor.saveState === 'dirty' || editor.saveState === 'error') && (
+              <Button variant="secondary" size="sm" onClick={() => void editor.save()}>
+                Save
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <button
-          type="button"
-          onClick={() => setConfirmDiscard(true)}
+        {warnings.length > 0 && (
+          <InlineAlert tone="warning" title="Notes from the AI">
+            <ul className="list-disc space-y-0.5 pl-4">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </InlineAlert>
+        )}
+
+        {editor.strippedNotice && (
+          <InlineAlert tone="info" onDismiss={editor.dismissStrippedNotice}>
+            {editor.strippedNotice}
+          </InlineAlert>
+        )}
+
+        {editor.message && (
+          <InlineAlert
+            tone={editor.message.tone === 'error' ? 'error' : 'info'}
+            onDismiss={editor.dismissMessage}
+          >
+            {editor.message.text}
+          </InlineAlert>
+        )}
+
+        <PlanTree
+          plan={editor.plan}
+          staleIds={editor.staleIds}
+          issues={issues}
+          existingItems={existingItems}
+          suggestionsById={suggestionsById}
+          uploadNames={uploadNames}
+          objectiveTitles={objectiveTitles}
           disabled={busy}
-          className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
-        >
-          {editor.isDiscarding ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-          Discard draft
-        </button>
-        <div className="flex items-center justify-end gap-2">
-          <span className="hidden text-xs font-semibold text-slate-400 lg:inline">
-            {hasStaleRefs
-              ? 'Remove the highlighted items to accept.'
-              : 'Modules are added after your existing ones.'}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold text-slate-500 transition hover:bg-slate-100"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={() => void editor.accept()}
-            disabled={!canAccept}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary-gradient px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:opacity-90 disabled:opacity-50"
-          >
-            {editor.isAccepting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            Accept and create {counts.modules} module{counts.modules === 1 ? '' : 's'}
-          </button>
-        </div>
+          onEdit={editor.edit}
+          onPreview={setPreviewItem}
+        />
       </div>
+
+      <WizardFooter
+        start={
+          <Button
+            variant="danger"
+            icon={Trash2}
+            onClick={() => setConfirmDiscard(true)}
+            disabled={busy}
+            loading={editor.isDiscarding}
+          >
+            Discard draft
+          </Button>
+        }
+        hint={
+          hasStaleRefs ? (
+            <span className="text-amber-700">Remove the highlighted items to accept.</span>
+          ) : (
+            <span className="hidden sm:inline">Modules are added after your existing ones.</span>
+          )
+        }
+      >
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+        <Button
+          variant="primary"
+          icon={Check}
+          onClick={() => void editor.accept()}
+          disabled={!canAccept}
+          loading={editor.isAccepting}
+        >
+          Accept and create {plural(counts.modules, 'module')}
+        </Button>
+      </WizardFooter>
 
       <SessionItemDetailModal item={previewItem} onClose={() => setPreviewItem(null)} />
-      <ConfirmationModal
-        isOpen={confirmDiscard}
+      <ConfirmDialog
+        open={confirmDiscard}
         title="Discard this draft?"
-        message="The draft and every item the AI drafted for it will be discarded. Nothing is added to the course. You can generate a new draft afterwards."
-        confirmLabel={editor.isDiscarding ? 'Discarding…' : 'Discard'}
+        description="The draft and every item the AI drafted for it will be discarded. Nothing is added to the course. You can generate a new draft afterwards."
+        confirmLabel="Discard draft"
         onConfirm={() => {
           setConfirmDiscard(false);
           void editor.discard();

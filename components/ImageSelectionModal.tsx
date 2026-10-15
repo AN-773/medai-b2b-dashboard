@@ -1,17 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  X, 
-  Search, 
-  Upload, 
+import {
+  Check,
   Image as ImageIcon,
   Link as LinkIcon,
-  Video,
   Loader2,
-  ExternalLink,
+  Search,
+  Upload,
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { testsService } from '../services/testsService';
 import { OpenIImage } from '../types/TestsServiceTypes';
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  Field,
+  InlineAlert,
+  Input,
+  SearchInput,
+  SegmentedControl,
+  cn,
+} from '@/components/ui';
 
 export type MultimediaType = 'image' | 'hyperlink' | 'video';
 
@@ -27,8 +36,16 @@ interface ImageSelectionModalProps {
   onImageSelected: (data: MultimediaSelection) => void;
 }
 
+/** Video is not supported yet, so only images and links are offered. */
+type MediaTab = Exclude<MultimediaType, 'video'>;
+
+const openIUrl = (img: OpenIImage) =>
+  img.imgLarge
+    ? `https://openi.nlm.nih.gov${img.imgLarge}`
+    : `https://openi.nlm.nih.gov${img.imageqsurl}`;
+
 const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClose, onImageSelected }) => {
-  const [activeTab, setActiveTab] = useState<MultimediaType>('image');
+  const [activeTab, setActiveTab] = useState<MediaTab>('image');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<OpenIImage[]>([]);
@@ -36,8 +53,10 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
   const [isUploading, setIsUploading] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [hyperlinkUrl, setHyperlinkUrl] = useState('');
+  const [selectedImageIdx, setSelectedImageIdx] = useState<number | null>(null);
   const [uploadingImageIdx, setUploadingImageIdx] = useState<number | null>(null);
-  
+  const [error, setError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,7 +68,9 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
       setIsUploading(false);
       setIsDragActive(false);
       setHyperlinkUrl('');
+      setSelectedImageIdx(null);
       setUploadingImageIdx(null);
+      setError(null);
     }
   }, [isOpen]);
 
@@ -60,7 +81,9 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
     setIsSearching(true);
     setHasSearched(true);
     setSearchResults([]);
-    
+    setSelectedImageIdx(null);
+    setError(null);
+
     try {
       const response = await testsService.searchOpenIImages(searchQuery.trim());
       if (response && response.list) {
@@ -68,6 +91,7 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
       }
     } catch (error) {
       console.error("Failed to search OpenI images:", error);
+      setError("Couldn't search the image library. Try again.");
     } finally {
       setIsSearching(false);
     }
@@ -75,10 +99,11 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert("Please select an image file.");
+      setError('Choose an image file (PNG, JPG, GIF…).');
       return;
     }
 
+    setError(null);
     setIsUploading(true);
     try {
       const options = {
@@ -87,13 +112,13 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
         useWebWorker: true,
       };
       const compressedFile = await imageCompression(file, options);
-      
+
       const uploadedFile = await testsService.uploadFile(compressedFile);
       onImageSelected({ url: uploadedFile.url, fileId: uploadedFile.id, type: 'image' });
       onClose();
     } catch (error) {
       console.error("Failed to upload image:", error);
-      alert("Failed to upload image. Please try again.");
+      setError('Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
     }
@@ -103,19 +128,28 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
     if (e.target.files && e.target.files.length > 0) {
       handleFile(e.target.files[0]);
     }
+    e.target.value = '';
   };
 
   const handleOpenIImageSelect = async (imageUrl: string, idx: number) => {
     setUploadingImageIdx(idx);
+    setError(null);
     try {
       const uploadedFile = await testsService.downloadOpenIImage(imageUrl);
       onImageSelected({ url: uploadedFile.url, fileId: uploadedFile.id, type: 'image' });
       onClose();
     } catch (error) {
       console.error('Failed to download OpenI image:', error);
+      setError("Couldn't add that image. Try another one.");
     } finally {
       setUploadingImageIdx(null);
     }
+  };
+
+  const confirmSelectedImage = () => {
+    if (selectedImageIdx === null || uploadingImageIdx !== null) return;
+    const image = searchResults[selectedImageIdx];
+    if (image) void handleOpenIImageSelect(openIUrl(image), selectedImageIdx);
   };
 
   const isValidUrl = (url: string): boolean => {
@@ -143,6 +177,8 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Ignore leaving into a child element of the drop zone.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     setIsDragActive(false);
   }, []);
 
@@ -154,259 +190,250 @@ const ImageSelectionModal: React.FC<ImageSelectionModalProps> = ({ isOpen, onClo
     }
   }, [isDragActive]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFile(e.dataTransfer.files[0]);
     }
-  }, []);
+  };
 
-  if (!isOpen) return null;
+  const isBusy = isUploading || uploadingImageIdx !== null;
+  const urlInvalid = Boolean(hyperlinkUrl.trim()) && !isValidUrl(hyperlinkUrl);
 
-  const tabs: { key: MultimediaType; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { key: 'image', label: 'Image', icon: <ImageIcon size={16} /> },
-    { key: 'hyperlink', label: 'Hyperlink', icon: <LinkIcon size={16} /> },
-    { key: 'video', label: 'Video', icon: <Video size={16} />, disabled: true },
-  ];
-  
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      <div 
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
-        onClick={onClose}
+  let results: React.ReactNode;
+  if (isSearching) {
+    results = (
+      <div className="flex h-64 items-center justify-center gap-2 text-sm text-stone-500">
+        <Loader2 size={16} className="animate-spin text-brand-600" aria-hidden="true" />
+        Searching the National Library of Medicine…
+      </div>
+    );
+  } else if (hasSearched && searchResults.length === 0) {
+    results = (
+      <EmptyState
+        compact
+        icon={Search}
+        title="No images found"
+        description={`Nothing matched “${searchQuery}”. Try different keywords, or upload your own image.`}
+        className="h-64"
       />
-      
-      <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
-        {/* Header & Controls */}
-        <div className="flex-shrink-0 px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-white z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-[#F3F6F3] rounded-lg text-[#1BD183]">
-              <ImageIcon size={20} />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Add Media</h2>
-              <p className="text-sm text-slate-500">Add an image, link, or upload a file</p>
-            </div>
-          </div>
-          
-          <button 
-            onClick={onClose}
-            className="absolute top-5 right-6 text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
+    );
+  } else if (searchResults.length > 0) {
+    results = (
+      <ul
+        aria-label="Search results"
+        className="grid grid-cols-2 gap-3 p-1 sm:grid-cols-3 md:grid-cols-4"
+      >
+        {searchResults.map((img, i) => {
+          const selected = selectedImageIdx === i;
+          const isThisUploading = uploadingImageIdx === i;
+          return (
+            <li key={img.uid + i}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                disabled={isBusy && !isThisUploading}
+                onClick={() => setSelectedImageIdx(i)}
+                onDoubleClick={() => {
+                  if (!isBusy) void handleOpenIImageSelect(openIUrl(img), i);
+                }}
+                className={cn(
+                  'group flex w-full flex-col overflow-hidden rounded-lg border bg-white text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-40',
+                  selected
+                    ? 'border-brand-500 ring-2 ring-brand-500 ring-offset-2'
+                    : 'border-stone-200 hover:border-stone-300 hover:shadow-card',
+                )}
+              >
+                <span className="relative block aspect-square overflow-hidden bg-stone-100">
+                  <img
+                    src={openIUrl(img)}
+                    alt={img.title || 'Open-i image'}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                  {selected && !isThisUploading && (
+                    <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white shadow-card">
+                      <Check size={14} strokeWidth={3} aria-hidden="true" />
+                    </span>
+                  )}
+                  {isThisUploading && (
+                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-white/75">
+                      <Loader2 size={20} className="animate-spin text-brand-600" aria-hidden="true" />
+                      <span className="text-xs font-medium text-stone-700">Adding…</span>
+                    </span>
+                  )}
+                </span>
+                <span className="block border-t border-stone-100 px-2.5 py-2">
+                  <span className="line-clamp-2 text-xs text-stone-700" title={img.title}>
+                    {img.title || 'Untitled'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  } else {
+    results = (
+      <EmptyState
+        compact
+        icon={ImageIcon}
+        title="Find a medical image"
+        description="Search the NLM Open-i library above, upload a file, or drop an image anywhere here."
+        className="h-64"
+      />
+    );
+  }
 
-        {/* Type Tabs */}
-        <div className="flex-shrink-0 px-6 py-3 bg-white border-b border-slate-100 flex gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => !tab.disabled && setActiveTab(tab.key)}
-              disabled={tab.disabled}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab.key
-                  ? 'bg-[#1BD183] text-white shadow-sm'
-                  : tab.disabled
-                    ? 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-              }`}
+  return (
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      dismissible={!isBusy}
+      width="max-w-3xl"
+      title="Add media"
+      description="Attach an image or link it to an external resource."
+      footer={
+        activeTab === 'image' ? (
+          <>
+            <Button variant="ghost" onClick={onClose} disabled={isBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmSelectedImage}
+              disabled={selectedImageIdx === null || isUploading}
+              loading={uploadingImageIdx !== null}
             >
-              {tab.icon}
-              {tab.label}
-              {tab.disabled && <span className="text-[10px] uppercase tracking-wider opacity-70">Soon</span>}
-            </button>
-          ))}
+              Use image
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" icon={LinkIcon} onClick={handleHyperlinkSubmit} disabled={!isValidUrl(hyperlinkUrl)}>
+              Add link
+            </Button>
+          </>
+        )
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <SegmentedControl<MediaTab>
+            label="Media type"
+            value={activeTab}
+            onChange={(tab) => {
+              setActiveTab(tab);
+              setError(null);
+            }}
+            options={[
+              { value: 'image', label: 'Image' },
+              { value: 'hyperlink', label: 'Link' },
+            ]}
+          />
+          <span className="text-xs text-stone-400">Video support is coming soon.</span>
         </div>
 
-        {/* Tab Content */}
+        {error && (
+          <InlineAlert onDismiss={() => setError(null)}>{error}</InlineAlert>
+        )}
+
         {activeTab === 'image' && (
           <>
-            {/* Toolbar */}
-            <div className="flex-shrink-0 px-6 py-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row gap-3 z-10">
-              <form onSubmit={handleSearch} className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  type="text"
+            <div className="flex flex-wrap gap-2">
+              <form onSubmit={handleSearch} role="search" className="flex min-w-[16rem] flex-1 gap-2">
+                <SearchInput
                   value={searchQuery}
-                  onChange={(e) => {
+                  onChange={(value) => {
                     setHasSearched(false);
-                    setSearchQuery(e.target.value)
+                    setSearchQuery(value);
                   }}
-                  placeholder="Search concepts on NLM OpenI (e.g., 'chest xray')..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1BD183]/20 focus:border-[#1BD183] transition-all shadow-sm"
+                  placeholder="Search Open-i, e.g. chest x-ray"
+                  aria-label="Search medical images"
+                  className="min-w-0 flex-1"
                 />
-                <button
-                  type="submit"
-                  disabled={isSearching || !searchQuery.trim()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-md transition-colors disabled:opacity-50"
-                >
+                <Button type="submit" variant="secondary" disabled={isSearching || !searchQuery.trim()}>
                   Search
-                </button>
+                </Button>
               </form>
-
-              <div className="hidden sm:block w-px bg-slate-200" />
-
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={onFileInputChange} 
-                accept="image/*" 
-                className="hidden" 
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={onFileInputChange}
+                accept="image/*"
+                aria-label="Upload an image"
+                className="hidden"
               />
-              <button
+              <Button
+                variant="secondary"
+                icon={Upload}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="flex-shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-white border border-slate-200 hover:border-[#1BD183] hover:bg-[#F3F6F3] text-slate-700 hover:text-[#1BD183] rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50"
+                loading={isUploading}
+                disabled={uploadingImageIdx !== null}
               >
-                {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                Upload File
-              </button>
+                {isUploading ? 'Uploading…' : 'Upload'}
+              </Button>
             </div>
 
-            {/* Grid & Dropzone Area */}
-            <div 
-              className="flex-1 overflow-y-auto relative bg-white"
+            {/* Results & drop zone */}
+            <div
+              className="custom-scrollbar relative -mx-1 max-h-[min(52vh,520px)] overflow-y-auto rounded-lg"
               onDragEnter={handleDragEnter}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              {/* Drag Overlay */}
               {isDragActive && (
-                <div className="absolute inset-0 z-20 bg-[#1BD183]/10 backdrop-blur-[2px] border-2 border-[#1BD183] border-dashed m-4 rounded-xl flex flex-col items-center justify-center">
-                  <div className="p-4 bg-white rounded-full shadow-lg text-[#1BD183] mb-4 animate-bounce">
-                    <Upload size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#1BD183] drop-shadow-sm">Drop image to upload</h3>
-                  <p className="text-[#1BD183] font-medium opacity-80">It will be automatically attached</p>
+                <div className="pointer-events-none absolute inset-1 z-10 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand-500 bg-brand-50/90">
+                  <Upload size={22} className="text-brand-700" aria-hidden="true" />
+                  <p className="text-sm font-medium text-brand-800">Drop the image to upload it</p>
+                  <p className="text-[13px] text-brand-800/80">It's attached straight away.</p>
                 </div>
               )}
-
-              <div className="p-6">
-                {isSearching ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                    <Loader2 size={32} className="animate-spin mb-4 text-[#1BD183]" />
-                    <p>Searching National Library of Medicine...</p>
-                  </div>
-                ) : hasSearched && searchResults.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 text-center max-w-md mx-auto">
-                    <Search size={48} className="text-slate-200 mb-4" />
-                    <h3 className="text-lg font-medium text-slate-900 mb-1">No images found</h3>
-                    <p className="text-sm">We couldn't find any images matching "{searchQuery}". Try different keywords or upload your own.</p>
-                  </div>
-                ) : searchResults.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {searchResults.map((img, i) => {
-                      const imageUrl = img.imgLarge ? `https://openi.nlm.nih.gov${img.imgLarge}` : `https://openi.nlm.nih.gov${img.imageqsurl}`;
-                      const isThisUploading = uploadingImageIdx === i;
-                      return (
-                        <div 
-                          key={img.uid + i} 
-                          onClick={() => !isThisUploading && uploadingImageIdx === null && handleOpenIImageSelect(imageUrl, i)}
-                          className={`group relative aspect-square bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex flex-col transition-all ${
-                            uploadingImageIdx !== null && !isThisUploading
-                              ? 'opacity-40 cursor-not-allowed'
-                              : 'cursor-pointer hover:border-[#1BD183] hover:shadow-md'
-                          }`}
-                        >
-                          <div className="flex-1 overflow-hidden relative bg-black/5 flex items-center justify-center">
-                            <img 
-                              src={imageUrl} 
-                              alt={img.title || 'OpenI Abstract'} 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              loading="lazy"
-                            />
-                            {isThisUploading && (
-                              <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center z-10">
-                                <Loader2 size={28} className="animate-spin text-[#1BD183] mb-2" />
-                                <span className="text-xs font-medium text-slate-600">Uploading...</span>
-                              </div>
-                            )}
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                          </div>
-                          <div className="p-3 bg-white border-t border-slate-100">
-                            <p className="text-xs font-medium text-slate-700 line-clamp-2" title={img.title}>
-                              {img.title || "Untitled"}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-[50vh] text-slate-400 mx-auto max-w-2xl">
-                    <div className="p-4 bg-white rounded-full shadow-sm text-slate-300 mb-4">
-                      <ImageIcon size={40} />
-                    </div>
-                    <h3 className="text-lg font-medium text-slate-700 mb-2">Select an Image</h3>
-                    <p className="text-sm text-center max-w-sm mb-6">
-                      Search the OpenI database using the bar above, click upload, or simply <strong>drag and drop an image anywhere</strong> in this window.
-                    </p>
-                  </div>
-                )}
-              </div>
+              {results}
             </div>
+            {searchResults.length > 0 && (
+              <p className="text-xs text-stone-500">
+                Select an image, then choose <span className="font-medium text-stone-700">Use image</span>. Double-click to add it straight away.
+              </p>
+            )}
           </>
         )}
 
         {activeTab === 'hyperlink' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8">
-            <div className="w-full max-w-lg space-y-6">
-              <div className="text-center mb-4">
-                <div className="inline-flex p-3 bg-[#F3F6F3] rounded-full text-[#1BD183] mb-3">
-                  <LinkIcon size={28} />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900">Add a Hyperlink</h3>
-                <p className="text-sm text-slate-500 mt-1">Paste a URL to link to an external resource</p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-slate-500 uppercase">URL</label>
-                <input
-                  type="url"
-                  value={hyperlinkUrl}
-                  onChange={(e) => setHyperlinkUrl(e.target.value)}
-                  placeholder="https://example.com/resource..."
-                  className={`w-full px-4 py-3 border rounded-lg text-sm focus:outline-none focus:ring-2 transition-all ${
-                    hyperlinkUrl.trim() && !isValidUrl(hyperlinkUrl)
-                      ? 'border-rose-300 focus:ring-rose-200 focus:border-rose-400'
-                      : 'border-slate-200 focus:ring-[#1BD183]/20 focus:border-[#1BD183]'
-                  }`}
-                  onKeyDown={(e) => e.key === 'Enter' && handleHyperlinkSubmit()}
-                  autoFocus
-                />
-                {hyperlinkUrl.trim() && !isValidUrl(hyperlinkUrl) && (
-                  <p className="text-xs text-rose-500 mt-1">Please enter a valid URL (e.g., https://example.com)</p>
-                )}
-              </div>
-
-              <button
-                onClick={handleHyperlinkSubmit}
-                disabled={!isValidUrl(hyperlinkUrl)}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-[#1BD183] text-white rounded-lg text-sm font-medium hover:bg-[#16b872] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ExternalLink size={16} />
-                Add Link
-              </button>
-            </div>
-          </div>
+          <Field
+            label="URL"
+            error={urlInvalid ? 'Enter a valid URL, e.g. https://example.com' : null}
+            description="Learners open the link in a new tab."
+          >
+            {(id) => (
+              <Input
+                id={id}
+                type="url"
+                value={hyperlinkUrl}
+                onChange={(e) => setHyperlinkUrl(e.target.value)}
+                placeholder="https://example.com/resource"
+                aria-invalid={urlInvalid || undefined}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleHyperlinkSubmit();
+                  }
+                }}
+                autoFocus
+              />
+            )}
+          </Field>
         )}
-
-        {activeTab === 'video' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400">
-            <Video size={48} className="mb-4" />
-            <h3 className="text-lg font-medium text-slate-700 mb-2">Video Support Coming Soon</h3>
-            <p className="text-sm">This feature is under development.</p>
-          </div>
-        )}
-
       </div>
-    </div>
+    </Dialog>
   );
 };
 

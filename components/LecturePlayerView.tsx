@@ -1,24 +1,29 @@
-
 import React, { useState, useMemo } from 'react';
-import { 
-  ArrowLeft, 
-  MonitorPlay, 
-  Clock, 
-  MessageSquare, 
-  FileText, 
-  Play, 
-  Pause, 
-  SkipForward, 
-  SkipBack,
-  Volume2,
-  Maximize,
-  Settings,
+import {
+  ArrowLeft,
   ChevronRight,
+  Maximize,
+  MonitorPlay,
+  Pause,
+  Pencil,
+  Play,
+  Settings,
+  SkipBack,
+  SkipForward,
   Sparkles,
-  Edit3
+  Volume2,
 } from 'lucide-react';
-import { MOCK_LECTURES, USMLE_2024_OUTLINE } from '../constants';
+import { MOCK_LECTURES } from '../constants';
 import { LectureAsset } from '../types';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  IconButton,
+  PageHeader,
+  SegmentedControl,
+  cn,
+} from '@/components/ui';
 
 interface LecturePlayerViewProps {
   lectureId: string;
@@ -26,13 +31,31 @@ interface LecturePlayerViewProps {
   onEdit: (lecture: LectureAsset) => void;
 }
 
+type SideTab = 'MARKERS' | 'TRANSCRIPT';
+
+const TRANSCRIPT = [
+  {
+    time: '0:00',
+    text: 'Welcome back everyone. Today we are diving into the molecular mechanisms of insulin resistance, specifically looking at how systemic inflammation impacts GLUT4 translocation...',
+  },
+  {
+    time: '2:45',
+    text: 'Notice the role of TNF-alpha here. This cytokine induces phosphorylation of IRS-1 at serine residues rather than tyrosine residues, which effectively inhibits its activity...',
+  },
+  {
+    time: '5:12',
+    text: "Let's transition to the clinical correlate on page 14 of your USMLE outline regarding the presentation of metabolic syndrome...",
+  },
+];
+
+/** Preview a lecture as students see it, with its checkpoints and transcript. */
 const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack, onEdit }) => {
-  const lecture = useMemo(() => 
+  const lecture = useMemo(() =>
     MOCK_LECTURES.find(l => l.id === lectureId) || MOCK_LECTURES[0]
   , [lectureId]);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [activeTab, setActiveTab] = useState<'MARKERS' | 'TRANSCRIPT'>('MARKERS');
+  const [activeTab, setActiveTab] = useState<SideTab>('MARKERS');
   const [currentTime, setCurrentTime] = useState(0);
 
   const formatTime = (seconds: number) => {
@@ -41,173 +64,204 @@ const LecturePlayerView: React.FC<LecturePlayerViewProps> = ({ lectureId, onBack
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const durationSec = lecture.estimatedDurationMinutes * 60;
+  const percentAt = (seconds: number) =>
+    durationSec > 0 ? Math.min(100, (seconds / durationSec) * 100) : 0;
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-120px)] xl:h-[calc(100vh-180px)] bg-slate-950 rounded-[2rem] xl:rounded-[3rem] overflow-hidden shadow-2xl border border-white/5 animate-in fade-in zoom-in-95 duration-500">
-      {/* Immersive Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 xl:px-8 py-4 xl:py-6 bg-slate-900/50 backdrop-blur-md border-b border-white/5 gap-4">
-        <div className="flex items-center gap-4 xl:gap-6">
-          <button 
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow={
+          <button
+            type="button"
             onClick={onBack}
-            className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-400 transition-all border border-white/10"
+            className="-mx-1 inline-flex items-center gap-1 rounded px-1 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={14} />
+            Item workbench
           </button>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 bg-primary-gradient/30 text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-[#1BD183]/30">
-                Instructional Preview
-              </span>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{lecture.id}</span>
-            </div>
-            <h2 className="text-xl font-black text-white tracking-tight line-clamp-1">{lecture.title}</h2>
-          </div>
-        </div>
-        <button 
-          onClick={() => onEdit(lecture)}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-primary-gradient text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
+        }
+        title={lecture.title}
+        meta={
+          <>
+            <Badge tone="neutral">Preview</Badge>
+            <span className="font-mono text-xs text-stone-400">{lecture.id}</span>
+          </>
+        }
+        description={lecture.description || undefined}
+        actions={
+          <Button variant="secondary" icon={Pencil} onClick={() => onEdit(lecture)}>
+            Edit lecture
+          </Button>
+        }
+      />
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Player */}
+        <section
+          aria-label="Lecture player"
+          className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
         >
-          <Edit3 size={14} /> Edit Resource
-        </button>
-      </div>
-
-      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
-        {/* Main Cinema View */}
-        <div className="flex-1 flex flex-col relative bg-black min-h-[300px] xl:min-h-0">
-          <div className="flex-1 flex items-center justify-center relative group">
-            {/* Simulated Video Content */}
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/20 to-slate-900/20 pointer-events-none" />
-            <MonitorPlay size={120} strokeWidth={1} className="text-white/10" />
-            
-            {/* Overlay Center Button */}
-            <button 
+          <div className="relative flex aspect-video items-center justify-center bg-stone-100">
+            <MonitorPlay
+              size={96}
+              strokeWidth={1}
+              className="absolute text-stone-300"
+              aria-hidden="true"
+            />
+            <button
+              type="button"
               onClick={() => setIsPlaying(!isPlaying)}
-              className="w-20 h-20 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full flex items-center justify-center text-white scale-100 hover:scale-110 transition-transform active:scale-90"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white text-stone-900 shadow-pop ring-1 ring-stone-200 transition hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
             >
-              {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
+              {isPlaying ? (
+                <Pause size={24} fill="currentColor" />
+              ) : (
+                <Play size={24} fill="currentColor" className="ml-1" />
+              )}
             </button>
+          </div>
 
-            {/* Engagement Hotspots (Simulated Visual Spikes) */}
-            <div className="absolute bottom-24 left-0 right-0 px-10 hidden sm:block">
-               <div className="h-1.5 w-full bg-white/10 rounded-full relative overflow-hidden group/seek">
-                  <div className="absolute top-0 left-0 bottom-0 bg-[#1BD183] transition-all duration-300" style={{ width: '35%' }} />
-                  {lecture.engagementMarkers.map((m, idx) => (
-                    <div 
-                      key={idx} 
-                      className="absolute top-0 w-1.5 h-full bg-amber-400/80 shadow-[0_0_8px_rgba(251,191,36,0.6)] cursor-pointer hover:scale-y-150 transition-transform" 
-                      style={{ left: `${(m.timestampSec / (lecture.estimatedDurationMinutes * 60)) * 100}%` }}
-                      title={m.description}
-                    />
-                  ))}
-               </div>
+          {/* Seek bar with checkpoint markers */}
+          <div className="px-5 pt-4">
+            <div className="relative h-1.5 w-full rounded-full bg-stone-200">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-brand-500 transition-[width]"
+                style={{ width: `${percentAt(currentTime)}%` }}
+              />
+              {lecture.engagementMarkers.map((marker, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setCurrentTime(marker.timestampSec)}
+                  aria-label={`Jump to ${formatTime(marker.timestampSec)}: ${marker.description}`}
+                  title={marker.description}
+                  className="absolute top-1/2 h-3 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-500 transition hover:scale-y-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                  style={{ left: `${percentAt(marker.timestampSec)}%` }}
+                />
+              ))}
             </div>
           </div>
 
-          {/* Transport Controls */}
-          <div className="bg-slate-900/80 backdrop-blur-xl border-t border-white/5 p-4 xl:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-start">
-              <div className="flex items-center gap-4">
-                <button className="text-white/60 hover:text-white transition"><SkipBack size={20} /></button>
-                <button 
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="w-12 h-12 bg-white text-slate-950 rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
-                >
-                  {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
-                </button>
-                <button className="text-white/60 hover:text-white transition"><SkipForward size={20} /></button>
+          {/* Transport controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
+            <div className="flex items-center gap-1">
+              <IconButton icon={SkipBack} label="Skip back" />
+              <IconButton
+                icon={isPlaying ? Pause : Play}
+                label={isPlaying ? 'Pause' : 'Play'}
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="text-stone-900"
+              />
+              <IconButton icon={SkipForward} label="Skip forward" />
+              <span className="ml-2 text-[13px] tabular-nums text-stone-500">
+                <span className="text-stone-900">{formatTime(currentTime)}</span> /{' '}
+                {formatTime(durationSec)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="mr-2 hidden items-center gap-2 sm:flex" aria-hidden="true">
+                <Volume2 size={16} className="text-stone-400" />
+                <div className="h-1 w-20 rounded-full bg-stone-200">
+                  <div className="h-full w-2/3 rounded-full bg-stone-400" />
+                </div>
               </div>
-              <div className="text-[11px] font-mono font-bold text-white/40">
-                <span className="text-white">{formatTime(currentTime)}</span> / {formatTime(lecture.estimatedDurationMinutes * 60)}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6 w-full sm:w-auto justify-end">
-               <div className="flex items-center gap-3 hidden sm:flex">
-                  <Volume2 size={18} className="text-white/40" />
-                  <div className="w-24 h-1 bg-white/10 rounded-full">
-                    <div className="h-full bg-white/40 rounded-full w-2/3" />
-                  </div>
-               </div>
-               <div className="h-4 w-px bg-white/10 hidden sm:block" />
-               <button className="text-white/60 hover:text-white transition"><Settings size={18} /></button>
-               <button className="text-white/60 hover:text-white transition"><Maximize size={18} /></button>
+              <IconButton icon={Settings} label="Playback settings" />
+              <IconButton icon={Maximize} label="Full screen" />
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Intelligence Sidebar */}
-        <div className="w-full xl:w-96 bg-slate-900 border-l border-white/5 flex flex-col h-[400px] xl:h-auto">
-          <div className="p-1 bg-white/5 m-4 rounded-2xl flex shrink-0">
-            <button 
-              onClick={() => setActiveTab('MARKERS')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                activeTab === 'MARKERS' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <Sparkles size={14} /> Markers
-            </button>
-            <button 
-              onClick={() => setActiveTab('TRANSCRIPT')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                activeTab === 'TRANSCRIPT' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <FileText size={14} /> Transcript
-            </button>
+        {/* Checkpoints, transcript and tutor insight */}
+        <aside className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+          <div className="border-b border-stone-200 p-3">
+            <SegmentedControl<SideTab>
+              label="Lecture details"
+              value={activeTab}
+              onChange={setActiveTab}
+              className="flex w-full [&>button]:flex-1 [&>button]:justify-center"
+              options={[
+                { value: 'MARKERS', label: 'Checkpoints', count: lecture.engagementMarkers.length },
+                { value: 'TRANSCRIPT', label: 'Transcript' },
+              ]}
+            />
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+          <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
             {activeTab === 'MARKERS' ? (
-              <div className="space-y-4">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">High-Yield Checkpoints</p>
-                {lecture.engagementMarkers.map((marker, i) => (
-                  <button 
-                    key={i}
-                    onClick={() => setCurrentTime(marker.timestampSec)}
-                    className="w-full text-left p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-[#1BD183]/30 transition-all group"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                       <span className="text-[10px] font-mono text-emerald-400 font-black">{formatTime(marker.timestampSec)}</span>
-                       <ChevronRight size={14} className="text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
-                    </div>
-                    <p className="text-xs font-bold text-slate-200 leading-snug">{marker.description}</p>
-                    <p className="text-[9px] text-slate-500 font-black uppercase mt-3 tracking-widest">{marker.type}</p>
-                  </button>
-                ))}
-                {lecture.engagementMarkers.length === 0 && (
-                  <div className="text-center py-20 text-slate-600 italic text-sm">
-                    No engagement markers defined.
-                  </div>
-                )}
-              </div>
+              lecture.engagementMarkers.length > 0 ? (
+                <ul className="divide-y divide-stone-100">
+                  {lecture.engagementMarkers.map((marker, i) => {
+                    const isCurrent = currentTime === marker.timestampSec;
+                    return (
+                      <li key={i}>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentTime(marker.timestampSec)}
+                          aria-current={isCurrent ? 'true' : undefined}
+                          className={cn(
+                            'group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
+                            isCurrent ? 'bg-stone-50' : 'hover:bg-stone-50',
+                          )}
+                        >
+                          <span className="w-10 flex-shrink-0 pt-px text-[13px] font-medium tabular-nums text-brand-700">
+                            {formatTime(marker.timestampSec)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm leading-5 text-stone-900">
+                              {marker.description}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-stone-500">{marker.type}</span>
+                          </span>
+                          <ChevronRight
+                            size={16}
+                            className="mt-0.5 flex-shrink-0 text-stone-300 transition-colors group-hover:text-stone-500"
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <EmptyState
+                  compact
+                  icon={MonitorPlay}
+                  title="No checkpoints"
+                  description="This lecture has no engagement markers yet."
+                />
+              )
             ) : (
-              <div className="space-y-6">
-                <div className="p-4 bg-slate-900/20 border border-[#1BD183]/20 rounded-2xl flex items-start gap-3">
-                   <FileText className="text-emerald-400 mt-0.5" size={16} />
-                   <p className="text-[10px] text-emerald-200 font-medium leading-relaxed italic">
-                     AI-generated transcript derived from multimodal audio analysis.
-                   </p>
-                </div>
-                <div className="space-y-4 font-serif text-sm text-slate-400 leading-relaxed px-2">
-                   <p><strong className="text-emerald-400">0:00</strong> Welcome back everyone. Today we are diving into the molecular mechanisms of insulin resistance, specifically looking at how systemic inflammation impacts GLUT4 translocation...</p>
-                   <p><strong className="text-emerald-400">2:45</strong> Notice the role of TNF-alpha here. This cytokine induces phosphorylation of IRS-1 at serine residues rather than tyrosine residues, which effectively inhibits its activity...</p>
-                   <p><strong className="text-emerald-400">5:12</strong> Let's transition to the clinical correlate on page 14 of your USMLE outline regarding the presentation of metabolic syndrome...</p>
-                </div>
+              <div className="space-y-4 p-4">
+                <p className="flex items-center gap-2 text-xs text-stone-500">
+                  <Badge tone="violet" icon={Sparkles}>
+                    AI
+                  </Badge>
+                  Transcript generated from the lecture audio.
+                </p>
+                {TRANSCRIPT.map((line) => (
+                  <p key={line.time} className="text-sm leading-6 text-stone-700">
+                    <span className="mr-2 font-medium tabular-nums text-brand-700">{line.time}</span>
+                    {line.text}
+                  </p>
+                ))}
               </div>
             )}
           </div>
 
-          <div className="p-6 bg-white/5 border-t border-white/5 shrink-0">
-             <div className="flex items-center gap-3 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-primary-gradient/20 flex items-center justify-center text-emerald-400">
-                   <MessageSquare size={16} />
-                </div>
-                <p className="text-[10px] font-black text-white uppercase tracking-widest">Sina: Tutor Insights</p>
-             </div>
-             <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-               "Students frequently pause at <span className="text-emerald-400">4:12</span>. Consider adding a self-assessment MCQ here to reinforce the IRS-1 phosphorylation mechanism."
-             </p>
+          <div className="border-t border-stone-200 bg-stone-50/60 p-4">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">
+              <Sparkles size={15} className="text-violet-brand" aria-hidden="true" />
+              Tutor insight
+            </p>
+            <p className="mt-1 text-[13px] leading-5 text-stone-600">
+              Students often pause at{' '}
+              <span className="font-medium tabular-nums text-stone-900">4:12</span>. Consider adding
+              a self-check MCQ there to reinforce the IRS-1 phosphorylation mechanism.
+            </p>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

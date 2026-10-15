@@ -1,13 +1,21 @@
-
 import React, { useState, useMemo } from 'react';
-import { 
-  FlaskConical, Sparkles, Wand2, Save, Trash2, Zap, Brain, 
-  MessageSquare, RefreshCw, X, Search, ChevronRight, FileText,
-  Target, Activity, Sliders, Layout, Stethoscope, Microscope,
-  Dna, ArrowRight, CheckCircle
-} from 'lucide-react';
-import { BackendItem, BloomsLevel, Taxonomy } from '../types';
+import { Check, FlaskConical, Plus, Search, Sparkles, X } from 'lucide-react';
+import { BackendItem, Taxonomy } from '../types';
 import { MOCK_ITEMS } from '../constants';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  SearchInput,
+  SegmentedControl,
+  Textarea,
+  cn,
+} from '@/components/ui';
 
 interface AILabViewProps {
   onSaveNew: (item: BackendItem) => void;
@@ -19,6 +27,72 @@ type SynthesisSeed = Pick<BackendItem, 'id' | 'type' | 'stem' | 'options'> & {
     Partial<Pick<Taxonomy, 'organSystemId' | 'disciplineId'>>;
 };
 
+const BLOOM_LEVELS = ['Recall', 'Understand', 'Apply', 'Analyze'];
+
+const PRESETS = [
+  {
+    label: 'Clinical vignette',
+    prompt: 'Convert this item into a complex USMLE Step 1 clinical vignette with vital signs and labs.',
+  },
+  {
+    label: 'Pharmacology focus',
+    prompt: 'Refocus assessment on the side-effect profile or MOA of the first-line medication.',
+  },
+  {
+    label: 'Raise cognitive load',
+    prompt: 'Add second-order or third-order reasoning requirements to the lead-in.',
+  },
+  {
+    label: 'Next best step',
+    prompt: "Change the lead-in to focus on the 'Next Best Step' rather than diagnosis.",
+  },
+];
+
+const optionLetter = (index: number) => String.fromCharCode(65 + index);
+
+interface RangeFieldProps {
+  label: string;
+  description: string;
+  value: number;
+  onChange: (value: number) => void;
+}
+
+const RangeField: React.FC<RangeFieldProps> = ({ label, description, value, onChange }) => (
+  <Field label={label} description={description}>
+    {(id) => (
+      <div className="flex items-center gap-3">
+        <input
+          id={id}
+          type="range"
+          min={0}
+          max={100}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="h-1.5 min-w-0 flex-1 cursor-pointer accent-brand-600"
+        />
+        <span className="w-10 flex-shrink-0 text-right text-[13px] tabular-nums text-stone-600">
+          {value}%
+        </span>
+      </div>
+    )}
+  </Field>
+);
+
+const SectionTitle: React.FC<{ title: string; description?: string; action?: React.ReactNode }> = ({
+  title,
+  description,
+  action,
+}) => (
+  <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <h3 className="text-sm font-semibold text-stone-900">{title}</h3>
+      {description && <p className="mt-0.5 text-[13px] leading-5 text-stone-500">{description}</p>}
+    </div>
+    {action}
+  </div>
+);
+
+/** Sandbox for drafting a new item with AI, optionally by rewriting an existing one. */
 const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
   const [prompt, setPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -42,10 +116,11 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
       { id: 'opt3', text: 'Lateral MI', isCorrect: false, label: 'C' },
     ],
     taxonomy: { bloomLevel: 'Apply' }
-    
+
   });
   const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false);
 
   // Precision Sliders
   const [complexity, setComplexity] = useState(50);
@@ -53,19 +128,19 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
   const [clinicalDensity, setClinicalDensity] = useState(70);
 
   const filteredItems = useMemo(() => {
-    return MOCK_ITEMS.filter(item => 
-      item.stem.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    return MOCK_ITEMS.filter(item =>
+      item.stem.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.id.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery]);
 
   const handleRemaster = async () => {
     setIsProcessing(true);
-    
-    const contextItem = selectedItem || { 
-      stem: "General USMLE medical context regarding pathophysiology and diagnosis.", 
-      options: [], 
-      taxonomy: { bloomLevel: 'Recall' } 
+
+    const contextItem = selectedItem || {
+      stem: "General USMLE medical context regarding pathophysiology and diagnosis.",
+      options: [],
+      taxonomy: { bloomLevel: 'Recall' }
     };
 
     const directives = `
@@ -123,293 +198,309 @@ const AILabView: React.FC<AILabViewProps> = ({ onSaveNew }) => {
     onSaveNew(newItem);
   };
 
-  const presets = [
-    { label: "Vignette Synthesis", prompt: "Convert this item into a complex USMLE Step 1 clinical vignette with vital signs and labs." },
-    { label: "Pharmacology Focus", prompt: "Refocus assessment on the side-effect profile or MOA of the first-line medication." },
-    { label: "Increase Cognitive Load", prompt: "Add second-order or third-order reasoning requirements to the lead-in." },
-    { label: "Diagnostic Shift", prompt: "Change the lead-in to focus on the 'Next Best Step' rather than diagnosis." }
-  ];
+  const renderSource = () =>
+    selectedItem ? (
+      <div className="flex items-start gap-3 rounded-lg border border-stone-200 bg-stone-50/60 p-3">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm leading-5 text-stone-900">{selectedItem.stem}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-stone-500">
+            <span className="font-mono text-stone-400">{selectedItem.id}</span>
+            <span aria-hidden="true">·</span>
+            <span>{selectedItem.taxonomy.bloomLevel}</span>
+            {selectedItem.options?.length ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{selectedItem.options.length} options</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <IconButton
+          icon={X}
+          size="sm"
+          label="Remove source item"
+          onClick={() => setSelectedItem(null)}
+        />
+      </div>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setIsItemPickerOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 px-4 py-4 text-sm font-medium text-stone-600 transition hover:border-stone-400 hover:bg-stone-50 hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+      >
+        <Search size={15} />
+        Choose a source item
+      </button>
+    );
+
+  const renderDraft = () => {
+    if (!generatedResult) {
+      return (
+        <div className="rounded-xl border border-dashed border-stone-200 bg-white">
+          <EmptyState
+            icon={FlaskConical}
+            title="No draft yet"
+            description="Pick a source item, set the level and add instructions, then generate a draft to review here."
+            action={
+              <Button icon={Search} onClick={() => setIsItemPickerOpen(true)}>
+                Choose a source item
+              </Button>
+            }
+            className="min-h-[420px]"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <section
+        aria-labelledby="ai-lab-draft"
+        className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card"
+      >
+        <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 px-5 py-4">
+          <h3 id="ai-lab-draft" className="mr-1 text-[15px] font-semibold text-stone-900">
+            Draft
+          </h3>
+          <Badge tone="violet" icon={Sparkles}>
+            AI
+          </Badge>
+          <Badge tone="amber" dot>
+            Needs review
+          </Badge>
+          <span className="ml-auto flex flex-wrap items-center gap-1.5">
+            <Badge tone="neutral">{bloomTarget}</Badge>
+            <Badge tone="neutral" className="tabular-nums">
+              Complexity {complexity}%
+            </Badge>
+          </span>
+        </div>
+
+        <div className="space-y-6 p-5">
+          <div>
+            <p className="mb-1.5 text-[13px] font-medium text-stone-500">Stem</p>
+            <p className="text-[15px] leading-7 text-stone-900">{generatedResult.newStem}</p>
+          </div>
+
+          <div>
+            <p className="mb-2 text-[13px] font-medium text-stone-500">Options</p>
+            <ol className="divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200">
+              {generatedResult.newOptions.map((opt: any, i: number) => (
+                <li
+                  key={i}
+                  className={cn(
+                    'flex items-center gap-3 px-3.5 py-2.5 text-sm',
+                    opt.isCorrect ? 'bg-brand-50/70' : 'bg-white',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-xs font-semibold',
+                      opt.isCorrect
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-stone-100 text-stone-500 ring-1 ring-inset ring-stone-200',
+                    )}
+                  >
+                    {optionLetter(i)}
+                  </span>
+                  <span className="min-w-0 flex-1 text-stone-800">{opt.text}</span>
+                  {opt.isCorrect && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-700">
+                      <Check size={14} aria-hidden="true" />
+                      Correct
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="rounded-lg bg-stone-50 p-4">
+            <p className="mb-1 text-[13px] font-medium text-stone-500">Explanation</p>
+            <p className="text-sm leading-6 text-stone-700">{generatedResult.explanation}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 px-5 py-3">
+          <p className="mr-auto text-[13px] text-stone-500">Check the draft before adding it.</p>
+          <Button variant="ghost" onClick={() => setIsDiscardOpen(true)}>
+            Discard
+          </Button>
+          <Button variant="primary" icon={Plus} onClick={handleCommit}>
+            Add to items
+          </Button>
+        </div>
+      </section>
+    );
+  };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-in fade-in duration-500 h-auto xl:h-[800px]">
-      {/* Configuration Sidebar */}
-      <div className="xl:col-span-5 flex flex-col gap-6 h-auto xl:h-full">
-        <div className="bg-slate-900 rounded-[3rem] p-6 xl:p-10 text-white shadow-2xl space-y-8 relative overflow-hidden flex flex-col h-full border border-white/5">
-          <div className="absolute top-0 right-0 p-12 opacity-[0.02] pointer-events-none scale-150 rotate-12">
-            <FlaskConical size={400} />
+    <div className="space-y-6">
+      <InlineAlert tone="info" title="The AI lab is a preview">
+        Generation isn't connected yet, so the draft shown is a sample. Adding it puts it in this
+        page's list only — it isn't saved to your item bank.
+      </InlineAlert>
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        {/* Setup */}
+        <section
+          aria-label="Draft setup"
+          className="divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-card"
+        >
+          <div className="p-5">
+            <SectionTitle
+              title="Start from"
+              description="Optional. Sina rewrites this item instead of writing from scratch."
+              action={
+                selectedItem ? (
+                  <Button variant="ghost" size="sm" onClick={() => setIsItemPickerOpen(true)}>
+                    Change
+                  </Button>
+                ) : undefined
+              }
+            />
+            {renderSource()}
           </div>
 
-          <div className="relative z-10 flex items-center gap-5">
-            <div className="p-4 bg-[#1BD183] rounded-[1.5rem] shadow-2xl shadow-slate-900/50">
-              <Brain size={32} />
-            </div>
+          <div className="space-y-5 p-5">
             <div>
-              <h2 className="text-3xl font-black uppercase tracking-tight">Sina Lab</h2>
-              <p className="text-[#1BD183] text-[10px] font-black uppercase tracking-[0.2em] mt-1">Generative R&D Sandbox</p>
+              <p className="mb-1.5 text-[13px] font-medium text-stone-700">Cognitive level</p>
+              <SegmentedControl
+                label="Cognitive level"
+                value={bloomTarget}
+                onChange={setBloomTarget}
+                options={BLOOM_LEVELS.map((level) => ({ value: level, label: level }))}
+                className="flex w-full [&>button]:flex-1 [&>button]:justify-center"
+              />
             </div>
+            <RangeField
+              label="Complexity"
+              description="How much reasoning the lead-in demands."
+              value={complexity}
+              onChange={setComplexity}
+            />
+            <RangeField
+              label="Clinical detail"
+              description="How much history, vitals and lab data the vignette includes."
+              value={clinicalDensity}
+              onChange={setClinicalDensity}
+            />
           </div>
 
-          {/* Asset Selection */}
-          <div className="relative z-10 space-y-3">
-             <label className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest px-1">Synthesis Base</label>
-             {selectedItem ? (
-                <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex justify-between items-center group">
-                  <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="w-10 h-10 bg-[#1BD183]/20 text-[#1BD183] rounded-xl flex items-center justify-center font-black text-xs shrink-0">
-                      {selectedItem.id.split('-').pop()}
-                    </div>
-                    <div className="truncate">
-                      <p className="text-sm font-bold truncate leading-none mb-1">{selectedItem.stem}</p>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{selectedItem.taxonomy.bloomLevel}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedItem(null)} className="p-2 text-slate-500 hover:text-white transition opacity-100 xl:opacity-0 group-hover:opacity-100">
-                    <X size={16} />
-                  </button>
-                </div>
-             ) : (
-                <button 
-                  onClick={() => setIsItemPickerOpen(true)}
-                  className="w-full p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-2xl flex items-center justify-center gap-3 text-slate-400 hover:border-[#1BD183] hover:text-white transition-all group"
-                >
-                  <Search size={18} />
-                  <span className="text-xs font-black uppercase tracking-widest">Select Repository Base</span>
-                </button>
-             )}
-          </div>
-
-          {/* Parameter Sliders */}
-          <div className="relative z-10 space-y-6 pt-2">
-             <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Complexity Index</label>
-                   <span className="text-[10px] font-black text-[#1BD183]">{complexity}%</span>
-                </div>
-                <input type="range" value={complexity} onChange={e => setComplexity(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full appearance-none accent-[#1BD183]" />
-             </div>
-
-             <div className="space-y-4">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Cognitive Trajectory</label>
-                <div className="grid grid-cols-4 gap-2">
-                   {['Recall', 'Understand', 'Apply', 'Analyze'].map(level => (
-                      <button 
-                        key={level}
-                        onClick={() => setBloomTarget(level)}
-                        className={`py-2.5 rounded-xl text-[8px] font-black uppercase tracking-tighter transition-all border ${
-                          bloomTarget === level ? 'bg-[#1BD183] border-[#1BD183] text-black shadow-lg' : 'bg-white/5 border-white/5 text-slate-500 hover:bg-white/10'
-                        }`}
-                      >
-                        {level}
-                      </button>
-                   ))}
-                </div>
-             </div>
-
-             <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Clinical Density</label>
-                   <span className="text-[10px] font-black text-[#1BD183]">{clinicalDensity}%</span>
-                </div>
-                <input type="range" value={clinicalDensity} onChange={e => setClinicalDensity(Number(e.target.value))} className="w-full h-1 bg-white/10 rounded-full appearance-none accent-emerald-500" />
-             </div>
-          </div>
-
-          {/* Directives */}
-          <div className="relative z-10 flex-1 flex flex-col gap-4">
-             <div className="flex-1 bg-white/5 border border-white/5 rounded-[2rem] p-6 space-y-4 flex flex-col shadow-inner min-h-[150px]">
-                <label className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Synthesis Directives</label>
-                <textarea 
+          <div className="space-y-3 p-5">
+            <Field label="Instructions" hint="Optional">
+              {(id) => (
+                <Textarea
+                  id={id}
+                  rows={4}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Provide precise instructions for content remastering..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-200 text-sm font-medium leading-relaxed placeholder:text-slate-600 resize-none custom-scrollbar"
+                  placeholder="Tell Sina what to change, e.g. focus on the mechanism of the first-line drug."
                 />
-             </div>
-
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {presets.map((p, i) => (
-                   <button 
-                     key={i}
-                     onClick={() => setPrompt(p.prompt)}
-                     className="p-3 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-left text-slate-400 hover:text-white hover:bg-white/10 hover:border-[#1BD183]/30 transition-all flex items-center gap-2"
-                   >
-                     <Zap size={10} className="text-[#1BD183]" /> {p.label}
-                   </button>
-                ))}
-             </div>
-
-             <button 
-                onClick={handleRemaster}
-                disabled={isProcessing}
-                className="w-full py-6 bg-primary-gradient disabled:opacity-50 text-white rounded-[1.5rem] font-black uppercase tracking-widest transition shadow-2xl shadow-slate-900/40 flex items-center justify-center gap-4 active:scale-95"
-              >
-                {isProcessing ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
-                {isProcessing ? 'SYNTHESIZING ASSET...' : 'Execute Remaster'}
-              </button>
+              )}
+            </Field>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Instruction presets">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setPrompt(preset.prompt)}
+                  aria-pressed={prompt === preset.prompt}
+                  className={cn(
+                    'rounded-md border px-2 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                    prompt === preset.prompt
+                      ? 'border-stone-900 bg-stone-900 text-white'
+                      : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900',
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+
+          <div className="flex items-center justify-end gap-3 rounded-b-xl bg-stone-50/60 px-5 py-3">
+            <Button
+              variant="ai"
+              icon={Sparkles}
+              loading={isProcessing}
+              onClick={() => void handleRemaster()}
+            >
+              {isProcessing ? 'Generating…' : 'Generate draft'}
+            </Button>
+          </div>
+        </section>
+
+        {/* Draft preview */}
+        <div className="min-w-0 xl:sticky xl:top-6">{renderDraft()}</div>
       </div>
 
-      {/* Preview Panel */}
-      <div className="xl:col-span-7 flex flex-col h-full">
-        {generatedResult ? (
-          <div className="flex-1 bg-white rounded-[3.5rem] border border-slate-200 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right-10 duration-700">
-             <div className="p-6 xl:p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-[#1BD183] rounded-2xl text-white shadow-lg shadow-[#1BD183]/30">
-                    <Sparkles size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Remastered Synthesis</h3>
-                    <div className="flex gap-2 mt-1">
-                       <span className="text-[9px] font-black px-2 py-0.5 bg-[#1BA6D1]/20 text-[#1BA6D1] rounded-md uppercase">{bloomTarget} Level</span>
-                       <span className="text-[9px] font-black px-2 py-0.5 bg-emerald-100 text-emerald-600 rounded-md uppercase">Vignette: {complexity}%</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                   <button onClick={() => setGeneratedResult(null)} className="p-3 text-slate-400 hover:text-rose-500 transition-colors">
-                      <Trash2 size={24} />
-                   </button>
-                </div>
-             </div>
-
-             <div className="flex-1 overflow-y-auto p-6 xl:p-12 space-y-12 custom-scrollbar">
-                <div className="space-y-4">
-                   <div className="flex items-center gap-3">
-                      <Stethoscope className="text-[#1BD183]/90" size={18} />
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Synthesized Clinical Stem</p>
-                   </div>
-                   <div className="p-6 xl:p-10 bg-slate-50 border border-slate-100 rounded-[3rem] relative">
-                      <p className="text-lg xl:text-xl font-bold text-slate-900 leading-relaxed font-serif relative z-10 italic">
-                        "{generatedResult.newStem}"
-                      </p>
-                   </div>
-                </div>
-
-                <div className="space-y-6">
-                   <div className="flex items-center gap-3">
-                      <Layout className="text-[#1BD183]/90" size={18} />
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Homogeneous Distractors</p>
-                   </div>
-                   <div className="grid grid-cols-1 gap-4">
-                     {generatedResult.newOptions.map((opt: any, i: number) => (
-                       <div key={i} className={`p-6 rounded-[1.5rem] border transition-all flex justify-between items-center ${
-                         opt.isCorrect 
-                         ? 'border-emerald-500 bg-emerald-50 shadow-sm shadow-emerald-100/50' 
-                         : 'border-slate-100 bg-white hover:border-emerald-100 shadow-sm'
-                       }`}>
-                          <div className="flex items-center gap-6">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${
-                              opt.isCorrect ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-50 text-slate-400'
-                            }`}>
-                              {String.fromCharCode(65+i)}
-                            </div>
-                            <p className="text-sm font-bold text-slate-800 leading-snug">{opt.text}</p>
-                          </div>
-                          {opt.isCorrect && <CheckCircle size={18} className="text-emerald-500" />}
-                       </div>
-                     ))}
-                   </div>
-                </div>
-
-                <div className="p-6 xl:p-10 bg-[#ebf4ff] rounded-[2.5rem] flex flex-col sm:flex-row gap-6 items-start">
-                   <div className="p-4 bg-white rounded-2xl text-[#1BD183] shadow-sm border border-emerald-100 shrink-0">
-                      <Activity size={28} />
-                   </div>
-                   <div className="space-y-2">
-                      <p className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">Pedagogical Rationale</p>
-                      <p className="text-sm font-medium text-slate-700 leading-relaxed">{generatedResult.explanation}</p>
-                   </div>
-                </div>
-             </div>
-
-             <div className="p-6 xl:p-10 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-5">
-                <button 
-                  onClick={() => setGeneratedResult(null)} 
-                  className="px-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-slate-200 transition"
-                >
-                  Discard Synthesis
-                </button>
-                <button 
-                  onClick={handleCommit}
-                  className="px-12 py-4 text-white bg-primary-gradient rounded-2xl font-black uppercase tracking-widest text-[11px] transition shadow-2xl shadow-slate-300 flex items-center justify-center gap-3 active:scale-95"
-                >
-                  <Save size={20} /> Commit to Bank
-                </button>
-             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 rounded-[3.5rem] border-4 border-dashed border-slate-200 p-20 text-center space-y-6 group">
-             <div className="w-28 h-28 bg-white rounded-[2rem] flex items-center justify-center shadow-sm text-slate-200 group-hover:scale-110 transition-transform duration-700">
-                <FlaskConical size={80} strokeWidth={1} />
-             </div>
-             <div className="space-y-2">
-                <h3 className="text-3xl font-black text-slate-400 uppercase tracking-tight">AI Lab Standby</h3>
-                <p className="text-sm text-slate-400 font-medium max-w-sm mx-auto leading-relaxed italic">
-                  Initiate a high-yield synthesis by selecting a source item or organ system. Sina will remaster content based on your precision directives.
-                </p>
-             </div>
-             <button 
-               onClick={() => setIsItemPickerOpen(true)}
-               className="mt-4 px-10 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition shadow-sm flex items-center gap-3 hover:gap-5 transition-all"
-             >
-               <Search size={18} /> Browse Knowledge Graph
-             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Item Picker Modal */}
-      {isItemPickerOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-6">
-          <div className="bg-white rounded-[3.5rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-300">
-             <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-                  <Target size={24} className="text-[#1BD183]" />
-                  Select Synthesis Base
-                </h3>
-                <button onClick={() => setIsItemPickerOpen(false)} className="p-3 text-slate-400 hover:text-slate-900 transition"><X size={24} /></button>
-             </div>
-             <div className="p-8 border-b border-slate-100 bg-white">
-                <div className="relative">
-                   <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-                   <input 
-                     type="text" 
-                     placeholder="Search QIDs, topics, or syndromes..."
-                     value={searchQuery}
-                     onChange={(e) => setSearchQuery(e.target.value)}
-                     className="w-full pl-14 pr-6 py-5 bg-slate-100 rounded-[1.5rem] border-none outline-none focus:ring-2 focus:ring-[#1BD183] transition text-sm font-bold shadow-inner"
-                   />
-                </div>
-             </div>
-             <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-50 custom-scrollbar">
-                {filteredItems.map(item => (
-                  <button 
-                    key={item.id}
-                    onClick={() => { setSelectedItem(item); setIsItemPickerOpen(false); }}
-                    className="w-full p-8 text-left hover:bg-emerald-50 transition-colors flex justify-between items-center group rounded-[2rem]"
-                  >
-                    <div className="flex items-center gap-6">
-                       <div className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-[#1BD183] font-black text-[11px] shadow-sm group-hover:scale-110 transition-transform">
-                          {item.id.split('-').pop()}
-                       </div>
-                       <div>
-                          <p className="text-base font-bold text-slate-900 line-clamp-1">{item.stem}</p>
-                          <div className="flex items-center gap-3 mt-2">
-                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.taxonomy.organSystemId}</span>
-                             <div className="w-1 h-1 rounded-full bg-slate-200" />
-                             <span className="text-[10px] font-black text-[#1BD183] uppercase tracking-widest">{item.taxonomy.bloomLevel}</span>
-                          </div>
-                       </div>
-                    </div>
-                    <ChevronRight size={20} className="text-slate-300 group-hover:text-[#1BD183] group-hover:translate-x-2 transition-all" />
-                  </button>
+      {/* Source picker */}
+      <Dialog
+        open={isItemPickerOpen}
+        onClose={() => setIsItemPickerOpen(false)}
+        title="Choose a source item"
+        description="Sina rewrites the item you pick. These are sample items."
+        width="max-w-2xl"
+      >
+        <div className="space-y-3">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search by ID or stem"
+            data-autofocus
+          />
+          <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-stone-200 custom-scrollbar">
+            {filteredItems.length === 0 ? (
+              <EmptyState compact icon={Search} title="No items match" description="Try a different search." />
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {filteredItems.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setIsItemPickerOpen(false);
+                      }}
+                      className="group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-stone-50 focus-visible:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 text-sm leading-5 text-stone-900">{item.stem}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-stone-500">
+                          <span className="font-mono text-stone-400">{item.id}</span>
+                          {item.taxonomy.organSystemId && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>{item.taxonomy.organSystemId}</span>
+                            </>
+                          )}
+                          <span aria-hidden="true">·</span>
+                          <span>{item.taxonomy.bloomLevel}</span>
+                        </span>
+                      </span>
+                      {selectedItem?.id === item.id && (
+                        <Badge tone="green">Selected</Badge>
+                      )}
+                    </button>
+                  </li>
                 ))}
-             </div>
+              </ul>
+            )}
           </div>
         </div>
-      )}
+      </Dialog>
+
+      <ConfirmDialog
+        open={isDiscardOpen}
+        title="Discard this draft?"
+        description="The draft will be cleared. You can generate a new one at any time."
+        confirmLabel="Discard draft"
+        onConfirm={() => {
+          setGeneratedResult(null);
+          setIsDiscardOpen(false);
+        }}
+        onCancel={() => setIsDiscardOpen(false)}
+      />
     </div>
   );
 };

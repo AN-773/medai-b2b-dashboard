@@ -1,44 +1,171 @@
-
 import React, { useState, useMemo } from 'react';
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, Cell
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar,
 } from 'recharts';
-import { MOCK_ITEMS, MOCK_EXAM_BLUEPRINTS, MOCK_RELIABILITY_TARGETS, MOCK_ORGAN_SYSTEMS } from '../constants';
-import { OrganSystem, ExamBlueprint, ReliabilityTarget } from '../types';
+import { Check, Zap } from 'lucide-react';
+import { MOCK_EXAM_BLUEPRINTS, MOCK_RELIABILITY_TARGETS, MOCK_ORGAN_SYSTEMS } from '../constants';
 import DashboardCard from '../components/DashboardCard';
-import { 
-  Zap, 
-  AlertCircle, 
-  ShieldCheck, 
-  Database,
-  LayoutTemplate,
-  ChevronDown,
-  Target,
-  Search,
-  CheckCircle2,
-  Settings2
-} from 'lucide-react';
+import {
+  Button,
+  Field,
+  InlineAlert,
+  Input,
+  PageHeader,
+  ProgressBar,
+  Select,
+  StatusDot,
+} from '@/components/ui';
+import {
+  CHART_COLORS,
+  ChartFrame,
+  ChartTooltipCard,
+  axisLabel,
+  axisTick,
+  tooltipDatum,
+  type ChartTooltipProps,
+} from '@/components/analytics/chartTheme';
+
+/** Published items that currently match this blueprint (static until the bank query is wired up). */
+const ELIGIBLE_PUBLISHED_ITEMS = 412;
+
+const DELIVERY_RULES = [
+  'Linear sequential delivery',
+  'Block timing: 60 minutes',
+  'System-based stratification enabled',
+  'Non-functional-distractor items suppressed',
+];
+
+const MIN_ITEMS = 5;
+const MAX_ITEMS = 500;
+
+/** P-value band each difficulty label targets (matches the curve below). */
+const DIFFICULTY_RANGES: Record<string, string> = {
+  Easy: 'P ≥ 0.70',
+  Moderate: 'P 0.40–0.70',
+  Hard: 'P ≤ 0.40',
+};
+
+/** Readable names for blueprint system ids that aren't in the organ-system catalog. */
+const SYSTEM_ABBREVIATIONS: Record<string, string> = {
+  CV: 'Cardiovascular',
+  RENAL: 'Renal & urinary',
+  GI: 'Gastrointestinal',
+  RESP: 'Respiratory',
+  ENDO: 'Endocrine',
+  NEURO: 'Nervous system',
+  MSK: 'Musculoskeletal',
+  REPRO: 'Reproductive',
+  HEME: 'Blood & lymphoreticular',
+};
+
+/**
+ * Splits `total` into whole numbers proportional to `shares` (largest-remainder
+ * method), so rows always add up exactly to the form length.
+ */
+const allocate = (shares: number[], total: number): number[] => {
+  const sum = shares.reduce((acc, share) => acc + share, 0);
+  if (sum <= 0 || total <= 0) return shares.map(() => 0);
+  const exact = shares.map((share) => (share / sum) * total);
+  const counts = exact.map(Math.floor);
+  let remainder = total - counts.reduce((acc, count) => acc + count, 0);
+  exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((left, right) => right.fraction - left.fraction)
+    .forEach(({ index }) => {
+      if (remainder > 0) {
+        counts[index] += 1;
+        remainder -= 1;
+      }
+    });
+  return counts;
+};
+
+interface CompositionRow {
+  key: string;
+  label: React.ReactNode;
+  meta?: string;
+  /** 0–100 */
+  share: number;
+  count: number;
+  tone?: 'brand' | 'amber';
+}
+
+/** Share/questions table with a totals row — used for every composition dimension. */
+const CompositionTable: React.FC<{
+  caption: string;
+  firstColumn: string;
+  rows: CompositionRow[];
+  total: number;
+  showBars?: boolean;
+}> = ({ caption, firstColumn, rows, total, showBars = false }) => (
+  <table className="w-full text-left text-[13px]">
+    <caption className="sr-only">{caption}</caption>
+    <thead>
+      <tr className="border-b border-stone-200 text-stone-500">
+        <th scope="col" className="py-2 pr-3 font-medium">{firstColumn}</th>
+        {showBars && (
+          <th scope="col" className="hidden w-[32%] py-2 pr-3 font-medium sm:table-cell">
+            <span className="sr-only">Share bar</span>
+          </th>
+        )}
+        <th scope="col" className="py-2 pr-3 text-right font-medium">Share</th>
+        <th scope="col" className="py-2 text-right font-medium">Questions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((row) => (
+        <tr key={row.key} className="border-b border-stone-100">
+          <td className="py-2.5 pr-3">
+            <span className="text-sm text-stone-900">{row.label}</span>
+            {row.meta && <span className="ml-2 text-xs text-stone-500">{row.meta}</span>}
+          </td>
+          {showBars && (
+            <td className="hidden py-2.5 pr-3 sm:table-cell">
+              <ProgressBar value={row.share} max={100} tone={row.tone} label={`${row.share}% share`} />
+            </td>
+          )}
+          <td className="py-2.5 pr-3 text-right tabular-nums text-stone-700">{row.share}%</td>
+          <td className="py-2.5 text-right font-medium tabular-nums text-stone-900">
+            {row.count.toLocaleString()}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row" className="pt-2.5 pr-3 font-medium text-stone-900">Total</th>
+        {showBars && <td className="hidden sm:table-cell" />}
+        <td className="pt-2.5 pr-3 text-right font-medium tabular-nums text-stone-900">
+          {rows.reduce((acc, row) => acc + row.share, 0)}%
+        </td>
+        <td className="pt-2.5 text-right font-semibold tabular-nums text-stone-900">
+          {total.toLocaleString()}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+);
 
 const ExamBlueprintView: React.FC = () => {
   const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>(MOCK_EXAM_BLUEPRINTS[0].id);
   const [itemCount, setItemCount] = useState(MOCK_EXAM_BLUEPRINTS[0].totalItems);
+  const [showAssembleNotice, setShowAssembleNotice] = useState(false);
 
-  const selectedBlueprint = useMemo(() => 
+  const selectedBlueprint = useMemo(() =>
     MOCK_EXAM_BLUEPRINTS.find(b => b.id === selectedBlueprintId) || MOCK_EXAM_BLUEPRINTS[0]
   , [selectedBlueprintId]);
 
-  const reliabilityTarget = useMemo(() => 
-    MOCK_RELIABILITY_TARGETS.find(t => t.context.toLowerCase().includes(selectedBlueprint.name.toLowerCase().split(' ')[0])) 
+  const reliabilityTarget = useMemo(() =>
+    MOCK_RELIABILITY_TARGETS.find(t => t.context.toLowerCase().includes(selectedBlueprint.name.toLowerCase().split(' ')[0]))
     || MOCK_RELIABILITY_TARGETS[0]
   , [selectedBlueprint]);
 
   // Transform Difficulty Distribution for AreaChart
   const difficultyData = useMemo(() => {
     // Generate a curve based on proportions
-    const labels = ['Easy', 'Moderate', 'Hard'];
     const points = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
-    
+
     return points.map(p => {
       let weight = 0;
       selectedBlueprint.difficultyDistribution.forEach(dist => {
@@ -50,221 +177,288 @@ const ExamBlueprintView: React.FC = () => {
     });
   }, [selectedBlueprint]);
 
-  const getSystemName = (id: string) => MOCK_ORGAN_SYSTEMS.find(s => s.id === id)?.name || id;
-
-  const bloomColors = {
-    'Recall': '#94a3b8',
-    'Understand': '#818cf8',
-    'Apply': '#6366f1',
-    'Analyze': '#4f46e5'
+  const getSystemName = (id: string) => {
+    const known = MOCK_ORGAN_SYSTEMS.find(s => s.id === id)?.name;
+    if (known) return known;
+    const code = id.replace(/^(USMLE|SYS)-/, '');
+    return SYSTEM_ABBREVIATIONS[code] ?? id;
   };
 
+  const selectTemplate = (id: string) => {
+    const template = MOCK_EXAM_BLUEPRINTS.find(bp => bp.id === id);
+    if (!template) return;
+    setSelectedBlueprintId(template.id);
+    setItemCount(template.totalItems);
+  };
+
+  // ---- Composition ------------------------------------------------------------
+  const systemRows = useMemo(() => {
+    const weights = selectedBlueprint.organSystemWeights;
+    const allocated = weights.reduce((acc, sys) => acc + sys.weightPercent, 0);
+    const unallocated = Math.max(0, 100 - allocated);
+    const counts = allocate([...weights.map(sys => sys.weightPercent), unallocated], itemCount);
+    const rows: CompositionRow[] = weights.map((sys, index) => ({
+      key: sys.organSystemId,
+      label: getSystemName(sys.organSystemId),
+      share: sys.weightPercent,
+      count: counts[index],
+    }));
+    if (unallocated > 0) {
+      rows.push({
+        key: 'unallocated',
+        label: <StatusDot tone="amber">Not assigned to a system</StatusDot>,
+        share: unallocated,
+        count: counts[counts.length - 1],
+        tone: 'amber',
+      });
+    }
+    return { rows, allocated, unallocated, unallocatedCount: unallocated > 0 ? counts[counts.length - 1] : 0 };
+    // getSystemName is a pure lookup over constants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBlueprint, itemCount]);
+
+  const difficultyRows = useMemo<CompositionRow[]>(() => {
+    const counts = allocate(selectedBlueprint.difficultyDistribution.map(d => d.proportion), itemCount);
+    return selectedBlueprint.difficultyDistribution.map((dist, index) => ({
+      key: dist.label,
+      label: dist.label,
+      meta: DIFFICULTY_RANGES[dist.label],
+      share: Math.round(dist.proportion * 100),
+      count: counts[index],
+    }));
+  }, [selectedBlueprint, itemCount]);
+
+  const bloomRows = useMemo<CompositionRow[]>(() => {
+    const counts = allocate(selectedBlueprint.bloomDistribution.map(b => b.proportion), itemCount);
+    return selectedBlueprint.bloomDistribution.map((bloom, index) => ({
+      key: bloom.bloomLevel,
+      label: bloom.bloomLevel,
+      share: Math.round(bloom.proportion * 100),
+      count: counts[index],
+    }));
+  }, [selectedBlueprint, itemCount]);
+
+  const bloomData = bloomRows.map(row => ({ level: String(row.label), share: row.share, count: row.count }));
+
+  const rankedSummary = (rows: CompositionRow[], noun: string) => {
+    const ranked = [...rows].sort((left, right) => right.share - left.share);
+    if (ranked.length === 0) return `No ${noun} targets set.`;
+    const [top, second] = ranked;
+    return second
+      ? `${String(top.label)} carries the most weight (${top.share}%), followed by ${String(second.label).toLowerCase()} (${second.share}%).`
+      : `All questions are ${String(top.label).toLowerCase()}.`;
+  };
+  const difficultySummary = rankedSummary(difficultyRows, 'difficulty');
+  const bloomSummary = rankedSummary(bloomRows, "Bloom's");
+
+  const systemsSummary =
+    systemRows.unallocated > 0
+      ? `${selectedBlueprint.organSystemWeights.length} systems carry ${systemRows.allocated}% of the form; ${systemRows.unallocatedCount.toLocaleString()} questions (${systemRows.unallocated}%) aren't tied to a system.`
+      : `All questions are spread across ${selectedBlueprint.organSystemWeights.length} systems.`;
+
+  const hasEnoughItems = ELIGIBLE_PUBLISHED_ITEMS >= itemCount;
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 pb-20 animate-in fade-in duration-700">
-      {/* Sidebar Configuration */}
-      <div className="xl:col-span-4 space-y-6">
-        <DashboardCard title="Blueprint Templates" subtitle="Select institutional standard models">
-           <div className="space-y-2 mt-2">
-             {MOCK_EXAM_BLUEPRINTS.map(bp => (
-               <button
-                 key={bp.id}
-                 onClick={() => {
-                   setSelectedBlueprintId(bp.id);
-                   setItemCount(bp.totalItems);
-                 }}
-                 className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between group ${
-                   selectedBlueprintId === bp.id 
-                   ? 'bg-[#1BD183] text-black' 
-                   : 'bg-white border-slate-100 text-slate-600 hover:border-[#1BD183]'
-                 }`}
-               >
-                 <div>
-                    <p className="text-xs font-black uppercase tracking-tight">{bp.name}</p>
-                    <p className={`text-[10px] mt-1 font-medium ${selectedBlueprintId === bp.id ? 'text-black' : 'text-slate-400'}`}>
-                      {bp.totalItems} Items • {bp.organSystemWeights.length} Systems
-                    </p>
-                 </div>
-                 <CheckCircle2 size={18} className={selectedBlueprintId === bp.id ? 'opacity-100' : 'opacity-0'} />
-               </button>
-             ))}
-           </div>
-        </DashboardCard>
+    <div className="space-y-8">
+      <PageHeader
+        title="Blueprint builder"
+        description="Pick a template and form length, check how questions are spread across systems, difficulty and cognitive level, then assemble the form from your bank."
+        actions={
+          <Button variant="primary" icon={Zap} onClick={() => setShowAssembleNotice(true)}>
+            Assemble form
+          </Button>
+        }
+      />
 
-        <DashboardCard title="Exam Parameters" subtitle="Refine instance-specific settings">
-          <div className="space-y-8">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Question Count</label>
-                <span className="text-sm font-black text-[#1BD183]">{itemCount} Qs</span>
-              </div>
-              <input 
-                type="range" 
-                min="5" 
-                max="100" 
-                step="5" 
-                value={itemCount}
-                onChange={(e) => setItemCount(parseInt(e.target.value))}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1BD183]"
-              />
-            </div>
+      {showAssembleNotice && (
+        <InlineAlert tone="info" title="Form assembly isn't connected yet" onDismiss={() => setShowAssembleNotice(false)}>
+          This blueprint is a preview. Nothing has been generated or saved.
+        </InlineAlert>
+      )}
 
-            <div className="pt-4 border-t border-slate-100">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Organ System Balancing</label>
-              <div className="space-y-4">
-                {selectedBlueprint.organSystemWeights.map(sys => (
-                  <div key={sys.organSystemId} className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter">
-                       <span className="text-slate-600 truncate max-w-[180px]">{getSystemName(sys.organSystemId)}</span>
-                       <span className="text-[#1BD183]">{sys.weightPercent}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                       <div className="h-full bg-[#1BD183] transition-all duration-1000" style={{ width: `${sys.weightPercent}%` }}></div>
-                    </div>
-                  </div>
+      <section aria-labelledby="blueprint-setup" className="rounded-xl border border-stone-200 bg-white p-5 shadow-card">
+        <h2 id="blueprint-setup" className="text-[15px] font-semibold text-stone-900">Setup</h2>
+        <div className="mt-4 grid gap-x-6 gap-y-5 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.3fr)]">
+          <Field label="Template" description={selectedBlueprint.description}>
+            {(id) => (
+              <Select id={id} value={selectedBlueprintId} onChange={(event) => selectTemplate(event.target.value)}>
+                {MOCK_EXAM_BLUEPRINTS.map(bp => (
+                  <option key={bp.id} value={bp.id}>
+                    {bp.name} · {bp.totalItems} items · {bp.organSystemWeights.length} systems
+                  </option>
                 ))}
-              </div>
+              </Select>
+            )}
+          </Field>
+          <Field
+            label="Questions"
+            description={`Template default: ${selectedBlueprint.totalItems.toLocaleString()}`}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                type="number"
+                inputMode="numeric"
+                min={MIN_ITEMS}
+                max={MAX_ITEMS}
+                step={5}
+                value={itemCount === 0 ? '' : itemCount}
+                onChange={(event) => {
+                  const next = event.target.valueAsNumber;
+                  setItemCount(Number.isFinite(next) ? Math.min(MAX_ITEMS, Math.max(0, Math.round(next))) : 0);
+                }}
+                onBlur={() => setItemCount(count => Math.min(MAX_ITEMS, Math.max(MIN_ITEMS, count)))}
+                className="tabular-nums"
+              />
+            )}
+          </Field>
+          <div className="min-w-0">
+            <p className="mb-1.5 text-[13px] font-medium text-stone-700">Reliability target</p>
+            <div className="flex h-9 items-center gap-2 rounded-lg bg-stone-50 px-3 text-sm ring-1 ring-inset ring-stone-200">
+              <span className="font-medium text-stone-900">KR-20 ≥ {reliabilityTarget.targetKR20}</span>
+              <span className="text-stone-300" aria-hidden="true">·</span>
+              <span className="truncate text-stone-600">Cronbach's α ≥ {reliabilityTarget.targetCronbachAlpha}</span>
             </div>
-
-            <button className="w-full py-4 bg-primary-gradient hover:bg-primary-gradient-hover text-white rounded-[1.5rem] text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition shadow-xl shadow-slate-200 active:translate-y-1">
-              <Zap size={16} className="text-yellow-400" /> Assemble Form
-            </button>
-          </div>
-        </DashboardCard>
-
-        <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-[2rem]">
-          <div className="flex items-start gap-4">
-            <ShieldCheck className="text-emerald-600 shrink-0 mt-1" size={24} />
-            <div>
-              <p className="text-xs font-black text-emerald-900 uppercase tracking-tight">Reliability Goal</p>
-              <p className="text-[10px] text-emerald-700 mt-1 leading-relaxed font-medium">
-                Targeting Cronbach's Alpha <strong>≥{reliabilityTarget.targetCronbachAlpha}</strong> for {reliabilityTarget.context.toLowerCase()}.
-              </p>
-            </div>
+            <p className="mt-1.5 text-xs text-stone-500">For {reliabilityTarget.context}</p>
           </div>
         </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <DashboardCard title="Organ systems" subtitle={systemsSummary} headingLevel={2}>
+          <CompositionTable
+            caption={`Questions per organ system for a ${itemCount}-question form`}
+            firstColumn="System"
+            rows={systemRows.rows}
+            total={itemCount}
+            showBars
+          />
+        </DashboardCard>
+
+        <DashboardCard
+          title="Readiness"
+          subtitle="Whether your bank can fill this blueprint."
+          headingLevel={2}
+        >
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-sm text-stone-700">Eligible published items</span>
+            <span className="text-[22px] font-semibold leading-none tabular-nums text-stone-900">
+              {ELIGIBLE_PUBLISHED_ITEMS.toLocaleString()}
+            </span>
+          </div>
+          <div className="mt-3 space-y-1">
+            <StatusDot tone={hasEnoughItems ? 'green' : 'amber'}>
+              {hasEnoughItems
+                ? `Enough to fill ${itemCount.toLocaleString()} questions`
+                : `${(itemCount - ELIGIBLE_PUBLISHED_ITEMS).toLocaleString()} short of ${itemCount.toLocaleString()} questions`}
+            </StatusDot>
+            <p className="text-[13px] text-stone-500">Sufficient variance detected across all target p-value clusters.</p>
+          </div>
+
+          <div className="mt-5 border-t border-stone-100 pt-4">
+            <h3 className="text-sm font-medium text-stone-900">Delivery rules</h3>
+            <ul className="mt-2 space-y-2">
+              {DELIVERY_RULES.map(rule => (
+                <li key={rule} className="flex items-center gap-2.5 text-sm text-stone-700">
+                  <Check size={15} className="flex-shrink-0 text-brand-600" aria-hidden="true" />
+                  {rule}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </DashboardCard>
       </div>
 
-      {/* Main Preview Analytics */}
-      <div className="xl:col-span-8 space-y-8">
-        <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 shadow-sm relative overflow-hidden">
-           <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
-              <Settings2 size={300} />
-           </div>
-           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-100 pb-8 mb-8">
-              <div>
-                <span className="text-[10px] font-black text-[#1BD183] uppercase tracking-[0.2em] mb-2 block">Blueprint DNA Matrix</span>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedBlueprint.name}</h2>
-                <p className="text-sm text-slate-500 font-medium mt-1 italic">"{selectedBlueprint.description}"</p>
-              </div>
-              <div className="flex gap-4">
-                 <div className="bg-[#1BD183]/10 px-6 py-4 rounded-3xl text-center border border-[#1BD183]/20">
-                    <p className="text-[9px] font-black text-[#1BD183] uppercase mb-1">Items</p>
-                    <p className="text-3xl font-black text-[#1BD183]">{itemCount}</p>
-                 </div>
-                 <div className="bg-slate-900 px-6 py-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">KR-20</p>
-                    <p className="text-3xl font-black text-white">{reliabilityTarget.targetKR20}</p>
-                 </div>
-              </div>
-           </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
-              <div className="space-y-6">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                   <Target size={14} className="text-[#1BD183]" /> Psychometric Difficulty Curve
-                </h3>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={difficultyData}>
-                      <defs>
-                        <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15}/>
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis 
-                        dataKey="pValue" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{fontSize: 9, fontWeight: 700}} 
-                        label={{ value: 'Difficulty (P)', position: 'bottom', offset: 0, fontSize: 9, fontWeight: 900 }}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DashboardCard title="Difficulty mix" subtitle={difficultySummary} headingLevel={2}>
+          <ChartFrame label={`Target difficulty curve across P-values. ${difficultySummary}`} className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={difficultyData} margin={{ top: 8, right: 8, bottom: 16, left: 8 }}>
+                <defs>
+                  <linearGradient id="blueprintCurveFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_COLORS.brand} stopOpacity={0.18} />
+                    <stop offset="95%" stopColor={CHART_COLORS.brand} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                <XAxis
+                  dataKey="pValue"
+                  axisLine={{ stroke: CHART_COLORS.axis }}
+                  tickLine={false}
+                  tick={axisTick}
+                  tickFormatter={(value: number) => value.toFixed(1)}
+                  label={{ value: 'Difficulty (P-value)', position: 'insideBottom', offset: -10, ...axisLabel }}
+                />
+                <YAxis hide />
+                <Tooltip
+                  cursor={{ stroke: CHART_COLORS.axis }}
+                  content={(props: ChartTooltipProps) => {
+                    const point = tooltipDatum<{ pValue: number; weight: number }>(props);
+                    if (!point) return null;
+                    return (
+                      <ChartTooltipCard
+                        title={`P ${point.pValue.toFixed(1)}`}
+                        rows={[{ label: 'Relative weight', value: point.weight, color: CHART_COLORS.brand }]}
                       />
-                      <YAxis hide />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} 
-                      />
-                      <Area type="monotone" dataKey="weight" stroke="#1BA6D1" strokeWidth={4} fill="url(#curveGrad)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+                    );
+                  }}
+                />
+                <Area type="monotone" dataKey="weight" stroke={CHART_COLORS.brand} strokeWidth={2} fill="url(#blueprintCurveFill)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartFrame>
+          <div className="mt-4">
+            <CompositionTable
+              caption="Questions per difficulty level"
+              firstColumn="Level"
+              rows={difficultyRows}
+              total={itemCount}
+            />
+          </div>
+        </DashboardCard>
 
-              <div className="space-y-6">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                   <LayoutTemplate size={14} className="text-[#1BD183]" /> Bloom's Taxonomy Weights
-                </h3>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={selectedBlueprint.bloomDistribution} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis 
-                        dataKey="bloomLevel" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{fontSize: 9, fontWeight: 700}} 
+        <DashboardCard title="Cognitive level (Bloom's)" subtitle={bloomSummary} headingLevel={2}>
+          <ChartFrame label={`Bar chart of question share by Bloom's level. ${bloomSummary}`} className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bloomData} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+                <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                <XAxis dataKey="level" axisLine={{ stroke: CHART_COLORS.axis }} tickLine={false} tick={axisTick} />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={axisTick}
+                  tickFormatter={(value: number) => `${value}%`}
+                  width={44}
+                />
+                <Tooltip
+                  cursor={{ fill: CHART_COLORS.hover }}
+                  content={(props: ChartTooltipProps) => {
+                    const bar = tooltipDatum<{ level: string; share: number; count: number }>(props);
+                    if (!bar) return null;
+                    return (
+                      <ChartTooltipCard
+                        title={bar.level}
+                        rows={[
+                          { label: 'Share', value: `${bar.share}%`, color: CHART_COLORS.brand },
+                          { label: 'Questions', value: bar.count.toLocaleString() },
+                        ]}
                       />
-                      <YAxis hide />
-                      <Tooltip 
-                        cursor={{fill: '#f8fafc'}}
-                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} 
-                      />
-                      <Bar dataKey="proportion" radius={[12, 12, 0, 0]} barSize={40}>
-                        {selectedBlueprint.bloomDistribution.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={(bloomColors as any)[entry.bloomLevel] || '#6366f1'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-           <DashboardCard title="Bank Availability Check">
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                    <span className="text-[10px] font-black text-slate-500 uppercase">Eligible Published Items</span>
-                    <span className="text-xl font-black text-slate-900">412</span>
-                 </div>
-                 <div className="p-4 border border-emerald-100 bg-emerald-50 rounded-2xl flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500 text-white rounded-lg">
-                       <CheckCircle2 size={16} />
-                    </div>
-                    <p className="text-[10px] font-bold text-emerald-800">
-                      Sufficient variance detected across all target p-value clusters.
-                    </p>
-                 </div>
-              </div>
-           </DashboardCard>
-
-           <DashboardCard title="Automated Logic Mapping">
-              <div className="space-y-2">
-                 {[
-                   'Linear sequential delivery',
-                   'Block timing: 60 minutes',
-                   'System-based stratification enabled',
-                   'NFD Item suppression active'
-                 ].map((logic, i) => (
-                   <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
-                      {logic}
-                   </div>
-                 ))}
-              </div>
-           </DashboardCard>
-        </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="share" fill={CHART_COLORS.brand} radius={[4, 4, 0, 0]} maxBarSize={44} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartFrame>
+          <div className="mt-4">
+            <CompositionTable
+              caption="Questions per Bloom's level"
+              firstColumn="Level"
+              rows={bloomRows}
+              total={itemCount}
+            />
+          </div>
+        </DashboardCard>
       </div>
     </div>
   );

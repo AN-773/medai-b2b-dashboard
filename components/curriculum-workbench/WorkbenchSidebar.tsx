@@ -1,20 +1,21 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  Search,
-  Library,
-  ChevronDown,
-  ChevronRight,
-  MoreVertical,
-  Edit,
-  Trash2,
-  Plus,
-  Link2,
-  X,
-  Check,
-  Loader2,
-} from 'lucide-react';
-import { Curriculum, OrganSystem } from '../../types/TestsServiceTypes';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { ChevronRight, Library, Link2, Plus } from 'lucide-react';
+import { Curriculum, OrganSystem, Topic } from '../../types/TestsServiceTypes';
 import { identifierOf } from '../../utils/resourceId';
+import {
+  Badge,
+  Button,
+  Field,
+  IconButton,
+  InlineAlert,
+  Menu,
+  SearchInput,
+  Select,
+  Spinner,
+  cn,
+} from '@/components/ui';
+import { WorkbenchTreeContext } from './WorkbenchTreeContext';
+import { useOrganSystemEditor } from './OrganSystemDialog';
 
 interface WorkbenchSidebarProps {
   curricula: Curriculum[];
@@ -35,6 +36,30 @@ interface WorkbenchSidebarProps {
   canManage: boolean;
 }
 
+const ROW =
+  'flex w-full min-w-0 items-center rounded-lg text-left text-[13px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500';
+/** The selected node. */
+const ROW_CURRENT = 'bg-white font-medium text-stone-900 shadow-card ring-1 ring-stone-200/80';
+/** An ancestor of the selected node. */
+const ROW_PATH = 'font-medium text-stone-900 hover:bg-stone-100';
+const ROW_IDLE = 'text-stone-600 hover:bg-stone-100 hover:text-stone-900';
+
+/** Nested level: indented under a thin guide line. */
+const Branch: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <ul aria-label={label} className="mb-1 ml-[15px] mt-0.5 space-y-0.5 border-l border-stone-200 pl-1.5">
+    {children}
+  </ul>
+);
+
+const BranchNote: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <li className="px-2 py-1.5 text-[13px] text-stone-400">{children}</li>
+);
+
+/**
+ * The Curricula outline rail: the curriculum root, then organ systems → topics
+ * → subtopics along the open path. Organ systems are created, attached,
+ * renamed and deleted here; the deeper levels come from `WorkbenchTreeContext`.
+ */
 const WorkbenchSidebar: React.FC<WorkbenchSidebarProps> = ({
   curricula,
   isLoadingCurricula,
@@ -51,34 +76,23 @@ const WorkbenchSidebar: React.FC<WorkbenchSidebarProps> = ({
   onDeleteSystem,
   canManage,
 }) => {
+  const tree = useContext(WorkbenchTreeContext);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const sidebarRef = useRef<HTMLDivElement>(null);
+  const systemEditor = useOrganSystemEditor({
+    onCreate: onCreateSystem,
+    onRename: onEditSystem,
+    onDelete: onDeleteSystem,
+  });
 
-  const hasCurriculum = !!activeCurriculumIdentifier;
-
+  // A new curriculum starts with an unfiltered outline.
   useEffect(() => {
-    if (!activeDropdownId) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-        setActiveDropdownId(null);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setActiveDropdownId(null);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [activeDropdownId]);
+    setSearchTerm('');
+  }, [activeCurriculumIdentifier]);
+
+  const activeCurriculum = useMemo(
+    () => curricula.find((c) => identifierOf(c) === activeCurriculumIdentifier) ?? null,
+    [curricula, activeCurriculumIdentifier],
+  );
 
   const displaySystems = useMemo(
     () =>
@@ -88,303 +102,297 @@ const WorkbenchSidebar: React.FC<WorkbenchSidebarProps> = ({
     [organSystems, searchTerm],
   );
 
-  const handleStartEdit = (id: string, currentName: string) => {
-    setEditingId(id);
-    setEditName(currentName);
-    setActiveDropdownId(null);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingId || !editName.trim()) return;
-    setIsSubmitting(true);
-    try {
-      await onEditSystem(editingId, editName.trim());
-    } catch (error) {
-      console.error('Failed to update organ system:', error);
-    } finally {
-      setIsSubmitting(false);
-      setEditingId(null);
-      setEditName('');
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setIsSubmitting(true);
-    try {
-      await onCreateSystem(newName.trim());
-      setNewName('');
-      setIsCreating(false);
-    } catch (error) {
-      console.error('Failed to create organ system:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (
-      confirm(
-        'Delete this organ system entirely? This removes it (and its topics/subtopics) for all curricula, not just this one. This cannot be undone.',
-      )
-    ) {
-      try {
-        await onDeleteSystem(id);
-      } catch (error) {
-        console.error('Failed to delete organ system:', error);
-      }
-    }
-    setActiveDropdownId(null);
-  };
-
-  return (
-    <div
-      ref={sidebarRef}
-      className="w-80 bg-white flex-shrink-0 flex flex-col border-r border-slate-100 h-full"
-    >
-      <div className="p-8 pb-4">
-
-        {/* Curriculum dropdown (replaces the old Step 1 / Step 2 toggle) */}
-        <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-          <Library size={11} /> Curriculum
-        </label>
-        <div className="flex items-center gap-2 mb-5">
-          <div className="relative flex-1">
-            <select
-              value={activeCurriculumIdentifier ?? ''}
+  // Standalone fallback: without a curriculum the rail is just a picker.
+  if (!activeCurriculumIdentifier) {
+    return (
+      <aside
+        aria-label="Curriculum outline"
+        className="space-y-3 rounded-xl border border-stone-200 bg-stone-50/50 p-4"
+      >
+        <Field label="Curriculum">
+          {(id) => (
+            <Select
+              id={id}
+              value=""
               onChange={(e) => e.target.value && onCurriculumChange(e.target.value)}
               disabled={isLoadingCurricula}
-              className="w-full appearance-none bg-slate-50 text-xs font-bold text-slate-700 px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all hover:bg-slate-100 cursor-pointer disabled:opacity-60"
             >
-              <option value="">{isLoadingCurricula ? 'Loading…' : 'Select a curriculum…'}</option>
-              {curricula.map((c) => {
-                const slug = identifierOf(c);
-                return (
-                  <option key={c.id} value={slug}>
-                    {c.title}
-                    {c.visible ? '' : ' · hidden'}
-                  </option>
-                );
-              })}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
-          </div>
+              <option value="">{isLoadingCurricula ? 'Loading…' : 'Select a curriculum'}</option>
+              {curricula.map((c) => (
+                <option key={c.id} value={identifierOf(c)}>
+                  {c.title}
+                  {c.visible ? '' : ' · hidden'}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <p className="text-[13px] text-stone-500">Choose a curriculum to see its organ systems.</p>
+        {canManage && (
+          <Button size="sm" icon={Plus} onClick={onCreateCurriculum} className="w-full">
+            New curriculum
+          </Button>
+        )}
+      </aside>
+    );
+  }
+
+  const renderSubTopics = (topic: Topic) => {
+    if (!tree) return null;
+    const subTopics = topic.syndromes;
+    return (
+      <Branch label={`Subtopics of ${topic.title}`}>
+        {!subTopics ? (
+          tree.areSubTopicsLoading ? (
+            <li>
+              <Spinner label="Loading…" className="justify-start px-2 py-1.5" />
+            </li>
+          ) : null
+        ) : subTopics.length === 0 ? (
+          <BranchNote>No subtopics yet</BranchNote>
+        ) : (
+          subTopics.map((sub) => {
+            const isCurrent = sub.id === tree.activeSubTopicId;
+            return (
+              <li key={sub.id}>
+                <button
+                  type="button"
+                  onClick={() => tree.onSelectSubTopic(sub)}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  title={sub.title}
+                  className={cn(ROW, 'h-8 px-2', isCurrent ? ROW_CURRENT : ROW_IDLE)}
+                >
+                  <span className="truncate">{sub.title}</span>
+                </button>
+              </li>
+            );
+          })
+        )}
+      </Branch>
+    );
+  };
+
+  const renderTopics = (system: OrganSystem) => {
+    if (!tree) return null;
+    const topics = system.topics;
+    return (
+      <Branch label={`Topics of ${system.title}`}>
+        {!topics ? (
+          tree.areTopicsLoading ? (
+            <li>
+              <Spinner label="Loading…" className="justify-start px-2 py-1.5" />
+            </li>
+          ) : null
+        ) : topics.length === 0 ? (
+          <BranchNote>No topics yet</BranchNote>
+        ) : (
+          topics.map((topic) => {
+            const isOpen = topic.id === tree.activeTopicId;
+            const hasActiveChild =
+              isOpen && Boolean(topic.syndromes?.some((sub) => sub.id === tree.activeSubTopicId));
+            const isCurrent = isOpen && !hasActiveChild;
+            return (
+              <li key={topic.id}>
+                <button
+                  type="button"
+                  onClick={() => tree.onSelectTopic(topic.id)}
+                  aria-expanded={isOpen}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  title={topic.title}
+                  className={cn(
+                    ROW,
+                    'h-8 gap-1.5 pl-1.5 pr-2',
+                    isCurrent ? ROW_CURRENT : isOpen ? ROW_PATH : ROW_IDLE,
+                  )}
+                >
+                  <ChevronRight
+                    size={13}
+                    aria-hidden="true"
+                    className={cn(
+                      'flex-shrink-0 text-stone-400 transition-transform',
+                      isOpen && 'rotate-90',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{topic.title}</span>
+                  {isOpen && topic.syndromes && (
+                    <span className="text-xs font-normal tabular-nums text-stone-400">
+                      {topic.syndromes.length}
+                    </span>
+                  )}
+                </button>
+                {isOpen && renderSubTopics(topic)}
+              </li>
+            );
+          })
+        )}
+      </Branch>
+    );
+  };
+
+  const renderSystem = (system: OrganSystem) => {
+    const isOpen = system.id === activeSystemId;
+    const hasActiveChild =
+      isOpen && Boolean(tree && system.topics?.some((topic) => topic.id === tree.activeTopicId));
+    const isCurrent = isOpen && !hasActiveChild;
+    return (
+      <li key={system.id}>
+        <div
+          className={cn(
+            'group flex items-center rounded-lg transition-colors',
+            isCurrent ? ROW_CURRENT : isOpen ? ROW_PATH : ROW_IDLE,
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => onSelectSystem(system.id)}
+            aria-expanded={tree ? isOpen : undefined}
+            aria-current={isCurrent ? 'true' : undefined}
+            title={system.title}
+            className={cn(ROW, 'h-8 gap-1.5 pl-1.5 pr-1')}
+          >
+            {tree ? (
+              <ChevronRight
+                size={14}
+                aria-hidden="true"
+                className={cn(
+                  'flex-shrink-0 text-stone-400 transition-transform',
+                  isOpen && 'rotate-90',
+                )}
+              />
+            ) : null}
+            <span className="min-w-0 flex-1 truncate">{system.title}</span>
+            {isOpen && system.topics && (
+              <span className="text-xs font-normal tabular-nums text-stone-400">
+                {system.topics.length}
+              </span>
+            )}
+          </button>
           {canManage && (
-            <button
-              onClick={onCreateCurriculum}
-              title="New curriculum"
-              className="flex-shrink-0 h-11 w-11 inline-flex items-center justify-center rounded-2xl bg-[#1BD183]/10 text-[#0f8f59] hover:bg-[#1BD183]/20 transition-colors"
+            <span
+              className={cn(
+                'flex-shrink-0 pr-0.5 transition-opacity',
+                !isCurrent &&
+                  'opacity-0 focus-within:opacity-100 group-hover:opacity-100 has-[[aria-expanded=true]]:opacity-100',
+              )}
             >
-              <Plus size={18} />
-            </button>
+              <Menu
+                size="sm"
+                label={`Actions for ${system.title}`}
+                items={systemEditor.menuItems(system)}
+              />
+            </span>
           )}
         </div>
+        {isOpen && renderTopics(system)}
+      </li>
+    );
+  };
 
-        {hasCurriculum && (
-          <div className="relative group">
-            <Search
-              className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-[#1BD183] transition-colors"
-              size={16}
+  const isRootCurrent = Boolean(tree?.isRootActive);
+
+  return (
+    <aside
+      aria-label="Curriculum outline"
+      className="flex min-w-0 flex-col rounded-xl border border-stone-200 bg-stone-50/50 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-6.5rem)] xl:max-h-[calc(100dvh-7.5rem)]"
+    >
+      <div className="border-b border-stone-200 p-2">
+        <button
+          type="button"
+          onClick={tree?.onSelectRoot}
+          disabled={!tree}
+          aria-current={isRootCurrent ? 'true' : undefined}
+          title={activeCurriculum?.title}
+          className={cn(
+            ROW,
+            'h-9 gap-2 px-2 disabled:cursor-default',
+            isRootCurrent ? ROW_CURRENT : 'font-medium text-stone-900 hover:bg-stone-100',
+          )}
+        >
+          <Library
+            size={15}
+            aria-hidden="true"
+            className={cn('flex-shrink-0', isRootCurrent ? 'text-brand-600' : 'text-stone-400')}
+          />
+          <span className="min-w-0 flex-1 truncate text-sm">
+            {activeCurriculum?.title ?? 'Curriculum'}
+          </span>
+          {activeCurriculum && !activeCurriculum.visible && <Badge>Hidden</Badge>}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 pb-1 pl-4 pr-2 pt-3">
+        <h2 className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[13px] font-medium text-stone-700">
+          Organ systems
+          {!isLoadingOrganSystems && (
+            <span className="font-normal tabular-nums text-stone-400">
+              {organSystems.length.toLocaleString()}
+            </span>
+          )}
+        </h2>
+        {canManage && (
+          <>
+            <IconButton
+              icon={Link2}
+              label="Attach existing organ systems"
+              size="sm"
+              onClick={onOpenAttach}
             />
-            <input
-              type="text"
-              placeholder="Search organ systems..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 text-xs font-bold text-slate-700 pl-11 pr-4 py-3.5 rounded-2xl border-none focus:outline-none focus:ring-2 focus:ring-[#1BD183] transition-all placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white"
+            <IconButton
+              icon={Plus}
+              label="New organ system"
+              size="sm"
+              onClick={systemEditor.openCreate}
             />
-          </div>
+          </>
         )}
       </div>
 
-      {!hasCurriculum ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 px-8 text-center">
-          <Library size={28} className="mb-3 opacity-30" />
-          <p className="text-[10px] font-black uppercase tracking-widest">
-            Select a curriculum to manage its organ systems
-          </p>
+      {organSystems.length > 0 && (
+        <div className="px-2 pb-1 pt-1">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Filter organ systems"
+          />
         </div>
-      ) : (
-        <>
-          <div className="px-8 pb-2 flex items-center justify-between">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Organ Systems
-            </span>
-            <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-              {displaySystems.length}
-            </span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1 custom-scrollbar">
-            {isLoadingOrganSystems ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                <Loader2 size={18} className="animate-spin mb-3 text-[#1BD183]" />
-                <p className="text-[10px] font-black uppercase tracking-widest">Loading…</p>
-              </div>
-            ) : (
-              displaySystems.map((system) => (
-                <div key={system.id} className="relative group/item">
-                  {editingId === system.id ? (
-                    <div className="flex items-center gap-2 p-2">
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveEdit();
-                          if (e.key === 'Escape') {
-                            setEditingId(null);
-                            setEditName('');
-                          }
-                        }}
-                        className="flex-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1BD183]"
-                        autoFocus
-                        disabled={isSubmitting}
-                      />
-                      <button
-                        onClick={handleSaveEdit}
-                        disabled={isSubmitting}
-                        className="p-1.5 text-[#1BD183] hover:bg-[#1BD183]/10 rounded-lg transition-colors"
-                      >
-                        {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingId(null);
-                          setEditName('');
-                        }}
-                        disabled={isSubmitting}
-                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center">
-                      <button
-                        onClick={() => onSelectSystem(system.id)}
-                        className={`flex-1 min-w-0 flex items-center justify-between p-4 rounded-2xl text-xs font-bold transition-all ${
-                          activeSystemId === system.id
-                            ? 'bg-[#1BD183] text-black'
-                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                        }`}
-                      >
-                        <span className="truncate">{system.title}</span>
-                        {activeSystemId === system.id && (
-                          <ChevronRight size={14} className="text-slate-700" />
-                        )}
-                      </button>
-                      {canManage && (
-                        <div className="relative">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownId(activeDropdownId === system.id ? null : system.id);
-                            }}
-                            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 transition-colors opacity-0 group-hover/item:opacity-100"
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                          {activeDropdownId === system.id && (
-                            <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-xl border border-slate-100 z-[999] animate-in fade-in zoom-in-95 duration-200">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartEdit(system.id, system.title);
-                                }}
-                                className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                <Edit size={14} /> Rename
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(system.id);
-                                }}
-                                className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <Trash2 size={14} /> Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-            {!isLoadingOrganSystems && displaySystems.length === 0 && (
-              <div className="px-6 py-8 text-center">
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
-                  {searchTerm ? 'No matching organ systems' : 'No organ systems linked yet'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {canManage && (
-            <div className="p-4 border-t border-slate-100 space-y-2">
-              {isCreating ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleCreate();
-                      if (e.key === 'Escape') {
-                        setIsCreating(false);
-                        setNewName('');
-                      }
-                    }}
-                    placeholder="Organ system name…"
-                    className="flex-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1BD183] placeholder:text-slate-400"
-                    autoFocus
-                    disabled={isSubmitting}
-                  />
-                  <button
-                    onClick={handleCreate}
-                    disabled={isSubmitting || !newName.trim()}
-                    className="p-1.5 text-[#1BD183] hover:bg-[#1BD183]/10 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsCreating(false);
-                      setNewName('');
-                    }}
-                    disabled={isSubmitting}
-                    className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsCreating(true)}
-                    className="flex-1 flex items-center justify-center gap-2 p-3 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-[#1BD183] hover:text-[#1BD183] hover:bg-[#1BD183]/5 transition-all text-[10px] font-black uppercase tracking-widest"
-                  >
-                    <Plus size={14} /> Create
-                  </button>
-                  <button
-                    onClick={onOpenAttach}
-                    className="flex-1 flex items-center justify-center gap-2 p-3 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-[#1BA6D1] hover:text-[#1BA6D1] hover:bg-[#1BA6D1]/5 transition-all text-[10px] font-black uppercase tracking-widest"
-                  >
-                    <Link2 size={14} /> Attach
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
       )}
-    </div>
+
+      {systemEditor.error && (
+        <div className="px-2 pt-1">
+          <InlineAlert onDismiss={systemEditor.clearError}>{systemEditor.error}</InlineAlert>
+        </div>
+      )}
+
+      <nav
+        aria-label="Organ systems"
+        className="max-h-80 min-h-0 flex-1 overflow-y-auto p-2 custom-scrollbar lg:max-h-none"
+      >
+        {isLoadingOrganSystems ? (
+          <Spinner label="Loading…" className="py-8" />
+        ) : displaySystems.length === 0 ? (
+          <div className="px-2 py-6 text-center">
+            <p className="text-[13px] text-stone-500">
+              {searchTerm ? 'No matching organ systems' : 'No organ systems yet'}
+            </p>
+            {!searchTerm && canManage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={Plus}
+                onClick={systemEditor.openCreate}
+                className="mt-2"
+              >
+                New organ system
+              </Button>
+            )}
+          </div>
+        ) : (
+          <ul className="space-y-0.5">{displaySystems.map(renderSystem)}</ul>
+        )}
+      </nav>
+
+      {systemEditor.element}
+    </aside>
   );
 };
 

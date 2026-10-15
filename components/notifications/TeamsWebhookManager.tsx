@@ -1,27 +1,42 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  BellRing,
   CheckCircle2,
-  Link2,
   Loader2,
+  Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
-  Save,
   Send,
   Trash2,
   XCircle,
 } from 'lucide-react';
-import ConfirmationModal from '../ConfirmationModal';
 import { TeamsWebhook, notificationService } from '../../services/notificationService';
 import {
-  ErrorBanner,
-  Panel,
-  TableMessage,
+  Badge,
+  Button,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  Menu,
+  SectionHeader,
+  StatusDot,
+  SwitchRow,
+  cn,
+} from '@/components/ui';
+import {
+  DataTable,
+  LoadingRow,
+  Timestamp,
   errorMessage,
-  formatTimestamp,
-  inputClass,
-  labelClass,
-  primaryButtonClass,
-  secondaryButtonClass,
+  plural,
+  tdClass,
+  useToast,
 } from './shared';
 
 interface Draft {
@@ -62,7 +77,18 @@ const maskUrl = (url: string): string => {
   }
 };
 
+const COLUMNS = [
+  { label: 'Webhook' },
+  { label: 'Destination' },
+  { label: 'Status' },
+  { label: 'Created' },
+  { label: 'Actions', srOnly: true, className: 'w-px' },
+];
+
+const EDITOR_FORM_ID = 'teams-webhook-editor';
+
 const TeamsWebhookManager: React.FC = () => {
+  const { toast, showToast } = useToast();
   const [webhooks, setWebhooks] = useState<TeamsWebhook[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [listError, setListError] = useState('');
@@ -74,6 +100,7 @@ const TeamsWebhookManager: React.FC = () => {
   const [testingKey, setTestingKey] = useState('');
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [pendingDelete, setPendingDelete] = useState<TeamsWebhook | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -94,6 +121,17 @@ const TeamsWebhookManager: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const openEditor = (next: Draft) => {
+    setDraft(next);
+    setEditorError('');
+  };
+
+  const closeEditor = () => {
+    if (isSaving) return;
+    setDraft(null);
+    setEditorError('');
+  };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -126,6 +164,7 @@ const TeamsWebhookManager: React.FC = () => {
         created_at: '',
       });
       setDraft(null);
+      showToast(draft.isNew ? `Added webhook ${key}.` : `Saved webhook ${key}.`);
       await load();
     } catch (err) {
       console.error('Failed to save Teams webhook:', err);
@@ -166,6 +205,7 @@ const TeamsWebhookManager: React.FC = () => {
     setListError('');
     try {
       await notificationService.upsertWebhook({ ...webhook, enabled: !webhook.enabled });
+      showToast(`${webhook.key} ${webhook.enabled ? 'disabled' : 'enabled'}.`);
       await load();
     } catch (err) {
       console.error('Failed to update Teams webhook:', err);
@@ -177,6 +217,7 @@ const TeamsWebhookManager: React.FC = () => {
     setListError('');
     try {
       await notificationService.deleteWebhook(webhook.key);
+      showToast(`Deleted webhook ${webhook.key}.`);
       await load();
     } catch (err) {
       console.error('Failed to delete Teams webhook:', err);
@@ -184,257 +225,257 @@ const TeamsWebhookManager: React.FC = () => {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    await handleDelete(pendingDelete);
+    setIsDeleting(false);
+    setPendingDelete(null);
+  };
+
+  const enabledCount = webhooks.filter((webhook) => webhook.enabled).length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900">Teams Webhooks</h3>
-          <p className="text-sm text-slate-500">
-            Destinations for ops alerts. Notifications address a webhook by its key.
-          </p>
+    <div className="space-y-5">
+      <SectionHeader
+        title="Teams webhooks"
+        description="Destinations for ops alerts. Notifications address a webhook by its key; test one to post a card to its channel."
+        meta={
+          !isLoading && !listError && webhooks.length > 0 ? (
+            <Badge className="tabular-nums">
+              {enabledCount} of {plural(webhooks.length, 'webhook')} enabled
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          <>
+            <IconButton
+              icon={RefreshCw}
+              label="Refresh"
+              onClick={load}
+              disabled={isLoading}
+              className={isLoading ? '[&_svg]:animate-spin' : undefined}
+            />
+            <Button icon={Plus} onClick={() => openEditor(emptyDraft())}>
+              Add webhook
+            </Button>
+          </>
+        }
+      />
+
+      {listError && (
+        <InlineAlert onDismiss={() => setListError('')} className="break-words">
+          {listError}
+        </InlineAlert>
+      )}
+
+      {!isLoading && !listError && webhooks.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-300">
+          <EmptyState
+            icon={BellRing}
+            title="No Teams webhooks yet"
+            description="Add a channel's incoming webhook so ops alerts have somewhere to land."
+            action={
+              <Button variant="primary" icon={Plus} onClick={() => openEditor(emptyDraft())}>
+                Add webhook
+              </Button>
+            }
+          />
         </div>
+      ) : (
+        (isLoading || webhooks.length > 0) && (
+          <DataTable label="Teams webhooks" columns={COLUMNS} busy={isLoading && webhooks.length > 0}>
+            {isLoading && webhooks.length === 0 ? (
+              <LoadingRow colSpan={COLUMNS.length} label="Loading webhooks…" />
+            ) : (
+              webhooks.map((webhook) => {
+                const result = testResults[webhook.key];
+                const isTesting = testingKey === webhook.key;
 
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={load} disabled={isLoading} className={secondaryButtonClass}>
-            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Refresh
-          </button>
-          <button type="button" onClick={() => setDraft(emptyDraft())} className={primaryButtonClass}>
-            <Plus size={16} />
-            Add Webhook
-          </button>
-        </div>
-      </div>
+                return (
+                  <tr key={webhook.key} className="align-top transition-colors hover:bg-stone-50">
+                    <td className={tdClass}>
+                      <p className="font-mono font-medium text-stone-900">{webhook.key}</p>
+                      {webhook.name && <p className="mt-0.5 text-xs text-stone-500">{webhook.name}</p>}
+                    </td>
+                    <td className={tdClass}>
+                      <div className="max-w-[28rem]">
+                        <p className="break-all font-mono text-xs text-stone-600">{maskUrl(webhook.url)}</p>
+                        {webhook.description && (
+                          <p className="mt-0.5 text-xs text-stone-500">{webhook.description}</p>
+                        )}
+                        {result && (
+                          <p
+                            role="status"
+                            className={cn(
+                              'mt-1.5 flex items-start gap-1.5 text-xs',
+                              isTesting
+                                ? 'text-stone-500'
+                                : result.ok
+                                  ? 'text-brand-700'
+                                  : 'text-red-600',
+                            )}
+                          >
+                            {isTesting ? (
+                              <Loader2 size={13} className="mt-px flex-shrink-0 animate-spin" aria-hidden="true" />
+                            ) : result.ok ? (
+                              <CheckCircle2 size={13} className="mt-px flex-shrink-0" aria-hidden="true" />
+                            ) : (
+                              <XCircle size={13} className="mt-px flex-shrink-0" aria-hidden="true" />
+                            )}
+                            <span className="break-words">{result.message}</span>
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className={cn(tdClass, 'whitespace-nowrap')}>
+                      <StatusDot tone={webhook.enabled ? 'green' : 'neutral'}>
+                        {webhook.enabled ? 'Enabled' : 'Disabled'}
+                      </StatusDot>
+                    </td>
+                    <td className={cn(tdClass, 'text-stone-600')}>
+                      <Timestamp value={webhook.created_at} />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={Send}
+                          onClick={() => handleTest(webhook)}
+                          loading={isTesting}
+                          title={`Post a test card to ${webhook.name || webhook.key}`}
+                        >
+                          Test
+                        </Button>
+                        <Menu
+                          size="sm"
+                          label={`Actions for ${webhook.key}`}
+                          items={[
+                            {
+                              label: 'Edit',
+                              icon: Pencil,
+                              onSelect: () => openEditor(toDraft(webhook)),
+                            },
+                            {
+                              label: webhook.enabled ? 'Disable' : 'Enable',
+                              icon: webhook.enabled ? PowerOff : Power,
+                              onSelect: () => handleToggleEnabled(webhook),
+                            },
+                            {
+                              label: 'Delete webhook',
+                              icon: Trash2,
+                              tone: 'danger',
+                              onSelect: () => setPendingDelete(webhook),
+                            },
+                          ]}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </DataTable>
+        )
+      )}
 
-      <ErrorBanner message={listError} />
-
-      {draft && (
-        <form onSubmit={handleSave}>
-          <Panel
-            title={draft.isNew ? 'New webhook' : `Editing ${draft.key}`}
-            description="The URL contains a secret — it is masked in the directory once saved."
-          >
-            <div className="p-6 space-y-5">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                  <label htmlFor="webhook-key" className={labelClass}>
-                    Key
-                  </label>
-                  <input
-                    id="webhook-key"
-                    type="text"
+      <Dialog
+        open={draft !== null}
+        onClose={closeEditor}
+        dismissible={!isSaving}
+        width="max-w-lg"
+        title={draft?.isNew ? 'Add Teams webhook' : `Edit ${draft?.key ?? 'webhook'}`}
+        description="The URL contains a secret — it's masked in the list once saved."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeEditor} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" form={EDITOR_FORM_ID} loading={isSaving}>
+              {draft?.isNew ? 'Add webhook' : 'Save webhook'}
+            </Button>
+          </>
+        }
+      >
+        {draft && (
+          <form id={EDITOR_FORM_ID} onSubmit={handleSave} className="space-y-4">
+            {editorError && <InlineAlert className="break-words">{editorError}</InlineAlert>}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Key" description={draft.isNew ? 'How notifications address it' : 'Fixed once created'}>
+                {(id) => (
+                  <Input
+                    id={id}
                     value={draft.key}
                     onChange={(event) => setDraft({ ...draft, key: event.target.value })}
                     disabled={!draft.isNew}
                     placeholder="ops-alerts"
-                    className={`${inputClass} font-mono disabled:opacity-70 disabled:cursor-not-allowed`}
+                    className="font-mono text-[13px]"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="webhook-name" className={labelClass}>
-                    Name
-                  </label>
-                  <input
-                    id="webhook-name"
-                    type="text"
+                )}
+              </Field>
+              <Field label="Name" hint="Optional">
+                {(id) => (
+                  <Input
+                    id={id}
                     value={draft.name}
                     onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                    placeholder="Ops Alerts channel"
-                    className={inputClass}
+                    placeholder="Ops alerts channel"
                   />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="webhook-url" className={labelClass}>
-                  Incoming webhook URL
-                </label>
-                <div className="relative">
-                  <Link2 size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="webhook-url"
-                    type="url"
-                    value={draft.url}
-                    onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                    placeholder="https://outlook.office.com/webhook/…"
-                    className={`${inputClass} pl-11 font-mono text-xs`}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="webhook-description" className={labelClass}>
-                  Description
-                </label>
-                <input
-                  id="webhook-description"
-                  type="text"
+                )}
+              </Field>
+            </div>
+            <Field label="Incoming webhook URL">
+              {(id) => (
+                <Input
+                  id={id}
+                  type="url"
+                  value={draft.url}
+                  onChange={(event) => setDraft({ ...draft, url: event.target.value })}
+                  placeholder="https://outlook.office.com/webhook/…"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="font-mono text-[13px]"
+                />
+              )}
+            </Field>
+            <Field label="Description" hint="Optional">
+              {(id) => (
+                <Input
+                  id={id}
                   value={draft.description}
                   onChange={(event) => setDraft({ ...draft, description: event.target.value })}
                   placeholder="Where deployment and bounce alerts land"
-                  className={inputClass}
                 />
-              </div>
-
-              <label className="flex items-center gap-3 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={draft.enabled}
-                  onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                Enabled — disabled webhooks reject sends instead of posting.
-              </label>
-
-              <ErrorBanner message={editorError} />
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setDraft(null)} className={secondaryButtonClass}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={isSaving} className={primaryButtonClass}>
-                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  Save Webhook
-                </button>
-              </div>
-            </div>
-          </Panel>
-        </form>
-      )}
-
-      <Panel title="Webhook directory" description={`${webhooks.length} configured`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-white">
-              <tr className="border-b border-slate-200">
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Key</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Destination</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Created</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <TableMessage colSpan={5}>
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    Loading webhooks
-                  </span>
-                </TableMessage>
-              ) : webhooks.length === 0 ? (
-                <TableMessage colSpan={5}>
-                  No Teams webhooks configured yet.
-                </TableMessage>
-              ) : (
-                webhooks.map((webhook) => {
-                  const result = testResults[webhook.key];
-
-                  return (
-                    <tr key={webhook.key} className="hover:bg-slate-50/60 transition-colors align-top">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-mono font-bold text-slate-900">{webhook.key}</p>
-                        {webhook.name && (
-                          <p className="text-xs text-slate-500 mt-1">{webhook.name}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-xs font-mono text-slate-600 break-all">
-                          {maskUrl(webhook.url)}
-                        </p>
-                        {webhook.description && (
-                          <p className="text-xs text-slate-400 mt-1">{webhook.description}</p>
-                        )}
-                        {result && (
-                          <p
-                            className={`mt-2 inline-flex items-start gap-1.5 text-xs ${
-                              result.ok ? 'text-emerald-700' : 'text-rose-700'
-                            }`}
-                          >
-                            {result.ok ? (
-                              <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
-                            ) : (
-                              <XCircle size={13} className="mt-0.5 shrink-0" />
-                            )}
-                            {result.message}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleEnabled(webhook)}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold transition-colors ${
-                            webhook.enabled
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {webhook.enabled ? 'Enabled' : 'Disabled'}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">
-                        {formatTimestamp(webhook.created_at)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleTest(webhook)}
-                            disabled={testingKey === webhook.key}
-                            className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            {testingKey === webhook.key ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <Send size={14} />
-                            )}
-                            Test
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDraft(toDraft(webhook))}
-                            className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPendingDelete(webhook)}
-                            className="inline-flex items-center gap-2 px-3 py-2 border border-rose-200 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
               )}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+            </Field>
+            <div className="rounded-lg border border-stone-200 px-4 py-3">
+              <SwitchRow
+                label="Enabled"
+                description="Disabled webhooks reject sends instead of posting."
+                checked={draft.enabled}
+                onChange={(enabled) => setDraft({ ...draft, enabled })}
+              />
+            </div>
+          </form>
+        )}
+      </Dialog>
 
-      <ConfirmationModal
-        isOpen={pendingDelete !== null}
+      <ConfirmDialog
+        open={pendingDelete !== null}
         title="Delete webhook?"
-        message={
+        description={
           pendingDelete
             ? `"${pendingDelete.key}" will be removed. Any alert addressed to this key will fail until it is recreated, and the URL is not recoverable from here.`
             : ''
         }
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={() => {
-          if (pendingDelete) {
-            handleDelete(pendingDelete);
-          }
-          setPendingDelete(null);
-        }}
+        confirmLabel="Delete webhook"
+        busy={isDeleting}
+        onConfirm={() => void confirmDelete()}
         onCancel={() => setPendingDelete(null)}
       />
+
+      {toast}
     </div>
   );
 };

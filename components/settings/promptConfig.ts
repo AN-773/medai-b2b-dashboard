@@ -79,3 +79,15 @@ export const serializePromptSchema = (value: unknown): string => {
     return String(value);
   }
 };
+
+/** Sentence-case label for an exam scope: "STEP 1" → "Step 1"; "Global" stays. */
+export const displayPromptExam = (examLabel: string): string =>
+  examLabel.replace(/^STEP (\d+)$/i, 'Step $1');
+
+/** Badge tone for a scope: Global is neutral, Step 1 blue, later steps and custom exams violet. */
+export const getPromptScopeTone = (examLabel: string): 'neutral' | 'blue' | 'violet' =>
+  examLabel === 'Global'
+    ? 'neutral'
+    : examLabel.toLowerCase().includes('step 1')
+      ? 'blue'
+      : 'violet';

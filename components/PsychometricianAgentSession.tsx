@@ -1,18 +1,55 @@
-
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Mic, MicOff, Volume2, Activity } from 'lucide-react';
+import { Activity, Mic, MicOff, PhoneOff, Volume2 } from 'lucide-react';
+import { Button, Drawer, Spinner, StatusDot, cn } from '@/components/ui';
 
 interface PsychometricianAgentSessionProps {
   onClose: () => void;
   bankDataSummary: string;
 }
 
+const GREETING =
+  "I'm reviewing the bank health data now. What specific area of discrimination or difficulty would you like to discuss?";
+
+/** One message in the session transcript. */
+const AgentMessage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <li className="flex items-start gap-3">
+    <span
+      className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-ai-gradient text-xs font-semibold text-white"
+      aria-hidden="true"
+    >
+      S
+    </span>
+    <div className="min-w-0 max-w-[85%]">
+      <p className="text-xs font-medium text-stone-500">Sina</p>
+      <p className="mt-1 rounded-xl rounded-tl-sm bg-stone-100 px-3.5 py-2.5 text-sm leading-6 text-stone-800">
+        {children}
+      </p>
+    </div>
+  </li>
+);
+
+/** Animated input level — flat when the mic is muted or the session isn't live. */
+const VoiceLevel: React.FC<{ active: boolean }> = ({ active }) => (
+  <span className="inline-flex items-center gap-2 text-stone-400" aria-hidden="true">
+    <Volume2 size={16} />
+    <span className="flex h-4 items-end gap-0.5">
+      {[45, 85, 60, 75, 40].map((height, index) => (
+        <span
+          key={index}
+          className={cn('w-1 rounded-full transition-all', active ? 'animate-pulse bg-brand-500' : 'bg-stone-300')}
+          style={{ height: `${active ? height : 25}%`, animationDelay: `${index * 120}ms` }}
+        />
+      ))}
+    </span>
+  </span>
+);
+
 const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = ({ onClose, bankDataSummary }) => {
   const [isActive, setIsActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [transcript, setTranscript] = useState<string[]>([]);
-  
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
@@ -110,56 +147,83 @@ const PsychometricianAgentSession: React.FC<PsychometricianAgentSessionProps> = 
     };
   }, []);
 
+  const status = isConnecting
+    ? { tone: 'neutral' as const, label: 'Connecting' }
+    : !isActive
+      ? { tone: 'neutral' as const, label: 'Ended' }
+      : isMuted
+        ? { tone: 'amber' as const, label: 'Muted' }
+        : { tone: 'green' as const, label: 'Live' };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-6">
-      <div className="bg-white rounded-[2rem] md:rounded-[3rem] w-full max-w-xl shadow-2xl overflow-hidden overflow-y-auto max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-500">
-        <div className="p-10 text-center space-y-8">
-          <div className="flex justify-end">
-            <button onClick={onClose} className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground h-8 w-8 hover:bg-gray-200"><X size={24} /></button>
+    <Drawer
+      open
+      onClose={onClose}
+      width="max-w-md"
+      title="Voice session with Sina"
+      description="Psychometrician agent · Zephyr voice"
+      toolbar={
+        <div className="flex items-center gap-3 border-b border-stone-100 px-6 py-3">
+          <span
+            className={cn(
+              'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-ai-gradient text-white',
+              isActive && !isMuted && 'animate-pulse',
+            )}
+            aria-hidden="true"
+          >
+            <Activity size={16} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-stone-900">Sina</p>
+            <p className="text-xs text-stone-500">Ask about difficulty, discrimination or distractors</p>
           </div>
-          
-          <div className="flex flex-col items-center gap-6">
-            <div className={`w-32 h-32 rounded-full bg-[#1BD183] flex items-center justify-center text-white shadow-2xl relative ${isActive && !isMuted ? 'animate-pulse' : ''}`}>
-               <Activity size={48} className={isActive && !isMuted ? 'animate-bounce' : ''} />
-               <div className="absolute inset-0 rounded-full border-4 border-[#1BD183] animate-ping opacity-20"></div>
-            </div>
-            <div>
-              <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">Vocal Consultation</h2>
-              <p className="text-xs md:text-sm text-slate-500 font-medium">Psychometrician Agent: Zephyr</p>
-            </div>
-          </div>
-
-          <div className="flex justify-center gap-4">
-            <button 
-              onClick={() => setIsMuted(!isMuted)}
-              className={`p-6 rounded-3xl transition-all shadow-lg ${isMuted ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {isMuted ? <MicOff size={28} /> : <Mic size={28} />}
-            </button>
-            <div className="bg-slate-100 p-6 rounded-3xl text-[#1BD183] shadow-inner flex items-center gap-2">
-               <Volume2 size={28} />
-               <span className="w-16 h-2 bg-slate-200 rounded-full relative overflow-hidden">
-                  <div className="absolute inset-0 bg-[#1BD183] animate-shimmer"></div>
-               </span>
-            </div>
-          </div>
-
-          {isConnecting ? (
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Establishing Secure Uplink...</p>
-          ) : (
-            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-               <p className="text-xs font-bold text-black italic">"I'm reviewing the bank health data now. What specific area of discrimination or difficulty would you like to discuss?"</p>
-            </div>
-          )}
+          <StatusDot tone={status.tone}>{status.label}</StatusDot>
         </div>
-        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-center">
-           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              Sina Live Active
-           </div>
-        </div>
+      }
+      footer={
+        <>
+          <Button
+            variant={isMuted ? 'danger' : 'secondary'}
+            icon={isMuted ? MicOff : Mic}
+            onClick={() => setIsMuted(!isMuted)}
+            aria-pressed={isMuted}
+          >
+            {isMuted ? 'Unmute' : 'Mute'}
+          </Button>
+          <VoiceLevel active={isActive && !isMuted} />
+          <Button variant="primary" icon={PhoneOff} onClick={onClose} className="ml-auto">
+            End session
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-5 px-6 py-5">
+        {bankDataSummary && (
+          <details className="group rounded-lg border border-stone-200 px-3.5 py-2.5">
+            <summary className="cursor-pointer text-[13px] font-medium text-stone-700">
+              Context shared with Sina
+            </summary>
+            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-5 text-stone-600">{bankDataSummary}</p>
+          </details>
+        )}
+
+        {isConnecting ? (
+          <div className="flex flex-col items-center px-4 py-16 text-center" aria-live="polite">
+            <Spinner label="Connecting to Sina…" />
+            <p className="mt-2 max-w-xs text-[13px] leading-5 text-stone-500">
+              Allow microphone access if your browser asks. You can start talking as soon as the session is live.
+            </p>
+          </div>
+        ) : (
+          <ol className="space-y-4" aria-live="polite" aria-label="Conversation">
+            <AgentMessage>{GREETING}</AgentMessage>
+            {transcript.map((line, index) => (
+              <AgentMessage key={index}>{line}</AgentMessage>
+            ))}
+          </ol>
+        )}
       </div>
-    </div>
+    </Drawer>
   );
 };
 

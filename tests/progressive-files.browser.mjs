@@ -107,10 +107,10 @@ async (page) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Desktop overflow');
   await page.evaluate(() => { document.getElementById('root').style.maxWidth = '760px'; });
-  if (await page.locator('.course-resources-header').isVisible()) throw new Error('Narrow desktop panel should use cards');
   if (await page.evaluate(() => {
-    const panel = document.querySelector('.course-resources-panel').getBoundingClientRect();
-    return [...document.querySelectorAll('.course-resources-panel button')].some(button => button.getBoundingClientRect().right > panel.right);
+    const root = document.querySelector('[data-testid="course-resources-panel"]');
+    const panel = root.getBoundingClientRect();
+    return [...root.querySelectorAll('button')].some(button => button.getBoundingClientRect().right > panel.right);
   })) throw new Error('Actions clipped beside sidebar');
   await page.evaluate(() => { window.testRoot.unmount(); localStorage.removeItem('msai_educator_token'); });
   if (errors.length) throw new Error(errors.join('\n'));

@@ -7,7 +7,12 @@ const StudyPlanAuditDashboard: React.FC = () => {
   const { studyPlanIdentifier } = useParams<{
     studyPlanIdentifier: string;
   }>();
-  return studyPlanIdentifier ? <StudyPlanDetail /> : <StudyPlanList />;
+  // Keyed so switching plans starts from a clean workspace (tab, filters, drawers).
+  return studyPlanIdentifier ? (
+    <StudyPlanDetail key={studyPlanIdentifier} />
+  ) : (
+    <StudyPlanList />
+  );
 };
 
 export default StudyPlanAuditDashboard;

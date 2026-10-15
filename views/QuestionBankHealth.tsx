@@ -1,32 +1,189 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
-  ScatterChart, Scatter, ZAxis, ReferenceArea, ReferenceLine
+import {
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  ScatterChart, Scatter, ZAxis, ReferenceArea, ReferenceLine,
 } from 'recharts';
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpRight,
+  BookOpen,
+  ChevronsUpDown,
+  CircleHelp,
+  ClipboardList,
+  Gauge,
+  ListChecks,
+  SearchX,
+  SlidersHorizontal,
+  Users,
+  X,
+} from 'lucide-react';
 
 import DashboardCard from '../components/DashboardCard';
-import { AlertTriangle, CheckCircle2, XCircle, Info, X, ExternalLink, Loader2 } from 'lucide-react';
-import { ItemType } from '../types';
+import CustomTooltip from '../components/Tooltip';
 import { testsService } from '../services/testsService';
 import { Psychometric, DashboardStatsResponse } from '../types/TestsServiceTypes';
-import CustomTooltip from '../components/Tooltip';
-import SearchableSelect from '../components/SearchableSelect';
-import MultiSearchableSelect from '../components/MultiSearchableSelect';
 import { useGlobal } from '../contexts/GlobalContext';
 import { OrganSystem, Topic, Discipline, Tag, Subject, Competency } from '../types/TestsServiceTypes';
-import { Search, Filter, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import {
+  Button,
+  Dialog,
+  Drawer,
+  EmptyState,
+  InlineAlert,
+  PageHeader,
+  SearchInput,
+  SectionHeader,
+  Select,
+  Spinner,
+  StatusDot,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
+import { KpiTile } from '@/components/analytics/KpiTile';
+import { FilterChecklist, type FilterOption } from '@/components/analytics/FilterChecklist';
+import {
+  CHART_COLORS,
+  ChartFrame,
+  ChartLegend,
+  ChartTooltipCard,
+  axisLabel,
+  axisTick,
+  formatPercent,
+  tooltipDatum,
+  type ChartTooltipProps,
+} from '@/components/analytics/chartTheme';
+
+const EXAM_OPTIONS = [
+  { id: 'STEP 1', name: 'Step 1' },
+  { id: 'STEP 2', name: 'Step 2' },
+  { id: 'STEP 3', name: 'Step 3' },
+];
+
+type DifficultyBand = 'ideal' | 'acceptable' | 'out';
+
+const BAND_COLORS: Record<DifficultyBand, string> = {
+  ideal: CHART_COLORS.brand,
+  acceptable: CHART_COLORS.brandSoft,
+  out: CHART_COLORS.amber,
+};
+
+interface DifficultyBin {
+  range: string;
+  label: string;
+  count: number;
+  band: DifficultyBand;
+}
+
+interface ScatterPoint {
+  x: number;
+  y: number;
+  id: string;
+  z: number;
+  displayId: string;
+  editorId: string;
+}
+
+/** Question ids arrive as resource paths (".../questions/QID-1"); the editor wants the last segment. */
+const parseQuestionId = (questionId?: string) => {
+  const questionIdMatch = questionId?.match(/\/questions\/([^/]+)$/);
+  const displayId = questionIdMatch ? questionIdMatch[1] : questionId || 'Unknown';
+  const editorId = questionIdMatch
+    ? questionIdMatch[1]
+    : (questionId || '').split('/').filter(Boolean).pop() || '';
+  return { displayId, editorId };
+};
+
+const discriminationColor = (r: number) =>
+  r < 0 ? CHART_COLORS.red : r < 0.3 ? CHART_COLORS.amber : CHART_COLORS.brand;
+
+const fmt = (value: number) => value.toLocaleString();
+
+const SORT_HELP: Record<string, string> = {
+  total_answer_count: 'How many learner answers this item has.',
+  p_value: 'Difficulty: the share of learners who answered correctly (0–1). Target 0.30–0.70.',
+  r_b: 'Discrimination: point-biserial correlation with total score. 0.30 or higher is good; below 0 means strong learners miss it.',
+  must_revise: 'Whether every distractor attracts learners, or the item needs revision.',
+};
+
+interface SortHeaderProps {
+  column: string;
+  label: string;
+  align?: 'left' | 'right';
+  sortColumn: string;
+  sortDirection: 'asc' | 'desc';
+  onSort: (column: string) => void;
+}
+
+const SortHeader: React.FC<SortHeaderProps> = ({
+  column,
+  label,
+  align = 'left',
+  sortColumn,
+  sortDirection,
+  onSort,
+}) => {
+  const active = sortColumn === column;
+  const SortIcon = !active ? ChevronsUpDown : sortDirection === 'asc' ? ArrowUp : ArrowDown;
+  const help = SORT_HELP[column];
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={cn('whitespace-nowrap px-4 py-2.5 font-medium', align === 'right' && 'text-right')}
+    >
+      <span className={cn('inline-flex items-center gap-1', align === 'right' && 'flex-row-reverse')}>
+        <button
+          type="button"
+          onClick={() => onSort(column)}
+          className={cn(
+            'inline-flex items-center gap-1 rounded transition hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500',
+            active && 'text-stone-900',
+          )}
+        >
+          {label}
+          <SortIcon size={13} className={active ? 'text-stone-700' : 'text-stone-300'} aria-hidden="true" />
+        </button>
+        {help && (
+          <CustomTooltip content={help} position="top">
+            <span
+              tabIndex={0}
+              aria-label={`About ${label.toLowerCase()}: ${help}`}
+              className="inline-flex rounded text-stone-300 transition hover:text-stone-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+            >
+              <CircleHelp size={13} aria-hidden="true" />
+            </span>
+          </CustomTooltip>
+        )}
+      </span>
+    </th>
+  );
+};
+
+const StandardRow: React.FC<{ tone: BadgeTone; label: string; detail: string }> = ({
+  tone,
+  label,
+  detail,
+}) => (
+  <li className="flex items-baseline justify-between gap-4 py-2">
+    <StatusDot tone={tone}>{label}</StatusDot>
+    <span className="text-right text-[13px] tabular-nums text-stone-700">{detail}</span>
+  </li>
+);
 
 const QuestionBankHealth: React.FC = () => {
   const navigate = useNavigate();
   const [isStandardsModalOpen, setIsStandardsModalOpen] = useState(false);
   const [psychometrics, setPsychometrics] = useState<Psychometric[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [itemsError, setItemsError] = useState<string | null>(null);
+
   const [dashboardStats, setDashboardStats] = useState<DashboardStatsResponse | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  
+  const [statsError, setStatsError] = useState<string | null>(null);
+
   // Pagination State
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
@@ -50,7 +207,7 @@ const QuestionBankHealth: React.FC = () => {
   const [selectedExamType, setSelectedExamType] = useState<string>('ALL');
   const [selectedIdentifier, setSelectedIdentifier] = useState<string>('');
   const [localSearchQuery, setLocalSearchQuery] = useState('');
-  
+
   const [selectedOrganSystems, setSelectedOrganSystems] = useState<string[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [selectedCognitiveSkills, setSelectedCognitiveSkills] = useState<string[]>([]);
@@ -58,7 +215,7 @@ const QuestionBankHealth: React.FC = () => {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedCompetencies, setSelectedCompetencies] = useState<string[]>([]);
-  
+
   const [showFilters, setShowFilters] = useState(false);
 
   // Debounce search query
@@ -81,7 +238,7 @@ const QuestionBankHealth: React.FC = () => {
           testsService.getSubjects(1, 200),
           testsService.getCompetencies(1, 200)
         ]);
-        
+
         setOrganSystems(sysRes.items || []);
         setDisciplines(discRes.items || []);
         setTags(tagsRes.items || []);
@@ -104,11 +261,8 @@ const QuestionBankHealth: React.FC = () => {
         return;
       }
       try {
-        // Here we ideally fetch topics for all selected systems. 
-        // For now, testing service might just support filtering by the primary system if one is selected, 
-        // but given its signature it seems we can just fetch all topics and filter client-side or assume it handles it.
-        // Assuming testsService handles it if we pass nothing or we just fetch top 200
-        const response = await testsService.getTopics(selectedOrganSystems[0]); 
+        // Topics are fetched for the primary (first) selected system.
+        const response = await testsService.getTopics(selectedOrganSystems[0]);
         setTopics(response.items || []);
       } catch (error) {
         console.error('Failed to fetch topics:', error);
@@ -121,10 +275,11 @@ const QuestionBankHealth: React.FC = () => {
     const fetchPsychometrics = async () => {
       try {
         setLoading(true);
+        setItemsError(null);
         const res = await testsService.getPyschometrics(
-          page, 
-          limit, 
-          sortColumn, 
+          page,
+          limit,
+          sortColumn,
           sortDirection,
           selectedExamType === 'ALL' ? undefined : selectedExamType,
           selectedIdentifier || undefined,
@@ -140,6 +295,7 @@ const QuestionBankHealth: React.FC = () => {
         setTotalItems(res.total || 0);
       } catch (err) {
         console.error("Failed to fetch psychometrics", err);
+        setItemsError("Couldn't load item statistics. Try again in a moment.");
       } finally {
         setLoading(false);
       }
@@ -151,6 +307,7 @@ const QuestionBankHealth: React.FC = () => {
     const fetchStats = async () => {
       try {
         setStatsLoading(true);
+        setStatsError(null);
         const res = await testsService.getDashboardStats(
           selectedExamType === 'ALL' ? undefined : selectedExamType,
           selectedIdentifier || undefined,
@@ -165,6 +322,7 @@ const QuestionBankHealth: React.FC = () => {
         setDashboardStats(res);
       } catch (err) {
         console.error("Failed to fetch dashboard stats", err);
+        setStatsError("Couldn't load bank-level statistics. The item table below may still be available.");
       } finally {
         setStatsLoading(false);
       }
@@ -198,375 +356,637 @@ const QuestionBankHealth: React.FC = () => {
     setPage(1); // Reset to first page on sort
   };
 
-  const pValueDist = dashboardStats ? [
-    { range: '<0.3', label: 'Too Hard', count: dashboardStats.difficulty_distribution.too_hard, color: '#7F5CD3' },
-    { range: '0.3-0.5', label: 'Acceptable', count: dashboardStats.difficulty_distribution.acceptable_low, color: '#7F5CD3' },
-    { range: '0.5-0.6', label: 'Ideal', count: dashboardStats.difficulty_distribution.ideal, color: '#5D1AEC' },
-    { range: '0.6-0.7', label: 'Acceptable', count: dashboardStats.difficulty_distribution.acceptable_high, color: '#7F5CD3' },
-    { range: '>0.7', label: 'Too Easy', count: dashboardStats.difficulty_distribution.too_easy, color: '#5D1AEC' }
+  const showFlaggedItems = () => {
+    setSortColumn('must_revise');
+    setSortDirection('desc');
+    setPage(1);
+    document.getElementById('item-audit')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const openInWorkbench = (editorQuestionId: string) => {
+    if (!editorQuestionId || editorQuestionId === 'Unknown') return;
+    navigate(`/workbench?questionId=${encodeURIComponent(editorQuestionId)}`);
+  };
+
+  // ---- Filter groups (drawer + active chips) ----------------------------------
+  const filterGroups: Array<{
+    key: string;
+    label: string;
+    options: FilterOption[];
+    values: string[];
+    onChange: (values: string[]) => void;
+    loading?: boolean;
+    disabled?: boolean;
+    disabledHint?: string;
+  }> = [
+    {
+      key: 'organSystems',
+      label: 'Organ systems',
+      options: organSystems.map(x => ({ id: x.id, name: x.title || x.id })),
+      values: selectedOrganSystems,
+      onChange: (v) => { setSelectedOrganSystems(v); setSelectedTopics([]); setPage(1); },
+      loading: filtersLoading,
+    },
+    {
+      key: 'topics',
+      label: 'Topics',
+      options: topics.map(x => ({ id: x.id, name: x.title || x.id })),
+      values: selectedTopics,
+      onChange: (v) => { setSelectedTopics(v); setPage(1); },
+      disabled: selectedOrganSystems.length === 0,
+      disabledHint: 'Choose an organ system first — topics are listed for the first system you pick.',
+    },
+    {
+      key: 'cognitiveSkills',
+      label: 'Cognitive skills',
+      options: (cognitiveSkills || []).map(x => ({ id: x.id, name: x.title })),
+      values: selectedCognitiveSkills,
+      onChange: (v) => { setSelectedCognitiveSkills(v); setPage(1); },
+    },
+    {
+      key: 'disciplines',
+      label: 'Disciplines',
+      options: disciplines.map(x => ({ id: x.id, name: x.title })),
+      values: selectedDisciplines,
+      onChange: (v) => { setSelectedDisciplines(v); setPage(1); },
+      loading: filtersLoading,
+    },
+    {
+      key: 'subjects',
+      label: 'Subjects',
+      options: subjects.map(x => ({ id: x.id, name: x.title })),
+      values: selectedSubjects,
+      onChange: (v) => { setSelectedSubjects(v); setPage(1); },
+      loading: filtersLoading,
+    },
+    {
+      key: 'tags',
+      label: 'Tags',
+      options: tags.map(x => ({ id: x.id, name: x.title })),
+      values: selectedTags,
+      onChange: (v) => { setSelectedTags(v); setPage(1); },
+      loading: filtersLoading,
+    },
+    {
+      key: 'competencies',
+      label: 'Competencies',
+      options: competencies.map(x => ({ id: x.id, name: x.title })),
+      values: selectedCompetencies,
+      onChange: (v) => { setSelectedCompetencies(v); setPage(1); },
+      loading: filtersLoading,
+    },
+  ];
+
+  const activeGroups = filterGroups.filter(group => group.values.length > 0);
+  const clearAttributeFilters = () => {
+    setSelectedOrganSystems([]);
+    setSelectedTopics([]);
+    setSelectedCognitiveSkills([]);
+    setSelectedDisciplines([]);
+    setSelectedSubjects([]);
+    setSelectedTags([]);
+    setSelectedCompetencies([]);
+    setPage(1);
+  };
+
+  const chipLabel = (group: (typeof filterGroups)[number]) => {
+    if (group.values.length === 1) {
+      const name = group.options.find(option => option.id === group.values[0])?.name;
+      if (name) return `${group.label}: ${name}`;
+    }
+    return `${group.label} · ${group.values.length}`;
+  };
+
+  // ---- Chart data ---------------------------------------------------------------
+  const pValueDist: DifficultyBin[] = dashboardStats ? [
+    { range: '<0.30', label: 'Too hard', count: dashboardStats.difficulty_distribution.too_hard, band: 'out' },
+    { range: '0.30–0.50', label: 'Acceptable', count: dashboardStats.difficulty_distribution.acceptable_low, band: 'acceptable' },
+    { range: '0.50–0.60', label: 'Ideal', count: dashboardStats.difficulty_distribution.ideal, band: 'ideal' },
+    { range: '0.60–0.70', label: 'Acceptable', count: dashboardStats.difficulty_distribution.acceptable_high, band: 'acceptable' },
+    { range: '>0.70', label: 'Too easy', count: dashboardStats.difficulty_distribution.too_easy, band: 'out' },
   ] : [];
 
-  const scatterData = (dashboardStats?.scatter_plot_data || []).map(i => ({
+  const scatterData: ScatterPoint[] = (dashboardStats?.scatter_plot_data || []).map(i => ({
     x: i.p_value,
     y: i.r_b,
     id: i.question_id,
-    z: 100
+    z: 100,
+    ...parseQuestionId(i.question_id),
   }));
 
+  const difficultySummary = useMemo(() => {
+    if (!dashboardStats) return statsLoading ? 'Loading difficulty…' : 'No difficulty data.';
+    const d = dashboardStats.difficulty_distribution;
+    const total = d.too_hard + d.acceptable_low + d.ideal + d.acceptable_high + d.too_easy;
+    if (total === 0) return 'No items with learner attempts in this selection yet.';
+    const inRange = d.acceptable_low + d.ideal + d.acceptable_high;
+    return `${formatPercent(inRange, total)} of ${fmt(total)} items sit in the 0.30–0.70 target range · ${fmt(d.too_hard)} too hard, ${fmt(d.too_easy)} too easy.`;
+  }, [dashboardStats, statsLoading]);
+
+  const discriminationSummary = useMemo(() => {
+    if (!dashboardStats) return statsLoading ? 'Loading discrimination…' : 'No discrimination data.';
+    const points = dashboardStats.scatter_plot_data || [];
+    if (points.length === 0) return 'No items with learner attempts in this selection yet.';
+    const negative = points.filter(point => point.r_b < 0).length;
+    const weak = points.filter(point => point.r_b >= 0 && point.r_b < 0.3).length;
+    const good = points.length - negative - weak;
+    return `${fmt(good)} of ${fmt(points.length)} items discriminate well (r ≥ 0.30) · ${fmt(weak)} weak, ${fmt(negative)} negative.`;
+  }, [dashboardStats, statsLoading]);
+
+  const metrics = dashboardStats?.metrics;
+  const trend = metrics?.bank_strength_trend ?? 0;
+  const revisionCount = metrics?.items_requiring_revision ?? 0;
+
+  const rangeStart = psychometrics.length > 0 ? (page - 1) * limit + 1 : 0;
+  const rangeEnd = Math.min(page * limit, totalItems);
+
+  // ---- Render -------------------------------------------------------------------
+  const renderTableBody = () => {
+    if (loading && psychometrics.length === 0) {
+      return (
+        <tr>
+          <td colSpan={6}>
+            <Spinner label="Loading item statistics…" className="py-16" />
+          </td>
+        </tr>
+      );
+    }
+    if (psychometrics.length === 0) {
+      return (
+        <tr>
+          <td colSpan={6}>
+            {hasActiveFilters ? (
+              <EmptyState
+                compact
+                icon={SearchX}
+                title="No items match these filters"
+                description="Try a different ID or remove a filter."
+                action={
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                compact
+                icon={ClipboardList}
+                title="No item statistics yet"
+                description="Statistics appear here once learners have answered questions from your bank."
+              />
+            )}
+          </td>
+        </tr>
+      );
+    }
+    return psychometrics.map(item => {
+      const { displayId, editorId: editorQuestionId } = parseQuestionId(item.question_id);
+
+      const nfdString = item.stats?.Flawed_Distractor_Choice || "";
+      const nfdCount = nfdString ? nfdString.split(',').filter(Boolean).length : 0;
+      const rb = item.stats?.R_B ?? 0;
+      const title = item.title || 'Untitled question';
+
+      return (
+        <tr key={item.question_id} className="border-b border-stone-100 transition last:border-b-0 hover:bg-stone-50">
+          <td className="px-4 py-3 align-top">
+            <div className="max-w-xl">
+              <p className="line-clamp-2 text-sm font-medium leading-5 text-stone-900" title={title}>
+                {title}
+              </p>
+              <p className="mt-0.5 text-xs text-stone-500">{displayId}</p>
+            </div>
+          </td>
+          <td className="px-4 py-3 text-right align-top tabular-nums text-stone-600">
+            {fmt(item.stats?.Total_Answer_Count || 0)}
+          </td>
+          <td className="px-4 py-3 text-right align-top font-medium tabular-nums text-stone-900">
+            {item.stats?.P_value?.toFixed(2) || '0.00'}
+          </td>
+          <td className={cn('px-4 py-3 text-right align-top font-medium tabular-nums', rb < 0 ? 'text-red-600' : 'text-stone-900')}>
+            {item.stats?.R_B?.toFixed(2) || '0.00'}
+          </td>
+          <td className="px-4 py-3 align-top">
+            {item.stats?.must_revise ? (
+              <StatusDot tone="red">Revision required</StatusDot>
+            ) : nfdCount > 0 ? (
+              <StatusDot tone="amber">
+                {nfdCount} non-functional option{nfdCount === 1 ? '' : 's'}
+              </StatusDot>
+            ) : (
+              <StatusDot tone="green">All distractors working</StatusDot>
+            )}
+          </td>
+          <td className="px-4 py-2.5 text-right align-top">
+            <Button
+              size="sm"
+              variant="secondary"
+              iconRight={ArrowUpRight}
+              onClick={() => openInWorkbench(editorQuestionId)}
+              disabled={!editorQuestionId || editorQuestionId === 'Unknown'}
+              aria-label={`Review ${title}`}
+            >
+              Review
+            </Button>
+          </td>
+        </tr>
+      );
+    });
+  };
+
+  const examLabel = EXAM_OPTIONS.find(option => option.id === selectedExamType)?.name ?? selectedExamType;
+
   return (
-    <div className="space-y-6 relative">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          {statsLoading && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><Loader2 className="animate-spin text-[#1BD183]" size={20} /></div>}
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Bank Strength Score</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#1BD183]">{dashboardStats?.metrics.bank_strength_score ?? 0}%</span>
-            <span className={`text-xs font-bold ${(dashboardStats?.metrics.bank_strength_trend ?? 0) >= 0 ? 'text-green-600' : 'text-rose-500'}`}>
-              {(dashboardStats?.metrics.bank_strength_trend ?? 0) > 0 ? '+' : ''}{dashboardStats?.metrics.bank_strength_trend ?? 0}%
-            </span>
+    <div className="space-y-8">
+      <div>
+        <PageHeader
+          title="Bank health"
+          description="How your questions perform with learners — difficulty, discrimination and distractor quality — so you know which items to revise first."
+          actions={
+            <>
+              <Select
+                aria-label="Exam"
+                value={selectedExamType}
+                onChange={(event) => { setSelectedExamType(event.target.value); setPage(1); }}
+                className="w-36"
+              >
+                <option value="ALL">All exams</option>
+                {EXAM_OPTIONS.map(option => (
+                  <option key={option.id} value={option.id}>{option.name}</option>
+                ))}
+              </Select>
+              <Button icon={SlidersHorizontal} onClick={() => setShowFilters(true)}>
+                Filters
+                {activeGroups.length > 0 && (
+                  <span className="rounded bg-stone-900 px-1.5 text-xs leading-5 text-white tabular-nums">
+                    {activeGroups.length}
+                  </span>
+                )}
+              </Button>
+              <Button variant="ghost" icon={BookOpen} onClick={() => setIsStandardsModalOpen(true)}>
+                Standards
+              </Button>
+            </>
+          }
+        />
+
+        {hasActiveFilters && (
+          <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="Active filters">
+            {selectedExamType !== 'ALL' && (
+              <FilterChip
+                label={`Exam: ${examLabel}`}
+                onRemove={() => { setSelectedExamType('ALL'); setPage(1); }}
+              />
+            )}
+            {localSearchQuery && (
+              <FilterChip label={`ID: ${localSearchQuery}`} onRemove={() => setLocalSearchQuery('')} />
+            )}
+            {activeGroups.map(group => (
+              <FilterChip key={group.key} label={chipLabel(group)} onRemove={() => group.onChange([])} />
+            ))}
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear all
+            </Button>
           </div>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          {statsLoading && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><Loader2 className="animate-spin text-[#1BD183]" size={20} /></div>}
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Active Samples</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-800">
-              {dashboardStats?.metrics.total_active_samples ?? 0}
-            </span>
-            <span className="text-xs text-slate-400">Attempts</span>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          {statsLoading && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><Loader2 className="animate-spin text-[#1BD183]" size={20} /></div>}
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Functional Efficiency</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-emerald-600">{dashboardStats?.metrics.functional_efficiency_rate ?? 0}%</span>
-            <span className="text-xs text-slate-400">Distractors</span>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          {statsLoading && <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center"><Loader2 className="animate-spin text-[#1BD183]" size={20} /></div>}
-          <p className="text-xs font-bold text-slate-500 uppercase mb-1">Revision Required</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#FF5353]">
-               {dashboardStats?.metrics.items_requiring_revision ?? 0}
-            </span>
-            <span className="text-xs text-[#FF5353]/80 font-bold">Items</span>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <DashboardCard title="Difficulty Analysis (P-value)" subtitle="Cognitive distribution across total student attempts">
-          <div className="h-72">
+      {statsError && <InlineAlert tone="warning" onDismiss={() => setStatsError(null)}>{statsError}</InlineAlert>}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiTile
+          label="Bank strength"
+          icon={Gauge}
+          loading={statsLoading}
+          value={metrics ? `${metrics.bank_strength_score}%` : '—'}
+          context={
+            metrics ? (
+              <>
+                <span className={cn('font-medium tabular-nums', trend >= 0 ? 'text-brand-700' : 'text-red-600')}>
+                  {trend > 0 ? '+' : ''}{trend}%
+                </span>{' '}
+                trend
+              </>
+            ) : (
+              'Overall item quality score'
+            )
+          }
+        />
+        <KpiTile
+          label="Learner attempts"
+          icon={Users}
+          loading={statsLoading}
+          value={metrics ? fmt(metrics.total_active_samples) : '—'}
+          context="Answers recorded on matching items"
+        />
+        <KpiTile
+          label="Functional distractors"
+          icon={ListChecks}
+          loading={statsLoading}
+          value={metrics ? `${metrics.functional_efficiency_rate}%` : '—'}
+          context="Share of distractors that learners actually choose"
+        />
+        <KpiTile
+          label="Needs revision"
+          icon={AlertTriangle}
+          loading={statsLoading}
+          value={metrics ? fmt(revisionCount) : '—'}
+          context={
+            !metrics ? (
+              'Items flagged for revision'
+            ) : revisionCount > 0 ? (
+              <StatusDot tone="amber">{revisionCount === 1 ? 'Item' : 'Items'} flagged for revision</StatusDot>
+            ) : (
+              <StatusDot tone="green">No items flagged</StatusDot>
+            )
+          }
+          action={revisionCount > 0 ? { label: 'Show flagged items', onClick: showFlaggedItems } : undefined}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DashboardCard
+          title="Difficulty distribution"
+          subtitle={difficultySummary}
+          headingLevel={2}
+          actions={statsLoading ? <Spinner /> : undefined}
+        >
+          <ChartFrame label={`Bar chart of items by P-value range. ${difficultySummary}`} className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pValueDist}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
-                <RechartsTooltip cursor={{fill: 'transparent'}} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+              <BarChart data={pValueDist} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                <CartesianGrid vertical={false} stroke={CHART_COLORS.grid} />
+                <XAxis dataKey="range" axisLine={{ stroke: CHART_COLORS.axis }} tickLine={false} tick={axisTick} />
+                <YAxis axisLine={false} tickLine={false} tick={axisTick} allowDecimals={false} />
+                <RechartsTooltip
+                  cursor={{ fill: CHART_COLORS.hover }}
+                  content={(props: ChartTooltipProps) => {
+                    const bin = tooltipDatum<DifficultyBin>(props);
+                    if (!bin) return null;
+                    return (
+                      <ChartTooltipCard
+                        title={`P ${bin.range}`}
+                        rows={[{ label: bin.label, value: fmt(bin.count), color: BAND_COLORS[bin.band] }]}
+                      />
+                    );
+                  }}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={56}>
                   {pValueDist.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.8} />
+                    <Cell key={`cell-${index}`} fill={BAND_COLORS[entry.band]} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ChartFrame>
+          <ChartLegend
+            className="mt-3"
+            items={[
+              { label: 'Ideal (0.50–0.60)', color: BAND_COLORS.ideal, shape: 'square' },
+              { label: 'Acceptable', color: BAND_COLORS.acceptable, shape: 'square' },
+              { label: 'Too hard / too easy', color: BAND_COLORS.out, shape: 'square' },
+            ]}
+          />
         </DashboardCard>
 
-        <DashboardCard title="Discrimination Map (R_PB)" subtitle="Point-biserial correlation with total exam score">
-          <div className="h-72">
+        <DashboardCard
+          title="Discrimination map"
+          subtitle={discriminationSummary}
+          headingLevel={2}
+          actions={statsLoading ? <Spinner /> : undefined}
+        >
+          <ChartFrame
+            label={`Scatter plot of item difficulty against discrimination. ${discriminationSummary}`}
+            className="h-64"
+          >
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" dataKey="x" name="P" domain={[0, 1]} tick={{fontSize: 10}} label={{ value: 'Difficulty (P)', position: 'bottom', offset: 0, fontSize: 10 }} />
-                <YAxis type="number" dataKey="y" name="D" domain={[-0.5, 1]} tick={{fontSize: 10}} label={{ value: 'Discrimination (D)', position: 'left', angle: -90, offset: 0, fontSize: 10 }} />
-                <ZAxis type="number" dataKey="z" range={[100, 100]} />
-                <ReferenceArea x1={0.3} x2={0.7} y1={0.3} y2={1} fill="#10b981" fillOpacity={0.05} />
-                <ReferenceLine y={0.3} stroke="#10b981" strokeDasharray="5 5" />
-                <ReferenceLine y={0} stroke="#ef4444" strokeWidth={2} />
-                <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} />
-                <Scatter name="Items" data={scatterData}>
+              <ScatterChart margin={{ top: 8, right: 12, bottom: 20, left: 0 }}>
+                <CartesianGrid stroke={CHART_COLORS.grid} />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  name="P"
+                  domain={[0, 1]}
+                  tick={axisTick}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART_COLORS.axis }}
+                  label={{ value: 'Difficulty (P)', position: 'insideBottom', offset: -10, ...axisLabel }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  name="r"
+                  domain={[-0.5, 1]}
+                  tick={axisTick}
+                  tickLine={false}
+                  axisLine={{ stroke: CHART_COLORS.axis }}
+                  width={56}
+                  label={{ value: 'Discrimination (r)', angle: -90, position: 'insideLeft', offset: 4, style: { textAnchor: 'middle' }, ...axisLabel }}
+                />
+                <ZAxis type="number" dataKey="z" range={[48, 48]} />
+                <ReferenceArea x1={0.3} x2={0.7} y1={0.3} y2={1} fill={CHART_COLORS.brand} fillOpacity={0.07} />
+                <ReferenceLine y={0.3} stroke={CHART_COLORS.brand} strokeDasharray="4 4" />
+                <ReferenceLine y={0} stroke={CHART_COLORS.muted} />
+                <RechartsTooltip
+                  cursor={{ strokeDasharray: '3 3', stroke: CHART_COLORS.axis }}
+                  content={(props: ChartTooltipProps) => {
+                    const point = tooltipDatum<ScatterPoint>(props);
+                    if (!point) return null;
+                    return (
+                      <ChartTooltipCard
+                        title={point.displayId}
+                        rows={[
+                          { label: 'Difficulty (P)', value: point.x.toFixed(2) },
+                          { label: 'Discrimination (r)', value: point.y.toFixed(2), color: discriminationColor(point.y) },
+                        ]}
+                        footer="Click to open in the workbench"
+                      />
+                    );
+                  }}
+                />
+                <Scatter
+                  name="Items"
+                  data={scatterData}
+                  cursor="pointer"
+                  onClick={(entry: { payload?: ScatterPoint }) => {
+                    if (entry?.payload) openInWorkbench(entry.payload.editorId);
+                  }}
+                >
                   {scatterData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.y < 0 ? '#ef4444' : entry.y < 0.3 ? '#fbbf24' : '#10b981'} />
+                    <Cell key={`cell-${index}`} fill={discriminationColor(entry.y)} fillOpacity={0.85} />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
-          </div>
+          </ChartFrame>
+          <ChartLegend
+            className="mt-3"
+            items={[
+              { label: 'Good (r ≥ 0.30)', color: CHART_COLORS.brand },
+              { label: 'Weak (0–0.30)', color: CHART_COLORS.amber },
+              { label: 'Negative', color: CHART_COLORS.red },
+              { label: 'Target zone', color: CHART_COLORS.brandTint, shape: 'square' },
+            ]}
+          />
         </DashboardCard>
       </div>
 
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-visible">
-        {/* Filters Top Bar */}
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-           <div>
-              <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-                 Per-Item Psychometric Audit
-              </h3>
-              <div className="flex items-center gap-3 mt-1">
-                 <p className="text-sm text-slate-500 font-medium">
-                     {totalItems} items found.
-                 </p>
-                 {hasActiveFilters && (
-                   <button 
-                     onClick={clearFilters}
-                     className="flex items-center gap-1 text-[10px] font-black uppercase bg-rose-50 text-rose-500 hover:bg-rose-100 px-2 py-0.5 rounded-lg transition-colors"
-                   >
-                     <Trash2 size={12} /> Clear Filters
-                   </button>
-                 )}
-              </div>
-           </div>
-           <div className="flex items-center gap-4 w-full md:w-auto">
-              <div className="relative group w-full md:w-48">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
-                  <input 
-                      type="text" 
-                      placeholder="Search ID..."
-                      value={localSearchQuery}
-                      onChange={(e) => setLocalSearchQuery(e.target.value)}
-                      className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                  />
-              </div>
-              <button 
-                 onClick={() => setShowFilters(!showFilters)}
-                 className="flex items-center gap-2 text-[#1BD183] px-4 py-2.5 rounded-xl text-sm font-bold transition-colors hover:bg-[#1BD183]/10 whitespace-nowrap"
-              >
-                 <Filter size={16} />
-                 {showFilters ? 'Hide Filters' : 'Filters'}
-                 {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
-              <button onClick={() => setIsStandardsModalOpen(true)} className="text-[#1BD183] text-[10px] font-black uppercase tracking-widest flex items-center gap-2 whitespace-nowrap hidden sm:flex">
-                 <Info size={14} /> See Standards
-              </button>
-           </div>
-        </div>
+      <section id="item-audit" className="scroll-mt-6 space-y-4">
+        <SectionHeader
+          title="Item audit"
+          meta={<span className="text-[13px] tabular-nums text-stone-500">{fmt(totalItems)} items</span>}
+          description="Every item with its difficulty, discrimination and distractor check. Sort by a column, then open an item to revise it."
+          actions={
+            <SearchInput
+              value={localSearchQuery}
+              onChange={setLocalSearchQuery}
+              placeholder="Search by item ID"
+              className="w-full sm:w-64"
+            />
+          }
+        />
 
-        {/* Filters Grid */}
-        {showFilters && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 px-6 pt-6 pb-6 border-b border-slate-100 bg-slate-50/30 animate-in fade-in slide-in-from-top-4 duration-300">
-           {/* Exam Selection */}
-           <SearchableSelect
-             label="Exam Type"
-             options={[{ id: 'STEP 1', name: 'STEP 1' }, { id: 'STEP 2', name: 'STEP 2' }, { id: 'STEP 3', name: 'STEP 3' }]}
-             value={selectedExamType}
-             onChange={(value) => { setSelectedExamType(value); setPage(1); }}
-             allOption={{ id: 'ALL', name: 'All Exams' }}
-           />
+        {itemsError && <InlineAlert onDismiss={() => setItemsError(null)}>{itemsError}</InlineAlert>}
 
-           <MultiSearchableSelect
-             label="Organ Systems"
-             options={organSystems.map(x => ({ id: x.id, name: x.title || x.id }))}
-             values={selectedOrganSystems}
-             onChange={(v) => { setSelectedOrganSystems(v); setSelectedTopics([]); setPage(1); }}
-             placeholder={filtersLoading ? "Loading..." : "Filter systems..."}
-             disabled={filtersLoading}
-           />
-
-           <MultiSearchableSelect
-             label="Topics"
-             options={topics.map(x => ({ id: x.id, name: x.title || x.id }))}
-             values={selectedTopics}
-             onChange={(v) => { setSelectedTopics(v); setPage(1); }}
-             placeholder={selectedOrganSystems.length === 0 ? "Select System First" : "Filter topics..."}
-             disabled={selectedOrganSystems.length === 0}
-           />
-
-           <MultiSearchableSelect
-             label="Cognitive Skills"
-             options={(cognitiveSkills || []).map(x => ({ id: x.id, name: x.title }))}
-             values={selectedCognitiveSkills}
-             onChange={(v) => { setSelectedCognitiveSkills(v); setPage(1); }}
-             placeholder="Filter skills..."
-           />
-
-           <MultiSearchableSelect
-             label="Disciplines"
-             options={disciplines.map(x => ({ id: x.id, name: x.title }))}
-             values={selectedDisciplines}
-             onChange={(v) => { setSelectedDisciplines(v); setPage(1); }}
-             placeholder={filtersLoading ? "Loading..." : "Filter disciplines..."}
-             disabled={filtersLoading}
-           />
-
-           <MultiSearchableSelect
-             label="Subjects"
-             options={subjects.map(x => ({ id: x.id, name: x.title }))}
-             values={selectedSubjects}
-             onChange={(v) => { setSelectedSubjects(v); setPage(1); }}
-             placeholder={filtersLoading ? "Loading..." : "Filter subjects..."}
-             disabled={filtersLoading}
-           />
-
-           <MultiSearchableSelect
-             label="Tags"
-             options={tags.map(x => ({ id: x.id, name: x.title }))}
-             values={selectedTags}
-             onChange={(v) => { setSelectedTags(v); setPage(1); }}
-             placeholder={filtersLoading ? "Loading..." : "Filter tags..."}
-             disabled={filtersLoading}
-           />
-
-           <MultiSearchableSelect
-             label="Competencies"
-             options={competencies.map(x => ({ id: x.id, name: x.title }))}
-             values={selectedCompetencies}
-             onChange={(v) => { setSelectedCompetencies(v); setPage(1); }}
-             placeholder={filtersLoading ? "Loading..." : "Filter competencies..."}
-             disabled={filtersLoading}
-           />
-        </div>
-        )}
-
-        <div className="overflow-x-auto" style={{overflow:"visible"}}>
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item</th>
-                <th 
-                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
-                  onClick={() => handleSort('total_answer_count')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Attempts
-                    {sortColumn === 'total_answer_count' && (
-                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
-                  onClick={() => handleSort('p_value')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    P-Value
-                    {sortColumn === 'p_value' && (
-                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-slate-600 transition"
-                  onClick={() => handleSort('r_b')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    D-Value
-                    {sortColumn === 'r_b' && (
-                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-slate-600 transition"
-                  onClick={() => handleSort('must_revise')}
-                >
-                  <div className="flex items-center gap-1">
-                    NFD Audit
-                    {sortColumn === 'must_revise' && (
-                      <span className="text-slate-500">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-8">
-                    <div className="flex flex-col items-center justify-center gap-2 text-slate-500 text-sm font-bold">
-                      <Loader2 className="animate-spin text-slate-400" size={24} />
-                      Loading psychometric data...
-                    </div>
-                  </td>
+        <div className="rounded-xl border border-stone-200 bg-white shadow-card">
+          <div className="overflow-x-auto rounded-t-xl custom-scrollbar">
+            <table className={cn('w-full min-w-[820px] text-left text-[13px] transition-opacity', loading && psychometrics.length > 0 && 'opacity-60')} aria-busy={loading}>
+              <thead>
+                <tr className="border-b border-stone-200 bg-stone-50/70 text-stone-500">
+                  <th scope="col" className="px-4 py-2.5 font-medium">Item</th>
+                  <SortHeader column="total_answer_count" label="Attempts" align="right" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                  <SortHeader column="p_value" label="Difficulty (P)" align="right" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                  <SortHeader column="r_b" label="Discrimination (r)" align="right" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                  <SortHeader column="must_revise" label="Distractors" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                    <span className="sr-only">Action</span>
+                  </th>
                 </tr>
-              ) : psychometrics.map(item => {
-                const questionIdMatch = item.question_id?.match(/\/questions\/([^/]+)$/);
-                const displayId = questionIdMatch ? questionIdMatch[1] : item.question_id || 'Unknown';
-                const editorQuestionId = questionIdMatch ? questionIdMatch[1] : (item.question_id || '').split('/').filter(Boolean).pop() || '';
-                
-                const nfdString = item.stats?.Flawed_Distractor_Choice || "";
-                const nfdCount = nfdString ? nfdString.split(',').filter(Boolean).length : 0;
-                
-                return (
-                  <tr key={item.question_id} className="hover:bg-slate-50 transition">
-                    <td className="py-4 px-6">
-                      <div className="flex flex-col gap-1 max-w-[280px]">
-                        <CustomTooltip content={item.title || 'Untitled Question'} position="top">
-                          <span 
-                            className="font-bold text-slate-900 text-sm truncate max-w-[280px] block" 
-                          >
-                            {item.title || 'Untitled Question'}
-                          </span>
-                        </CustomTooltip>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {displayId}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6 text-center text-xs font-bold text-slate-500">{item.stats?.Total_Answer_Count || 0}</td>
-                    <td className="py-5 px-6 text-center font-black text-slate-800">{item.stats?.P_value?.toFixed(2) || '0.00'}</td>
-                    <td className="py-5 px-6 text-center font-black text-[#5D1AEC]">{item.stats?.R_B?.toFixed(2) || '0.00'}</td>
-                    <td className="py-5 px-6">
-                       {item.stats?.must_revise || nfdCount > 0 ? (
-                         <div className="flex items-center gap-2 text-[10px] font-bold text-rose-500 bg-rose-50 px-3 py-1 rounded-full w-fit">
-                            <AlertTriangle size={12} /> {item.stats?.must_revise ? 'Revision Required' : `${nfdCount} Non-functional options`}
-                         </div>
-                       ) : (
-                         <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full w-fit">
-                            <CheckCircle2 size={12} /> Optimized Distractors
-                         </div>
-                       )}
-                    </td>
-                    <td className="py-5 px-6 text-right">
-                       <button
-                          onClick={() => {
-                            if (!editorQuestionId) return;
-                            navigate(`/workbench?questionId=${encodeURIComponent(editorQuestionId)}`);
-                          }}
-                          disabled={!editorQuestionId || editorQuestionId === 'Unknown'}
-                          className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Review
-                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        
-        {/* Pagination Controls */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
-          <span className="text-xs font-bold text-slate-500">
-            Showing {psychometrics.length > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalItems)} of {totalItems} items
-          </span>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1 || loading}
-              className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
-            >
-              Previous
-            </button>
-            <span className="text-xs font-bold text-slate-600 px-2">
-              Page {page} of {totalPages || 1}
+              </thead>
+              <tbody>{renderTableBody()}</tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-[13px] text-stone-500">
+            <span className="tabular-nums">
+              {totalItems > 0
+                ? `Showing ${fmt(rangeStart)}–${fmt(rangeEnd)} of ${fmt(totalItems)} items`
+                : 'No items'}
             </span>
-            <button 
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
-              className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
-            >
-              Next
-            </button>
+            <div className="flex items-center gap-2">
+              {loading && psychometrics.length > 0 && <Spinner />}
+              <Button
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                Previous
+              </Button>
+              <span className="px-1 tabular-nums">
+                Page {page} of {totalPages || 1}
+              </span>
+              <Button
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      <Drawer
+        open={showFilters}
+        onClose={() => setShowFilters(false)}
+        width="max-w-md"
+        title="Filter items"
+        description="Narrow the stats and the item table to part of your bank."
+        footer={
+          <>
+            <Button variant="ghost" onClick={clearAttributeFilters} disabled={activeGroups.length === 0}>
+              Clear filters
+            </Button>
+            <span className="ml-auto text-[13px] text-stone-500">Filters apply as you choose</span>
+            <Button variant="primary" onClick={() => setShowFilters(false)}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        <div className="divide-y divide-stone-100 px-6 py-2">
+          {filterGroups.map(group => (
+            <FilterChecklist
+              key={group.key}
+              label={group.label}
+              options={group.options}
+              values={group.values}
+              onChange={group.onChange}
+              loading={group.loading}
+              disabled={group.disabled}
+              disabledHint={group.disabledHint}
+            />
+          ))}
+        </div>
+      </Drawer>
+
+      <Dialog
+        open={isStandardsModalOpen}
+        onClose={() => setIsStandardsModalOpen(false)}
+        width="max-w-lg"
+        title="Psychometric standards"
+        description="The thresholds this page uses to judge each item."
+        footer={
+          <Button variant="primary" onClick={() => setIsStandardsModalOpen(false)}>
+            Done
+          </Button>
+        }
+      >
+        <div className="space-y-5">
+          <section>
+            <h3 className="text-sm font-medium text-stone-900">Difficulty (P-value)</h3>
+            <p className="mt-0.5 text-[13px] text-stone-500">The share of learners who answer the item correctly.</p>
+            <ul className="mt-2 divide-y divide-stone-100">
+              <StandardRow tone="green" label="Ideal" detail="0.50–0.60" />
+              <StandardRow tone="blue" label="Acceptable" detail="0.30–0.50 and 0.60–0.70" />
+              <StandardRow tone="amber" label="Too hard / too easy" detail="Below 0.30 / above 0.70" />
+            </ul>
+          </section>
+          <section>
+            <h3 className="text-sm font-medium text-stone-900">Discrimination (point-biserial r)</h3>
+            <p className="mt-0.5 text-[13px] text-stone-500">How well the item separates stronger from weaker learners.</p>
+            <ul className="mt-2 divide-y divide-stone-100">
+              <StandardRow tone="green" label="Good" detail="0.30 or higher" />
+              <StandardRow tone="amber" label="Weak — review" detail="0 to 0.30" />
+              <StandardRow tone="red" label="Negative — revise" detail="Below 0" />
+            </ul>
+          </section>
+          <section>
+            <h3 className="text-sm font-medium text-stone-900">Distractors</h3>
+            <p className="mt-0.5 text-[13px] leading-5 text-stone-500">
+              A distractor is non-functional when almost no learners choose it (typically under 5%).
+              Items with non-functional options show an amber status; items the analysis marks for
+              revision show red.
+            </p>
+          </section>
+        </div>
+      </Dialog>
     </div>
   );
 };
+
+const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemove }) => (
+  <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-stone-100 py-1 pl-2.5 pr-1 text-xs font-medium text-stone-700">
+    <span className="truncate">{label}</span>
+    <button
+      type="button"
+      onClick={onRemove}
+      aria-label={`Remove filter ${label}`}
+      className="rounded p-0.5 text-stone-400 transition hover:bg-stone-200 hover:text-stone-800"
+    >
+      <X size={13} />
+    </button>
+  </span>
+);
 
 export default QuestionBankHealth;

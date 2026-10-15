@@ -80,7 +80,7 @@ const HoverTooltip: React.FC<HoverTooltipProps> = ({
                   ? 'translateX(-50%)'
                   : 'translate(-50%, -100%)',
             }}
-            className="pointer-events-none z-[200] max-w-xs whitespace-normal break-words rounded-lg bg-slate-900 px-2.5 py-1.5 text-left text-xs font-semibold leading-snug text-white shadow-lg shadow-slate-900/20"
+            className="pointer-events-none z-[200] max-w-xs whitespace-normal break-words rounded-md bg-stone-900 px-2 py-1.5 text-left text-xs leading-snug text-white shadow-pop"
           >
             {label}
           </span>,

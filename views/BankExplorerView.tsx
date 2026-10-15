@@ -1,158 +1,220 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  Search, 
-  Filter, 
-  ChevronDown, 
-  Trash2, 
-  ExternalLink,
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  ChevronDown,
   Database,
-  ShieldCheck,
-  ShieldAlert,
-  Sparkles,
-  XCircle,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  CheckSquare,
-  Square,
-  MinusSquare,
-  X
+  Hash,
+  Plus,
+  RefreshCw,
+  SearchX,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { testsService } from '../services/testsService';
-import SearchableSelect, { SelectOption } from '../components/SearchableSelect';
-import MultiSearchableSelect from '../components/MultiSearchableSelect';
-import ConfirmationModal from '../components/ConfirmationModal';
-import BulkProgressModal from '../components/BulkProgressModal';
+import BulkProgressModal, { type BulkItemResult } from '../components/BulkProgressModal';
 import { useGlobal } from '@/contexts/GlobalContext';
 import { BackendApiItem, Discipline, Tag, Subject } from '@/types/TestsServiceTypes';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  InlineAlert,
+  Input,
+  Menu,
+  PageHeader,
+  SearchInput,
+  Select,
+  Spinner,
+  type ButtonVariant,
+} from '@/components/ui';
+import {
+  PaginationFooter,
+  revealTop,
+} from '@/components/academy/course-workbench/objectives/ListHelpers';
+import BankFiltersDrawer from '@/components/bank/BankFiltersDrawer';
+import ItemBankTable from '@/components/bank/ItemBankTable';
+import ResultsBar from '@/components/bank/ResultsBar';
+import { Toast, useToast } from '@/components/bank/Toast';
+import {
+  ALL,
+  EMPTY_FILTERS,
+  STATUS_META,
+  STATUS_OPTIONS,
+  TYPE_META,
+  TYPE_OPTIONS,
+  countActiveFilters,
+  errorMessage,
+  itemId,
+  itemStem,
+  plural,
+  type BankFilterState,
+  type BulkStatus,
+  type Option,
+} from '@/components/bank/itemMeta';
 
 interface BankExplorerViewProps {
   onEditItem?: (itemId: string) => void;
 }
 
-type FilterType = 'ALL' | 'GOLD' | 'REMEDIATION' | 'EMERGING';
+/** Workbench deep-link ids that open a blank editor of each type. */
+const NEW_ITEM_OPTIONS = [
+  { type: 'mcq', label: 'Multiple choice (MCQ)', questionId: 'new' },
+  { type: 'saq', label: 'Short answer (SAQ)', questionId: 'new_saq' },
+  { type: 'flashcard', label: 'Flashcard', questionId: 'new_flashcard' },
+  { type: 'lecture', label: 'Lecture', questionId: 'new_lecture' },
+] as const;
+
+const NewItemMenu: React.FC<{ onCreate: (questionId: string) => void; variant?: ButtonVariant }> = ({
+  onCreate,
+  variant = 'primary',
+}) => (
+  <Menu
+    label="New item"
+    items={NEW_ITEM_OPTIONS.map((option) => ({
+      label: option.label,
+      icon: TYPE_META[option.type].icon,
+      onSelect: () => onCreate(option.questionId),
+    }))}
+    trigger={(props) => (
+      <Button variant={variant} icon={Plus} iconRight={ChevronDown} {...props}>
+        New item
+      </Button>
+    )}
+  />
+);
+
+type PendingAction =
+  | { kind: 'delete'; item: BackendApiItem }
+  | { kind: 'bulk-delete'; ids: string[] }
+  | { kind: 'bulk-status'; ids: string[]; status: BulkStatus };
+
+interface BulkProgressState {
+  isOpen: boolean;
+  title: string;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  isProcessing: boolean;
+  results: BulkItemResult[];
+}
+
+const CLOSED_PROGRESS: BulkProgressState = {
+  isOpen: false,
+  title: '',
+  totalItems: 0,
+  completedItems: 0,
+  failedItems: 0,
+  isProcessing: false,
+  results: [],
+};
+
+const clip = (text: string, length = 120) =>
+  text.length > length ? `${text.slice(0, length).trimEnd()}…` : text;
 
 const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
   const [items, setItems] = useState<BackendApiItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
 
   const { cognitiveSkills } = useGlobal();
+  const { toast, showToast, dismiss: dismissToast } = useToast();
 
   // Filter data from testsService
-  const [organSystems, setOrganSystems] = useState<SelectOption[]>([]);
-  const [topics, setTopics] = useState<SelectOption[]>([]);
-  const [subTopics, setSubTopics] = useState<SelectOption[]>([]);
+  const [organSystems, setOrganSystems] = useState<Option[]>([]);
+  const [topics, setTopics] = useState<Option[]>([]);
+  const [subTopics, setSubTopics] = useState<Option[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [subTopicsLoading, setSubTopicsLoading] = useState(false);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
 
-  const [selectedSystemId, setSelectedSystemId] = useState<string>('ALL');
-  const [selectedTopicId, setSelectedTopicId] = useState<string>('ALL');
-  const [selectedSubTopic, setSelectedSubTopic] = useState<string>('ALL');
-  
+  const [filters, setFilters] = useState<BankFilterState>(EMPTY_FILTERS);
   const [selectedQID, setSelectedQID] = useState<string>('');
-  const [selectedType, setSelectedType] = useState<string>('ALL');
-  const [selectedCognitiveSkillId, setSelectedCognitiveSkillId] = useState<string>('ALL');
-  const [selectedExamType, setSelectedExamType] = useState<string>('ALL');
-  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('ALL');
-  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  
-  const [showFilters, setShowFilters] = useState(false);
+  const [isFiltersOpen, setFiltersOpen] = useState(false);
 
   // Multi-select state
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const statusMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close status menu on outside click
-  useEffect(() => {
-    if (!showStatusMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setShowStatusMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showStatusMenu]);
 
   // Search states
   const [searchQuery, setSearchQuery] = useState(''); // Actual query sent to API
   const [localSearchQuery, setLocalSearchQuery] = useState(''); // Input value
-  
-  const [filterType, setFilterType] = useState<FilterType>('ALL');
+  const searchQueryRef = useRef(searchQuery);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
 
-  // Debounce search query
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  const requestRef = useRef(0);
+
+  // Debounce search query; a new query starts again from the first page.
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (localSearchQuery === searchQueryRef.current) return;
       setSearchQuery(localSearchQuery);
+      setPage(1);
     }, 500); // 500ms delay
 
     return () => clearTimeout(timer);
   }, [localSearchQuery]);
 
-  useEffect(() => {
-    fetchItems();
-    setSelectedItems([]);
-  }, [page, searchQuery, selectedSystemId, selectedTopicId, selectedSubTopic, filterType, selectedQID, selectedType, selectedCognitiveSkillId, selectedExamType, selectedStatus, selectedSubjectId, selectedDisciplines, selectedTags]);
-
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
+    // Only the latest request may update the list, so fast typing or paging
+    // can't leave an older response on screen.
+    const requestId = ++requestRef.current;
     try {
       setLoading(true);
-
-      // Map filter card types to API status values
-      const statusFilter = filterType === 'GOLD' ? 'live'
-        : filterType === 'REMEDIATION' ? 'draft'
-        : filterType === 'EMERGING' ? 'pending'
-        : selectedStatus === 'ALL' ? undefined : selectedStatus;
+      setFetchError(null);
 
       const response = await testsService.getItems(
         page,
         limit,
-        selectedType === 'ALL' ? undefined : selectedType,
-        statusFilter,
-        selectedExamType === 'ALL' ? undefined : selectedExamType,
+        filters.type === ALL ? undefined : filters.type,
+        filters.status === ALL ? undefined : filters.status,
+        filters.examType === ALL ? undefined : filters.examType,
         undefined, // learningObjectiveId
-        selectedSystemId === 'ALL' ? undefined : selectedSystemId,
-        selectedTopicId === 'ALL' ? undefined : selectedTopicId,
-        selectedDisciplines.length > 0 ? selectedDisciplines.join(',') : undefined,
-        selectedSubjectId === 'ALL' ? undefined : selectedSubjectId,
-        selectedTags.length > 0 ? selectedTags.join(',') : undefined,
+        filters.organSystemId === ALL ? undefined : filters.organSystemId,
+        filters.topicId === ALL ? undefined : filters.topicId,
+        filters.disciplines.length > 0 ? filters.disciplines.join(',') : undefined,
+        filters.subjectId === ALL ? undefined : filters.subjectId,
+        filters.tags.length > 0 ? filters.tags.join(',') : undefined,
         searchQuery || undefined,
-        selectedSubTopic === 'ALL' ? undefined : selectedSubTopic,
-        selectedCognitiveSkillId === 'ALL' ? undefined : selectedCognitiveSkillId,
+        filters.subTopicId === ALL ? undefined : filters.subTopicId,
+        filters.cognitiveSkillId === ALL ? undefined : filters.cognitiveSkillId,
         selectedQID || undefined,
       );
 
+      if (requestId !== requestRef.current) return;
       setItems(response.items);
       setTotal(response.total);
     } catch (error) {
+      if (requestId !== requestRef.current) return;
       console.error('Failed to fetch items:', error);
+      setFetchError(errorMessage(error, 'Something went wrong while loading items.'));
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) {
+        setLoading(false);
+        setHasLoaded(true);
+      }
     }
-  };
+  }, [page, limit, filters, searchQuery, selectedQID]);
 
-  const handleNextPage = () => {
-    if (page * limit < total) {
-      setPage((p) => p + 1);
-    }
-  };
+  useEffect(() => {
+    void fetchItems();
+    setSelectedItems([]);
+  }, [fetchItems]);
 
-  const handlePrevPage = () => {
-    if (page > 1) {
-      setPage((p) => p - 1);
-    }
-  };
-
-  const totalPages = Math.ceil(total / limit);
+  // Deleting the last items on the last page leaves an empty page behind.
+  useEffect(() => {
+    if (loading || total === 0) return;
+    const lastPage = Math.max(1, Math.ceil(total / limit));
+    if (page > lastPage) setPage(lastPage);
+  }, [loading, total, page, limit]);
 
   // Fetch initial filter data on mount
   useEffect(() => {
@@ -163,13 +225,10 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
           testsService.getOrganSystems(),
           testsService.getDisciplines(1, 200),
           testsService.getTags(1, 200),
-          testsService.getSubjects(1, 200)
+          testsService.getSubjects(1, 200),
         ]);
-        
-        setOrganSystems((sysRes.items || []).map(sys => ({
-          id: sys.id,
-          name: sys.title
-        })));
+
+        setOrganSystems((sysRes.items || []).map((sys) => ({ id: sys.id, name: sys.title })));
         setDisciplines(discRes.items || []);
         setTags(tagsRes.items || []);
         setSubjects(subjRes.items || []);
@@ -184,702 +243,601 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
 
   // Fetch topics when organ system changes
   useEffect(() => {
+    let cancelled = false;
     const fetchTopics = async () => {
-      if (selectedSystemId === 'ALL') {
+      if (filters.organSystemId === ALL) {
         setTopics([]);
         setSubTopics([]);
         return;
       }
+      setTopicsLoading(true);
       try {
-        const response = await testsService.getTopics(selectedSystemId);
-        setTopics((response.items || []).map(t => ({
-          id: t.id,
-          name: t.title,
-        })));
+        const response = await testsService.getTopics(filters.organSystemId);
+        if (cancelled) return;
+        setTopics((response.items || []).map((t) => ({ id: t.id, name: t.title })));
       } catch (error) {
         console.error('Failed to fetch topics:', error);
+      } finally {
+        if (!cancelled) setTopicsLoading(false);
       }
     };
     fetchTopics();
-  }, [selectedSystemId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.organSystemId]);
 
   // Fetch syndromes when topic changes
   useEffect(() => {
+    let cancelled = false;
     const fetchSyndromes = async () => {
-      if (selectedTopicId === 'ALL') {
+      if (filters.topicId === ALL) {
         setSubTopics([]);
         return;
       }
+      setSubTopicsLoading(true);
       try {
-        const response = await testsService.getSyndromes(selectedTopicId);
-        setSubTopics((response.items || []).map(s => ({
-          id: s.id,
-          name: s.title,
-        })));
+        const response = await testsService.getSyndromes(filters.topicId);
+        if (cancelled) return;
+        setSubTopics((response.items || []).map((s) => ({ id: s.id, name: s.title })));
       } catch (error) {
         console.error('Failed to fetch syndromes:', error);
+      } finally {
+        if (!cancelled) setSubTopicsLoading(false);
       }
     };
     fetchSyndromes();
-  }, [selectedTopicId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.topicId]);
 
-  // --- HELPER LOGIC ---
-  const checkGold = (item: BackendApiItem) => {
-    return item.status === 'live';
+  // --- OPTIONS ---
+  const skillOptions = useMemo<Option[]>(
+    () => (cognitiveSkills || []).map((cs) => ({ id: cs.id, name: cs.title })),
+    [cognitiveSkills],
+  );
+  // The items API filters subjects by title.
+  const subjectOptions = useMemo<Option[]>(
+    () => subjects.map((s) => ({ id: s.title, name: s.title })),
+    [subjects],
+  );
+  const disciplineOptions = useMemo<Option[]>(
+    () => disciplines.map((d) => ({ id: d.id, name: d.title })),
+    [disciplines],
+  );
+  const tagOptions = useMemo<Option[]>(() => tags.map((t) => ({ id: t.id, name: t.title })), [tags]);
+
+  const cognitiveSkillName = useCallback(
+    (item: BackendApiItem) => {
+      const objective = item.learningObjective;
+      const skillId = objective?.cognitiveSkillId;
+      if (!skillId) return objective?.cognitiveSkill?.title ?? null;
+      return (
+        cognitiveSkills?.find((cs) => cs.id === skillId)?.title ||
+        objective?.cognitiveSkill?.title ||
+        skillId.split('/').pop() ||
+        null
+      );
+    },
+    [cognitiveSkills],
+  );
+
+  // --- FILTERS ---
+  const updateFilters = (patch: Partial<BankFilterState>) => {
+    setFilters((current) => ({ ...current, ...patch }));
+    setPage(1);
   };
 
-  const checkRemediation = (item: BackendApiItem) => {
-    return item.status === 'draft';
+  const clearDrawerFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
   };
 
-  // --- METRICS CALCULATION ---
-  const metrics = useMemo(() => {
-    let gold = 0;
-    let remediation = 0;
-    let emerging = 0;
-
-    // We need to calculate metrics based on potentially unfiltered items if we want global stats
-    // But 'items' here is what's displayed. 
-    // If we want global stats, we might need a separate fetch or rely on what's loaded.
-    // For now, using 'items' is consistent with previous code.
-    items.forEach(item => {
-      if (checkGold(item)) {
-        gold++;
-      } else if (checkRemediation(item)) {
-        remediation++;
-      } else {
-        emerging++;
-      }
-    });
-
-    return { gold, remediation, emerging };
-  }, [items]);
-
-  // --- MODAL STATES ---
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel: string;
-    variant: 'danger' | 'warning' | 'info';
-    onConfirm: () => void;
-  }>({ isOpen: false, title: '', message: '', confirmLabel: 'Confirm', variant: 'danger', onConfirm: () => {} });
-
-  const [bulkProgress, setBulkProgress] = useState({
-    isOpen: false,
-    title: '',
-    totalItems: 0,
-    completedItems: 0,
-    failedItems: 0,
-    isProcessing: false,
-  });
-
-  const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
-
-  // Single item delete
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setConfirmModal({
-      isOpen: true,
-      title: 'Delete Item',
-      message: 'Are you sure you want to delete this item? This action cannot be undone.',
-      confirmLabel: 'Delete',
-      variant: 'danger',
-      onConfirm: async () => {
-        closeConfirmModal();
-        try {
-          await testsService.deleteItem(id);
-          fetchItems();
-        } catch (error) {
-          console.error('Failed to delete item:', error);
-        }
-      },
-    });
+  const clearFilters = () => {
+    setLocalSearchQuery('');
+    setSearchQuery('');
+    setSelectedQID('');
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
   };
 
-  // Multi-select handlers
-  const toggleSelectItem = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setSelectedItems(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+  const activeFilterCount = countActiveFilters(filters);
+  const hasActiveFilters = localSearchQuery !== '' || selectedQID !== '' || activeFilterCount > 0;
+  const hasAppliedFilters = searchQuery !== '' || selectedQID !== '' || activeFilterCount > 0;
+
+  const nameOf = (options: Option[], id: string) =>
+    options.find((option) => option.id === id)?.name ?? id;
+
+  // Filters that only live in the drawer, shown as removable chips so they're never invisible.
+  const hiddenFilterChips: { key: string; label: string; value: string; onRemove: () => void }[] = [
+    ...(filters.examType !== ALL
+      ? [{ key: 'exam', label: 'Exam', value: filters.examType, onRemove: () => updateFilters({ examType: ALL }) }]
+      : []),
+    ...(filters.cognitiveSkillId !== ALL
+      ? [
+          {
+            key: 'skill',
+            label: 'Cognitive skill',
+            value: nameOf(skillOptions, filters.cognitiveSkillId),
+            onRemove: () => updateFilters({ cognitiveSkillId: ALL }),
+          },
+        ]
+      : []),
+    ...(filters.organSystemId !== ALL
+      ? [
+          {
+            key: 'system',
+            label: 'Organ system',
+            value: nameOf(organSystems, filters.organSystemId),
+            onRemove: () => updateFilters({ organSystemId: ALL, topicId: ALL, subTopicId: ALL }),
+          },
+        ]
+      : []),
+    ...(filters.topicId !== ALL
+      ? [
+          {
+            key: 'topic',
+            label: 'Topic',
+            value: nameOf(topics, filters.topicId),
+            onRemove: () => updateFilters({ topicId: ALL, subTopicId: ALL }),
+          },
+        ]
+      : []),
+    ...(filters.subTopicId !== ALL
+      ? [
+          {
+            key: 'subtopic',
+            label: 'Subtopic',
+            value: nameOf(subTopics, filters.subTopicId),
+            onRemove: () => updateFilters({ subTopicId: ALL }),
+          },
+        ]
+      : []),
+    ...(filters.subjectId !== ALL
+      ? [
+          {
+            key: 'subject',
+            label: 'Subject',
+            value: filters.subjectId,
+            onRemove: () => updateFilters({ subjectId: ALL }),
+          },
+        ]
+      : []),
+    ...filters.disciplines.map((id) => ({
+      key: `discipline-${id}`,
+      label: 'Discipline',
+      value: nameOf(disciplineOptions, id),
+      onRemove: () =>
+        updateFilters({ disciplines: filters.disciplines.filter((value) => value !== id) }),
+    })),
+    ...filters.tags.map((id) => ({
+      key: `tag-${id}`,
+      label: 'Tag',
+      value: nameOf(tagOptions, id),
+      onRemove: () => updateFilters({ tags: filters.tags.filter((value) => value !== id) }),
+    })),
+  ];
+
+  // --- PAGINATION ---
+  const changePage = (nextPage: number) => {
+    setPage(nextPage);
+    revealTop(resultsRef.current);
+  };
+
+  // --- SELECTION ---
+  const toggleSelectItem = (id: string) => {
+    setSelectedItems((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
     if (selectedItems.length === items.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems(items.map(i => i.id));
+      setSelectedItems(items.map((i) => i.id));
     }
-  };
-
-  // Bulk delete with progress
-  const handleBulkDelete = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Delete Selected Items',
-      message: `Are you sure you want to delete ${selectedItems.length} item(s)? This action cannot be undone.`,
-      confirmLabel: `Delete ${selectedItems.length} Items`,
-      variant: 'danger',
-      onConfirm: async () => {
-        closeConfirmModal();
-        const itemsToProcess = [...selectedItems];
-        setBulkProgress({
-          isOpen: true,
-          title: `Deleting ${itemsToProcess.length} items...`,
-          totalItems: itemsToProcess.length,
-          completedItems: 0,
-          failedItems: 0,
-          isProcessing: true,
-        });
-
-        let completed = 0;
-        let failed = 0;
-        for (const id of itemsToProcess) {
-          try {
-            await testsService.deleteItem(id);
-            completed++;
-          } catch {
-            failed++;
-          }
-          setBulkProgress(prev => ({
-            ...prev,
-            completedItems: completed,
-            failedItems: failed,
-          }));
-        }
-
-        setBulkProgress(prev => ({
-          ...prev,
-          title: failed > 0 ? `Completed with ${failed} error(s)` : 'All items deleted successfully',
-          isProcessing: false,
-        }));
-        setSelectedItems([]);
-        fetchItems();
-      },
-    });
-  };
-
-  // Bulk status change with progress
-  const handleBulkStatusChange = (newStatus: "live" | "draft" | "pending") => {
-    setShowStatusMenu(false);
-    setConfirmModal({
-      isOpen: true,
-      title: 'Change Status',
-      message: `Change the status of ${selectedItems.length} item(s) to "${newStatus}"?`,
-      confirmLabel: `Update ${selectedItems.length} Items`,
-      variant: 'info',
-      onConfirm: async () => {
-        closeConfirmModal();
-        const itemsToProcess = [...selectedItems];
-        setBulkProgress({
-          isOpen: true,
-          title: `Updating status to "${newStatus}"...`,
-          totalItems: itemsToProcess.length,
-          completedItems: 0,
-          failedItems: 0,
-          isProcessing: true,
-        });
-
-        let completed = 0;
-        let failed = 0;
-        for (const id of itemsToProcess) {
-          try {
-            const targetItem = items.find((item) => item.id === id);
-            if (!targetItem) {
-              failed++;
-              setBulkProgress(prev => ({
-                ...prev,
-                completedItems: completed,
-                failedItems: failed,
-              }));
-              continue;
-            }
-            await testsService.upsertItem({
-              item: { id: targetItem.id, type: targetItem.type, status: newStatus },
-            });
-            completed++;
-          } catch {
-            failed++;
-          }
-          setBulkProgress(prev => ({
-            ...prev,
-            completedItems: completed,
-            failedItems: failed,
-          }));
-        }
-
-        setBulkProgress(prev => ({
-          ...prev,
-          title: failed > 0 ? `Completed with ${failed} error(s)` : 'All items updated successfully',
-          isProcessing: false,
-        }));
-        setSelectedItems([]);
-        fetchItems();
-      },
-    });
   };
 
   const clearSelection = () => setSelectedItems([]);
 
-  const handleCardClick = (type: FilterType) => {
-    if (filterType === type) {
-      setFilterType('ALL'); // Toggle off
+  // Row click: while picking rows it toggles selection, otherwise it opens the item.
+  const handleRowActivate = (item: BackendApiItem) => {
+    if (selectedItems.length > 0) {
+      toggleSelectItem(item.id);
     } else {
-      setFilterType(type);
+      onEditItem?.(itemId(item));
     }
   };
 
-  const clearFilters = () => {
-    setLocalSearchQuery('');
-    setSearchQuery('');
-    setSelectedSystemId('ALL');
-    setSelectedTopicId('ALL');
-    setSelectedSubTopic('ALL');
-    setSelectedQID('');
-    setSelectedType('ALL');
-    setSelectedCognitiveSkillId('ALL');
-    setSelectedExamType('ALL');
-    setSelectedStatus('ALL');
-    setSelectedSubjectId('ALL');
-    setSelectedDisciplines([]);
-    setSelectedTags([]);
-    setFilterType('ALL');
-    setPage(1);
+  // --- ACTIONS ---
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [isDeleting, setDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<BulkProgressState>(CLOSED_PROGRESS);
+
+  // Single item delete
+  const handleDelete = (item: BackendApiItem) => setPendingAction({ kind: 'delete', item });
+
+  const deleteSingleItem = async (item: BackendApiItem) => {
+    setDeleting(true);
+    try {
+      await testsService.deleteItem(item.id);
+      setSelectedItems((prev) => prev.filter((id) => id !== item.id));
+      showToast(`Deleted ${itemId(item)}`);
+      fetchItems();
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      showToast(errorMessage(error, 'Couldn’t delete the item.'), 'error');
+    } finally {
+      setDeleting(false);
+      setPendingAction(null);
+    }
   };
 
-  const hasActiveFilters = localSearchQuery !== '' || selectedSystemId !== 'ALL' || selectedTopicId !== 'ALL' || selectedSubTopic !== 'ALL' || filterType !== 'ALL' || selectedQID !== '' || selectedType !== 'ALL' || selectedCognitiveSkillId !== 'ALL' || selectedExamType !== 'ALL' || selectedStatus !== 'ALL' || selectedSubjectId !== 'ALL' || selectedDisciplines.length > 0 || selectedTags.length > 0;
+  /** Runs one request per item in order, reporting progress and per-item results. */
+  const runBulk = async (
+    ids: string[],
+    titles: { running: string; success: string },
+    operation: (id: string) => Promise<unknown>,
+  ) => {
+    const results: BulkItemResult[] = ids.map((id) => {
+      const item = items.find((candidate) => candidate.id === id);
+      return {
+        id,
+        label: item ? itemId(item) : id,
+        detail: item ? itemStem(item) : undefined,
+        state: 'queued',
+      };
+    });
+    setBulkProgress({
+      isOpen: true,
+      title: titles.running,
+      totalItems: ids.length,
+      completedItems: 0,
+      failedItems: 0,
+      isProcessing: true,
+      results,
+    });
+
+    const updateResult = (id: string, patch: Partial<BulkItemResult>, counts?: { completed: number; failed: number }) =>
+      setBulkProgress((prev) => ({
+        ...prev,
+        ...(counts ? { completedItems: counts.completed, failedItems: counts.failed } : {}),
+        results: prev.results.map((result) => (result.id === id ? { ...result, ...patch } : result)),
+      }));
+
+    let completed = 0;
+    let failed = 0;
+    for (const id of ids) {
+      updateResult(id, { state: 'working' });
+      try {
+        await operation(id);
+        completed++;
+        updateResult(id, { state: 'done' }, { completed, failed });
+      } catch (error) {
+        failed++;
+        updateResult(
+          id,
+          { state: 'failed', message: errorMessage(error, 'The request failed.') },
+          { completed, failed },
+        );
+      }
+    }
+
+    setBulkProgress((prev) => ({
+      ...prev,
+      title: failed > 0 ? `Finished with ${plural(failed, 'error')}` : titles.success,
+      isProcessing: false,
+    }));
+    setSelectedItems([]);
+    fetchItems();
+  };
+
+  // Bulk delete with progress
+  const handleBulkDelete = () => setPendingAction({ kind: 'bulk-delete', ids: [...selectedItems] });
+
+  // Bulk status change with progress
+  const handleBulkStatusChange = (newStatus: BulkStatus) =>
+    setPendingAction({ kind: 'bulk-status', ids: [...selectedItems], status: newStatus });
+
+  const confirmPendingAction = () => {
+    if (!pendingAction) return;
+    if (pendingAction.kind === 'delete') {
+      void deleteSingleItem(pendingAction.item);
+      return;
+    }
+
+    const action = pendingAction;
+    setPendingAction(null);
+    const count = plural(action.ids.length, 'item');
+
+    if (action.kind === 'bulk-delete') {
+      void runBulk(action.ids, { running: `Deleting ${count}…`, success: `Deleted ${count}` }, (id) =>
+        testsService.deleteItem(id),
+      );
+      return;
+    }
+
+    const statusLabel = STATUS_META[action.status].label;
+    const pageItems = items;
+    void runBulk(
+      action.ids,
+      { running: `Setting ${count} to ${statusLabel}…`, success: `Updated ${count}` },
+      async (id) => {
+        const targetItem = pageItems.find((item) => item.id === id);
+        if (!targetItem) throw new Error('This item is no longer in the list.');
+        await testsService.upsertItem({
+          item: { id: targetItem.id, type: targetItem.type, status: action.status },
+        });
+      },
+    );
+  };
+
+  const confirmCopy = (() => {
+    if (!pendingAction) return null;
+    if (pendingAction.kind === 'delete') {
+      const { item } = pendingAction;
+      return {
+        title: 'Delete this item?',
+        description: (
+          <>
+            “{clip(itemStem(item))}” ({itemId(item)}) will be permanently removed from the bank.
+            This can’t be undone.
+          </>
+        ),
+        confirmLabel: 'Delete item',
+        tone: 'danger' as const,
+      };
+    }
+    const count = plural(pendingAction.ids.length, 'item');
+    if (pendingAction.kind === 'bulk-delete') {
+      return {
+        title: `Delete ${count}?`,
+        description: `The ${count} you selected will be permanently removed from the bank. This can’t be undone.`,
+        confirmLabel: `Delete ${count}`,
+        tone: 'danger' as const,
+      };
+    }
+    return {
+      title: 'Change status?',
+      description: `The ${count} you selected will be set to “${STATUS_META[pendingAction.status].label}”.`,
+      confirmLabel: `Update ${count}`,
+      tone: 'default' as const,
+    };
+  })();
+
+  // --- RENDER ---
+  const renderResults = () => {
+    if (!hasLoaded) return <Spinner label="Loading items…" className="py-24" />;
+
+    if (items.length === 0) {
+      // About to step back from a page that no longer exists — don't flash "empty".
+      if (total > 0 && page > Math.ceil(total / limit)) {
+        return <Spinner label="Loading items…" className="py-16" />;
+      }
+      if (fetchError) {
+        return (
+          <EmptyState
+            compact
+            icon={AlertTriangle}
+            title="Couldn’t load items"
+            description={fetchError}
+            action={
+              <Button size="sm" icon={RefreshCw} onClick={() => void fetchItems()} loading={loading}>
+                Try again
+              </Button>
+            }
+          />
+        );
+      }
+      if (loading) return <Spinner label="Loading items…" className="py-16" />;
+      if (hasAppliedFilters) {
+        return (
+          <EmptyState
+            compact
+            icon={SearchX}
+            title="No items match"
+            description="Try a different search, or remove some filters."
+            action={
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            }
+          />
+        );
+      }
+      return (
+        <EmptyState
+          icon={Database}
+          title="The item bank is empty"
+          description="Questions, flashcards and lectures you create in the workbench show up here."
+          action={onEditItem && <NewItemMenu onCreate={onEditItem} variant="secondary" />}
+        />
+      );
+    }
+
+    return (
+      <>
+        <ResultsBar
+          total={total}
+          selectedCount={selectedItems.length}
+          hasActiveFilters={hasAppliedFilters}
+          isRefreshing={loading}
+          onClearSelection={clearSelection}
+          onChangeStatus={handleBulkStatusChange}
+          onDelete={handleBulkDelete}
+        />
+        {fetchError && (
+          <InlineAlert
+            className="mx-4 mt-3"
+            title="Couldn’t refresh the list"
+            action={
+              <Button size="sm" variant="ghost" onClick={() => void fetchItems()}>
+                Retry
+              </Button>
+            }
+          >
+            {fetchError}
+          </InlineAlert>
+        )}
+        <ItemBankTable
+          items={items}
+          selectedIds={selectedItems}
+          selectionMode={selectedItems.length > 0}
+          onToggle={toggleSelectItem}
+          onToggleAll={toggleSelectAll}
+          onActivate={handleRowActivate}
+          onOpen={onEditItem ? (item) => onEditItem(itemId(item)) : undefined}
+          onDelete={handleDelete}
+          cognitiveSkillName={cognitiveSkillName}
+          busy={loading}
+        />
+        <PaginationFooter
+          className="rounded-b-xl border-t border-stone-100 px-4"
+          page={page}
+          pageSize={limit}
+          total={total}
+          onPageChange={changePage}
+          disabled={loading}
+        />
+      </>
+    );
+  };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      
-      {/* 1. Repository Status Cards */}
-      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6"> */}
-        {/* Summative Gold */}
-        {/* <div 
-          onClick={() => handleCardClick('GOLD')}
-          className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
-            ${filterType === 'GOLD' 
-              ? 'bg-[#1BD183]/10 border-[#1BD183] ring-4 ring-[#1BD183]/20 shadow-xl scale-[1.02]' 
-              : 'bg-white border-slate-200 border shadow-sm hover:border-[#1BD183]/50 hover:shadow-md'
-            }
-          `}
-        >
-           <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
-              <ShieldCheck size={120} className="text-[#1BD183]" />
-           </div>
-           <div className="relative z-10">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${filterType === 'GOLD' ? 'bg-[#1BD183]/20 text-[#1BD183]' : 'bg-slate-50 text-slate-400 group-hover:text-[#1BD183] group-hover:bg-[#1BD183]/10'}`}>
-                 <ShieldCheck size={24} />
-              </div>
-              <h3 className={`text-sm font-black uppercase tracking-widest ${filterType === 'GOLD' ? 'text-[#1BD183]' : 'text-slate-900'}`}>Summative Gold</h3>
-              <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'GOLD' ? 'text-[#1BD183]/70' : 'text-slate-400'}`}>Published • Validated</p>
-           </div>
-           <p className={`text-4xl font-black relative z-10 ${filterType === 'GOLD' ? 'text-[#1BD183]' : 'text-slate-300 group-hover:text-[#1BD183]/50'}`}>{metrics.gold}</p>
-        </div> */}
-
-        {/* Remediation Hub */}
-        {/* <div 
-          onClick={() => handleCardClick('REMEDIATION')}
-          className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
-            ${filterType === 'REMEDIATION' 
-              ? 'bg-amber-50 border-amber-500 ring-4 ring-amber-500/20 shadow-xl scale-[1.02]' 
-              : 'bg-white border-slate-200 border shadow-sm hover:border-amber-300 hover:shadow-md'
-            }
-          `}
-        >
-           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <ShieldAlert size={120} className="text-amber-600" />
-           </div>
-           <div className="relative z-10">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${filterType === 'REMEDIATION' ? 'bg-amber-100 text-amber-700' : 'bg-slate-50 text-slate-400 group-hover:text-amber-600 group-hover:bg-amber-50'}`}>
-                 <ShieldAlert size={24} />
-              </div>
-              <h3 className={`text-sm font-black uppercase tracking-widest ${filterType === 'REMEDIATION' ? 'text-amber-900' : 'text-slate-900'}`}>Remediation Hub</h3>
-              <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'REMEDIATION' ? 'text-amber-700' : 'text-slate-400'}`}>Draft • Needs Review</p>
-           </div>
-           <p className={`text-4xl font-black relative z-10 ${filterType === 'REMEDIATION' ? 'text-amber-600' : 'text-slate-300 group-hover:text-amber-600/50'}`}>{metrics.remediation}</p>
-        </div> */}
-
-        {/* Emerging Vault */}
-        {/* <div 
-          onClick={() => handleCardClick('EMERGING')}
-          className={`relative overflow-hidden rounded-[2rem] p-8 flex flex-col justify-between h-48 cursor-pointer transition-all duration-300 group
-            ${filterType === 'EMERGING' 
-              ? 'bg-emerald-50 border-[#1BD183] ring-4 ring-[#1BD183]/20 shadow-xl scale-[1.02]' 
-              : 'bg-white border-slate-200 border shadow-sm hover:border-emerald-300 hover:shadow-md'
-            }
-          `}
-        >
-           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <Sparkles size={120} className="text-[#1BD183]" />
-           </div>
-           <div className="relative z-10">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${filterType === 'EMERGING' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-50 text-slate-400 group-hover:text-[#1BD183] group-hover:bg-emerald-50'}`}>
-                 <Sparkles size={24} />
-              </div>
-              <h3 className={`text-sm font-black uppercase tracking-widest ${filterType === 'EMERGING' ? 'text-slate-900' : 'text-slate-900'}`}>Emerging Vault</h3>
-              <p className={`text-[10px] font-bold uppercase tracking-tight mt-1 ${filterType === 'EMERGING' ? 'text-emerald-700' : 'text-slate-400'}`}>Experimental • New</p>
-           </div>
-           <p className={`text-4xl font-black relative z-10 ${filterType === 'EMERGING' ? 'text-[#1BD183]' : 'text-slate-300 group-hover:text-[#1BD183]/50'}`}>{metrics.emerging}</p>
-        </div>
-      </div> */}
-
-      {/* 2. Main Explorer & Filters */}
-      <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-            <div>
-                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-                    <Database size={24} className="text-[#1BD183]" />
-                    Global Item Repository
-                </h2>
-                <div className="flex items-center gap-3 mt-1">
-                  <p className="text-sm text-slate-500 font-medium">
-                      {items.length} items found.
-                  </p>
-                  {filterType !== 'ALL' && (
-                    <button onClick={() => setFilterType('ALL')} className="flex items-center gap-1 text-[10px] font-black uppercase bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-0.5 rounded-lg transition-colors">
-                      <XCircle size={12} /> {filterType} Filter Active
-                    </button>
-                  )}
-                  {hasActiveFilters && (
-                    <button 
-                      onClick={clearFilters}
-                      className="flex items-center gap-1 text-[10px] font-black uppercase bg-rose-50 text-rose-500 hover:bg-rose-100 px-2 py-0.5 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={12} /> Clear Filters
-                    </button>
-                  )}
-                </div>
-            </div>
-            
-            <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                <div className="relative group w-full md:w-48">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Search Word..."
-                        value={localSearchQuery}
-                        onChange={(e) => setLocalSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                    />
-                </div>
-                <div className="relative group w-full md:w-48">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1BD183] transition-colors" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Search QID..."
-                        value={selectedQID}
-                        onChange={(e) => {
-                          setSelectedQID(e.target.value);
-                          setPage(1);
-                        }}
-                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                    />
-                </div>
-            </div>
-        </div>
-
-        {/* Filters Toggle Button */}
-        <div className="flex items-center justify-end mt-4">
-          <button 
-             onClick={() => setShowFilters(!showFilters)}
-             className="flex items-center gap-2 text-[#1BD183] px-4 py-2 rounded-xl text-sm font-bold transition-colors hover:bg-[#1BD183]/20"
-          >
-             <Filter size={16} />
-             {showFilters ? 'Hide Advanced Filters' : 'Show Advanced Filters'}
-             {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-
-        {/* Filters Grid */}
-        {showFilters && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 pt-6 border-t border-slate-50 mt-6 animate-in fade-in slide-in-from-top-4 duration-300">
-           {/* Item Type Selection */}
-           <SearchableSelect
-             label="Item Type"
-             options={[{ id: 'mcq', name: 'MCQ' }, { id: 'saq', name: 'SAQ' }, { id: 'lecture', name: 'Lecture' }]}
-             value={selectedType}
-             onChange={(value) => setSelectedType(value)}
-             allOption={{ id: 'ALL', name: 'All Types' }}
-           />
-
-           {/* Organ System Selection */}
-           <SearchableSelect
-             label="Organ System"
-             options={organSystems}
-             value={selectedSystemId}
-             onChange={(value) => { setSelectedSystemId(value); setSelectedTopicId('ALL'); setSelectedSubTopic('ALL'); }}
-             allOption={{ id: 'ALL', name: 'All Systems' }}
-           />
-
-           {/* Topic Selection */}
-           <SearchableSelect
-             label="Topic"
-             options={topics}
-             value={selectedTopicId}
-             onChange={(value) => { setSelectedTopicId(value); setSelectedSubTopic('ALL'); }}
-             disabled={selectedSystemId === 'ALL'}
-             allOption={{ id: 'ALL', name: 'All Topics' }}
-           />
-
-           {/* Subtopic Selection */}
-           <SearchableSelect
-             label="Subtopic"
-             options={subTopics}
-             value={selectedSubTopic}
-             onChange={(value) => setSelectedSubTopic(value)}
-             disabled={selectedTopicId === 'ALL'}
-             allOption={{ id: 'ALL', name: 'All Subtopics' }}
-           />
-
-           {/* Cognitive Skill Selection */}
-           <SearchableSelect
-             label="Cognitive Skill"
-             options={(cognitiveSkills || []).map(cs => ({ id: cs.id, name: cs.title }))}
-             value={selectedCognitiveSkillId}
-             onChange={(value) => setSelectedCognitiveSkillId(value)}
-             allOption={{ id: 'ALL', name: 'All Skills' }}
-           />
-           
-           {/* Exam Selection */}
-           <SearchableSelect
-             label="Exam"
-             options={[{ id: 'STEP 1', name: 'STEP 1' }, { id: 'STEP 2', name: 'STEP 2' }, { id: 'STEP 3', name: 'STEP 3' }]}
-             value={selectedExamType}
-             onChange={(value) => setSelectedExamType(value)}
-             allOption={{ id: 'ALL', name: 'All Exams' }}
-           />
-           
-           {/* Status Selection */}
-           <SearchableSelect
-             label="Status"
-             options={[{ id: 'live', name: 'Live' }, { id: 'draft', name: 'Draft' }, { id: 'pending', name: 'Pending' }, { id: 'published', name: 'Published' }]}
-             value={selectedStatus}
-             onChange={(value) => setSelectedStatus(value)}
-             allOption={{ id: 'ALL', name: 'All Status' }}
-           />
-           
-           {/* Subject Selection */}
-           <SearchableSelect
-             label="Subject"
-             options={subjects.map(s => ({ id: s.title, name: s.title }))}
-             value={selectedSubjectId}
-             onChange={(value) => setSelectedSubjectId(value)}
-             allOption={{ id: 'ALL', name: 'All Subjects' }}
-           />
-           
-           {/* Disciplines Selection */}
-           <MultiSearchableSelect
-             label="Disciplines"
-             options={disciplines.map(d => ({ id: d.id, name: d.title }))}
-             values={selectedDisciplines}
-             onChange={setSelectedDisciplines}
-             placeholder={filtersLoading ? "Loading..." : "Select disciplines..."}
-             disabled={filtersLoading}
-           />
-           
-           {/* Tags Selection */}
-           <MultiSearchableSelect
-             label="Tags"
-             options={tags.map(t => ({ id: t.id, name: t.title }))}
-             values={selectedTags}
-             onChange={setSelectedTags}
-             placeholder={filtersLoading ? "Loading..." : "Select tags..."}
-             disabled={filtersLoading}
-           />
-        </div>
-        )}
-      </div>
-
-      {/* Bulk Actions Bar */}
-      {selectedItems.length > 0 && (
-        <div className="sticky top-4 z-20 bg-white rounded-[2rem] p-5 flex items-center justify-between shadow-2xl border border-[#1BD183]/20 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-[#1BD183] to-[#15a968] rounded-xl shadow-lg shadow-[#1BD183]/20">
-              <CheckSquare size={16} className="text-white" />
-            </div>
-            <span className="text-sm font-black text-slate-900">{selectedItems.length} item{selectedItems.length > 1 ? 's' : ''} selected</span>
-            <button onClick={clearSelection} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors"><X size={16} /></button>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Change Status */}
-            <div className="relative" ref={statusMenuRef}>
-              <button 
-                onClick={() => setShowStatusMenu(!showStatusMenu)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white rounded-xl text-xs font-bold  transition-all"
-              >
-                Change Status <ChevronDown size={14} />
-              </button>
-              {showStatusMenu && (
-                <div className="absolute bottom-full mb-2 right-0 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 min-w-[160px] animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  {['live', 'draft', 'pending'].map(status => (
-                    <button
-                      key={status}
-                      onClick={() => handleBulkStatusChange(status as "live" | "draft" | "pending")}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 capitalize transition-colors"
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* Delete */}
-            <button 
-              onClick={handleBulkDelete}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 text-white rounded-xl text-xs font-bold  hover:-translate-y-0.5 transition-all"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Item Grid */}
-      <div className="space-y-4 relative">
-        {/* Loading Overlay */}
-        {loading && (
-          <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-2xl min-h-[200px]">
-            <Loader2 size={32} className="animate-spin text-[#1BD183]" />
-          </div>
-        )}
-
-        {/* Select All Row */}
-        {items.length > 0 && (
-          <div className="flex items-center gap-3 px-2">
-            <button onClick={toggleSelectAll} className="text-slate-400 hover:text-[#1BD183] transition-colors">
-              {selectedItems.length === items.length && items.length > 0
-                ? <CheckSquare size={20} className="text-[#1BD183]" />
-                : selectedItems.length > 0
-                  ? <MinusSquare size={20} className="text-[#1BD183]" />
-                  : <Square size={20} />
-              }
-            </button>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              {selectedItems.length === items.length && items.length > 0 ? 'Deselect All' : 'Select All'}
-            </span>
-          </div>
-        )}
-        
-        {items.map(item => (
-            <div 
-                key={item.id}
-                onClick={() => selectedItems.length > 0 ? toggleSelectItem({stopPropagation: () => {}} as React.MouseEvent, item.id) : onEditItem?.(item.identifier || item.id)}
-                className={`bg-white p-6 rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-pointer group ${
-                  selectedItems.includes(item.id) 
-                    ? 'border-[#1BD183] ring-2 ring-[#1BD183]/20 bg-[#1BD183]/5' 
-                    : 'border-slate-200 hover:border-[#1BD183]/30'
-                }`}
-            >
-                <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-3">
-                        <button onClick={(e) => toggleSelectItem(e, item.id)} className="text-slate-300 hover:text-[#1BD183] transition-colors shrink-0">
-                          {selectedItems.includes(item.id) 
-                            ? <CheckSquare size={18} className="text-[#1BD183]" /> 
-                            : <Square size={18} />
-                          }
-                        </button>
-                        <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-[#1BD183]/10 text-[#1BD183]">
-                            {item.type}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-400">{item.identifier || item.id}</span>
-                        {checkGold(item) && (
-                           <span className="flex items-center gap-1 text-[9px] font-black text-[#1BD183] bg-[#1BD183]/10 px-2 py-0.5 rounded-full border border-[#1BD183]/20">
-                              <ShieldCheck size={10} /> Gold
-                           </span>
-                        )}
-                        {checkRemediation(item) && (
-                           <span className="flex items-center gap-1 text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                              <ShieldAlert size={10} /> Needs Review
-                           </span>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                            onClick={(e) => handleDelete(e, item.id)}
-                            className="p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                        <ExternalLink size={16} className="text-[#1BD183]" />
-                    </div>
-                </div>
-                <h3 className="text-sm font-bold text-slate-800 line-clamp-2 leading-relaxed mb-4">
-                    {item.mcq?.stem || item.saq?.question || item.lecture?.title || 'Untitled Item'}
-                </h3>
-                <div className="flex items-center gap-4 border-t border-slate-50 pt-4">
-                    <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#1BD183]"></span>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">{item.learningObjective?.syndrome?.topic?.organSystem?.title || '—'}</span>
-                    </div>
-                    {item.learningObjective?.cognitiveSkillId && (
-                        <span className="text-[10px] font-bold text-slate-400 uppercase px-2 py-0.5 bg-slate-100 rounded">
-                            {cognitiveSkills?.find(cs => cs.id === item.learningObjective?.cognitiveSkillId)?.title || item.learningObjective.cognitiveSkillId.split('/').pop()}
-                        </span>
-                    )}
-                     <div className="flex-1 text-right">
-                        <span className={`text-[10px] font-black uppercase ${item.status === 'live' ? 'text-[#1BD183]' : 'text-amber-500'}`}>
-                            {item.status}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        ))}
-
-        {items.length === 0 && (
-            <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
-                <Filter size={40} className="mx-auto text-slate-300 mb-4" />
-                <p className="text-slate-400 font-bold text-sm">No items match your criteria</p>
-                <button 
-                    onClick={clearFilters}
-                    className="mt-4 text-[#1BD183] text-xs font-black uppercase tracking-widest hover:underline"
-                >
-                    Clear Filters
-                </button>
-            </div>
-        )}
-
-        {/* Pagination Controls */}
-        {items.length > 0 && (
-          <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-            <button
-              onClick={handlePrevPage}
-              disabled={page === 1 || loading}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-500 disabled:opacity-50 hover:bg-slate-50 rounded-xl transition-colors"
-            >
-              <ChevronLeft size={14} /> Previous
-            </button>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                Page {page} of {totalPages}
-              </span>
-            </div>
-
-            <button
-              onClick={handleNextPage}
-              disabled={page >= totalPages || loading}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-500 disabled:opacity-50 hover:bg-slate-50 rounded-xl transition-colors"
-            >
-              Next <ChevronRight size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        confirmLabel={confirmModal.confirmLabel}
-        variant={confirmModal.variant}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={closeConfirmModal}
+    <div>
+      <PageHeader
+        title="Item bank"
+        description="Search every question, flashcard and lecture in your bank, open one in the workbench, or update several at once."
+        actions={onEditItem && <NewItemMenu onCreate={onEditItem} />}
       />
 
-      {/* Bulk Progress Modal */}
+      {/* Toolbar: search + the most used filters; the rest live in the drawer. */}
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <SearchInput
+          className="w-full sm:w-72"
+          value={localSearchQuery}
+          onChange={setLocalSearchQuery}
+          placeholder="Search item text"
+          aria-label="Search items by text"
+        />
+        <label className="relative block w-full sm:w-40">
+          <span className="sr-only">Find by item ID (QID)</span>
+          <Hash
+            size={14}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
+          />
+          <Input
+            value={selectedQID}
+            onChange={(event) => {
+              setSelectedQID(event.target.value);
+              setPage(1);
+            }}
+            placeholder="QID"
+            autoComplete="off"
+            spellCheck={false}
+            className="pl-8"
+          />
+        </label>
+        <Select
+          aria-label="Filter by type"
+          value={filters.type}
+          onChange={(event) => updateFilters({ type: event.target.value })}
+          className="w-full sm:w-36"
+        >
+          <option value={ALL}>All types</option>
+          {TYPE_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by status"
+          value={filters.status}
+          onChange={(event) => updateFilters({ status: event.target.value })}
+          className="w-full sm:w-36"
+        >
+          <option value={ALL}>All statuses</option>
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </Select>
+        <Button icon={SlidersHorizontal} onClick={() => setFiltersOpen(true)} aria-haspopup="dialog">
+          All filters
+          {activeFilterCount > 0 && (
+            <span className="rounded-md bg-stone-900 px-1.5 text-xs leading-5 tabular-nums text-white">
+              {activeFilterCount}
+              <span className="sr-only"> applied</span>
+            </span>
+          )}
+        </Button>
+        {hasActiveFilters && (
+          <Button variant="ghost" onClick={clearFilters}>
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {hiddenFilterChips.length > 0 && (
+        <ul aria-label="Other active filters" className="mt-3 flex flex-wrap items-center gap-1.5">
+          {hiddenFilterChips.map((chip) => (
+            <li
+              key={chip.key}
+              className="inline-flex max-w-full items-center gap-1 rounded-md bg-stone-100 py-0.5 pl-2 pr-1 text-xs text-stone-700 ring-1 ring-inset ring-stone-200/70"
+            >
+              <span className="text-stone-500">{chip.label}:</span>
+              <span className="truncate font-medium">{chip.value}</span>
+              <button
+                type="button"
+                onClick={chip.onRemove}
+                aria-label={`Remove filter ${chip.label}: ${chip.value}`}
+                className="rounded p-0.5 text-stone-400 transition-colors hover:bg-stone-200 hover:text-stone-700"
+              >
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div ref={resultsRef} className="mt-5 rounded-xl border border-stone-200 bg-white">
+        {renderResults()}
+      </div>
+
+      <BankFiltersDrawer
+        open={isFiltersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        onChange={updateFilters}
+        onClear={clearDrawerFilters}
+        organSystems={organSystems}
+        topics={topics}
+        subTopics={subTopics}
+        topicsLoading={topicsLoading}
+        subTopicsLoading={subTopicsLoading}
+        cognitiveSkills={skillOptions}
+        subjects={subjectOptions}
+        disciplines={disciplineOptions}
+        tags={tagOptions}
+        optionsLoading={filtersLoading}
+        resultTotal={total}
+        isLoadingResults={loading}
+      />
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={confirmCopy?.title ?? ''}
+        description={confirmCopy?.description ?? ''}
+        confirmLabel={confirmCopy?.confirmLabel}
+        tone={confirmCopy?.tone}
+        busy={isDeleting}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={confirmPendingAction}
+      />
+
       <BulkProgressModal
         isOpen={bulkProgress.isOpen}
         title={bulkProgress.title}
@@ -887,8 +845,11 @@ const BankExplorerView: React.FC<BankExplorerViewProps> = ({ onEditItem }) => {
         completedItems={bulkProgress.completedItems}
         failedItems={bulkProgress.failedItems}
         isProcessing={bulkProgress.isProcessing}
-        onClose={() => { setBulkProgress(prev => ({ ...prev, isOpen: false })); }}
+        results={bulkProgress.results}
+        onClose={() => setBulkProgress((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 };

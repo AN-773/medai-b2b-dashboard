@@ -1,18 +1,6 @@
 import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  AlertTriangle,
-  BookOpen,
-  CheckCircle2,
-  Layers,
-  Library,
-  Loader2,
-  Lock,
-  Paperclip,
-  Target,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Lock, Pencil, Trash2, X } from 'lucide-react';
 import { academyStudioBackend } from '@/services/academyStudioBackend';
 import { curriculumService } from '@/services/curriculumService';
 import { resourceIdentifier } from '@/utils/resourceId';
@@ -30,7 +18,26 @@ import { testsService } from '@/services/testsService';
 import { useCourseFactory } from '@/hooks/useCourseFactory';
 import { useItemFactory } from '@/hooks/useItemFactory';
 import { useAuth } from '@/contexts/AuthContext';
-import CourseLibrarySidebar from '@/components/academy/course-workbench/CourseLibrarySidebar';
+import CoursesIndex, { CoursesBreadcrumb } from '@/components/academy/courses/CoursesIndex';
+import CourseStepNav, {
+  type StepTab,
+  type WorkbenchTab,
+} from '@/components/academy/courses/CourseStepNav';
+import {
+  CourseDetailsDialog,
+  NewCourseDialog,
+  type NewCourseInput,
+} from '@/components/academy/courses/CourseDialogs';
+import { TopBar } from '@/components/shell/TopBar';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  InlineAlert,
+  Menu,
+  PageHeader,
+  Spinner,
+} from '@/components/ui';
 import CourseOverviewPanel from '@/components/academy/course-workbench/CourseOverviewPanel';
 import CourseObjectivesPanel from '@/components/academy/course-workbench/CourseObjectivesPanel';
 import CourseContentPanel from '@/components/academy/course-workbench/CourseContentPanel';
@@ -44,16 +51,17 @@ import LectureCreationWizard from '@/components/LectureCreationWizard';
 import {
   getCourseObjectiveCount,
   getCoursePendingSuggestionCount,
-  getCourseStage,
-  STAGE_STYLES,
 } from '@/components/academy/course-workbench/shared';
 
-type WorkbenchTab =
-  | 'overview'
-  | 'objectives'
-  | 'resources'
-  | 'content'
-  | 'sessions';
+const CURRICULUM_STORAGE_KEY = 'msai_courses_curriculum';
+
+const readStoredCurriculumId = () => {
+  try {
+    return localStorage.getItem(CURRICULUM_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
 
 // Maps URL ?tab values (including legacy ones from the old 5-tab layout) onto
 // the current 4-tab model so existing deep-links keep resolving.
@@ -166,9 +174,22 @@ const CoursesView: React.FC = () => {
       if (current && curricula.some((curriculum) => curriculum.id === current)) {
         return current;
       }
+      const stored = readStoredCurriculumId();
+      if (stored && curricula.some((curriculum) => curriculum.id === stored)) {
+        return stored;
+      }
       return curricula.length === 1 ? curricula[0].id : null;
     });
   }, [curricula, isLoadingCurricula]);
+
+  useEffect(() => {
+    if (!selectedCurriculumId) return;
+    try {
+      localStorage.setItem(CURRICULUM_STORAGE_KEY, selectedCurriculumId);
+    } catch {
+      // Storage unavailable (private mode) — the choice just isn't remembered.
+    }
+  }, [selectedCurriculumId]);
 
   // Deep-link restore: infer the curriculum from a ?courseId so a direct link
   // — or returning from the content workbench — re-scopes to the right track
@@ -265,6 +286,12 @@ const CoursesView: React.FC = () => {
       selectedCourse &&
       !selectedCourse.learningObjectivesLoaded,
   );
+  // The overview reads coverage from the objectives, but renders without them.
+  const shouldHydrateObjectives = Boolean(
+    selectedCourse &&
+      !selectedCourse.learningObjectivesLoaded &&
+      (selectedCourseNeedsObjectives || activeTab === 'overview'),
+  );
 
   // In-page content authoring — the editors render as an overlay so the
   // teacher never leaves the course page.
@@ -274,6 +301,10 @@ const CoursesView: React.FC = () => {
   } | null>(null);
   const [contentRefreshKey, setContentRefreshKey] = useState(0);
   const [isObjectiveFactoryOpen, setIsObjectiveFactoryOpen] = useState(false);
+  const [isNewCourseOpen, setIsNewCourseOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [courseToDelete, setCourseToDelete] = useState<TeacherCourse | null>(null);
+  const [isDeletingCourse, setIsDeletingCourse] = useState(false);
   const [pendingModulesAction, setPendingModulesAction] = useState<
     'create-session' | null
   >(null);
@@ -356,7 +387,7 @@ const CoursesView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!selectedCourseNeedsObjectives || !selectedCourse) {
+    if (!shouldHydrateObjectives || !selectedCourse) {
       return;
     }
 
@@ -366,7 +397,7 @@ const CoursesView: React.FC = () => {
     selectedCourse?.backendIdentifier,
     selectedCourse?.id,
     selectedCourse?.learningObjectivesLoaded,
-    selectedCourseNeedsObjectives,
+    shouldHydrateObjectives,
   ]);
 
   // --- Derived cohort/learner maps -----------------------------------------
@@ -394,15 +425,6 @@ const CoursesView: React.FC = () => {
     );
   }, [cohorts]);
 
-  const filteredCourses = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return curriculumCourses.filter((course) => {
-      if (!query) return true;
-      return [course.title, course.summary]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query));
-    });
-  }, [curriculumCourses, searchQuery]);
 
   const cohortsUsingSelectedCourse = useMemo(
     () =>
@@ -568,25 +590,23 @@ const CoursesView: React.FC = () => {
     setSearchParams({});
   };
 
-  const handleCreateCourse = async (input: {
-    title: string;
-    summary: string;
-  }) => {
-    if (!selectedCurriculum) return;
+  const handleCreateCourse = async (input: NewCourseInput) => {
     try {
       const saved = await academyStudioBackend.saveCourse({
         title: input.title.trim(),
         summary: input.summary.trim(),
-        curriculumId: selectedCurriculum.id,
+        curriculumId: input.curriculumId,
         contentDrafts: [],
       });
       await loadData(saved.id);
+      setSelectedCurriculumId(input.curriculumId);
       pendingCourseIdRef.current = saved.id;
       setSearchParams({ courseId: saved.id });
       setActiveTab('overview');
       flashMessage('Course created.');
     } catch (error) {
       reportError(error, 'Unable to create this course.');
+      throw error;
     }
   };
 
@@ -610,13 +630,14 @@ const CoursesView: React.FC = () => {
       flashMessage('Course details saved.');
     } catch (error) {
       reportError(error, 'Unable to save this course.');
+      throw error;
     }
   };
 
-  const handleDeleteCourse = async (courseId: string) => {
-    const course = courses.find((entry) => entry.id === courseId);
+  const handleDeleteCourse = async () => {
+    const course = courseToDelete;
     if (!course) return;
-    if (!window.confirm(`Delete course "${course.title}"? This cannot be undone.`)) return;
+    setIsDeletingCourse(true);
     try {
       await academyStudioBackend.deleteCourse(course);
       if (selectedCourseId === course.id) {
@@ -624,11 +645,21 @@ const CoursesView: React.FC = () => {
         setSelectedCourseId(null);
         setSearchParams({});
       }
+      setCourseToDelete(null);
       await loadData();
       flashMessage(`Deleted "${course.title}".`);
     } catch (error) {
       reportError(error, `Unable to delete "${course.title}".`);
+    } finally {
+      setIsDeletingCourse(false);
     }
+  };
+
+  const handleBackToCourses = () => {
+    pendingCourseIdRef.current = null;
+    setSelectedCourseId(null);
+    setActiveTab('overview');
+    setSearchParams({});
   };
 
   const handleAttachObjective = async (objective: TeacherLearningObjective) => {
@@ -684,7 +715,6 @@ const CoursesView: React.FC = () => {
 
   const handleRemoveObjective = async (objective: TeacherLearningObjective) => {
     if (!selectedCourse) return;
-    if (!window.confirm(`Remove "${objective.title}" from ${selectedCourse.title}?`)) return;
     try {
       await academyStudioBackend.removeCourseLearningObjective(
         selectedCourse,
@@ -698,229 +728,233 @@ const CoursesView: React.FC = () => {
   };
 
   // --- Render ---------------------------------------------------------------
-  // Shared loading/error placeholder for tabs that depend on the course's
-  // learning objectives being hydrated (Objectives + Content).
+  // Placeholder for tabs that need the course's objectives hydrated first.
   const renderObjectivesGate = (course: TeacherCourse) => {
     const objectiveError = courseObjectiveErrors[course.id] || null;
     return objectiveError ? (
-      <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-6 text-sm text-rose-700">
-        <p className="font-semibold">{objectiveError}</p>
-        <button
-          type="button"
-          onClick={() => void loadCourseObjectives(course)}
-          disabled={loadingCourseObjectivesId === course.id}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loadingCourseObjectivesId === course.id ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : null}
-          Retry
-        </button>
-      </div>
+      <InlineAlert
+        title="Couldn't load this course's objectives"
+        action={
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={loadingCourseObjectivesId === course.id}
+            onClick={() => void loadCourseObjectives(course)}
+          >
+            Retry
+          </Button>
+        }
+      >
+        {objectiveError}
+      </InlineAlert>
     ) : (
-      <div className="flex min-h-[240px] items-center justify-center rounded-[1.5rem] border border-slate-200 bg-slate-50 px-6 text-sm font-semibold text-slate-500">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading course objectives...
-      </div>
+      <Spinner label="Loading objectives…" className="py-24" />
     );
   };
 
-  const tabs: { id: WorkbenchTab; label: string; icon: typeof Target; badge?: number }[] = [
-    { id: 'overview', label: 'Overview', icon: Target },
+  const objectivesCoverageFigure = (() => {
+    if (!selectedCourse?.learningObjectivesLoaded) return undefined;
+    const total = selectedCourse.learningObjectives.length;
+    if (total === 0) return undefined;
+    const covered = selectedCourse.learningObjectives.filter(
+      (objective) => (objective.itemTotals?.total ?? 0) > 0,
+    ).length;
+    return { percent: Math.round((covered / total) * 100), complete: covered === total };
+  })();
+
+  const tabs: StepTab[] = [
+    { id: 'overview', label: 'Overview' },
     {
       id: 'objectives',
       label: 'Objectives',
-      icon: BookOpen,
-      badge: selectedCourseObjectiveCount,
+      step: 1,
+      figure: selectedCourseObjectiveCount ? selectedCourseObjectiveCount.toLocaleString() : undefined,
+      done: selectedCourseObjectiveCount > 0 && selectedCoursePendingSuggestions === 0,
+      attention: selectedCoursePendingSuggestions > 0,
     },
-    { id: 'content', label: 'Content', icon: Library },
-    { id: 'sessions', label: 'Modules', icon: Layers },
-    { id: 'resources', label: 'Resources', icon: Paperclip },
+    {
+      id: 'content',
+      label: 'Content',
+      step: 2,
+      figure: objectivesCoverageFigure ? `${objectivesCoverageFigure.percent}%` : undefined,
+      done: objectivesCoverageFigure?.complete,
+    },
+    { id: 'sessions', label: 'Modules', step: 3 },
+    { id: 'resources', label: 'Resources' },
   ];
 
+  const renderPanel = (course: TeacherCourse) => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <CourseOverviewPanel
+            course={course}
+            cohortsUsingCourse={cohortsUsingSelectedCourse}
+            learnerCount={learnerCountByCourse.get(course.id) || 0}
+            pendingSuggestions={selectedCoursePendingSuggestions}
+            onNavigate={selectTab}
+            onReviewSuggestions={() => {
+              setIsObjectiveFactoryOpen(true);
+              selectTab('objectives');
+            }}
+            onEditDetails={() => setIsDetailsOpen(true)}
+          />
+        );
+      case 'objectives':
+        return selectedCourseNeedsObjectives ? (
+          renderObjectivesGate(course)
+        ) : (
+          <CourseObjectivesPanel
+            course={course}
+            attachedIds={selectedCourseObjectiveIds}
+            factory={factory}
+            isGenerateOpen={isObjectiveFactoryOpen}
+            onGenerateOpenChange={setIsObjectiveFactoryOpen}
+            onAttach={handleAttachObjective}
+            onAddAll={handleAddAllObjectives}
+            onCreate={handleCreateObjective}
+            onRemove={handleRemoveObjective}
+            onBuildContent={(objective) => {
+              itemFactory.selectObjective(objective.id);
+              selectTab('content');
+            }}
+          />
+        );
+      case 'content':
+        return selectedCourseNeedsObjectives ? (
+          renderObjectivesGate(course)
+        ) : (
+          <CourseContentPanel
+            course={course}
+            itemFactory={itemFactory}
+            onCreateItem={handleCreateItem}
+            onCreateSession={handleCreateSessionFromContent}
+            onOpenItem={(item) => void handleOpenItem(item)}
+            refreshSignal={contentRefreshKey}
+          />
+        );
+      case 'sessions':
+        return selectedCourseNeedsObjectives ? (
+          renderObjectivesGate(course)
+        ) : (
+          <CourseModulesPanel
+            course={course}
+            entryAction={pendingModulesAction}
+            onEntryActionHandled={handleModulesActionHandled}
+          />
+        );
+      case 'resources':
+        return <CourseResourcesPanel course={course} />;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="teacher-readable relative flex h-[calc(100vh-140px)] overflow-hidden rounded-[1rem] border border-slate-200 bg-white font-sans text-slate-900">
-      <CourseLibrarySidebar
+    <div className="flex min-h-full flex-col">
+      {!selectedCourse ? (
+        <CoursesIndex
+          curricula={curricula}
+          selectedCurriculum={selectedCurriculum}
+          isLoadingCurricula={isLoadingCurricula}
+          curriculumError={curriculumError}
+          onCurriculumChange={handleCurriculumChange}
+          courses={curriculumCourses}
+          isLoading={isLoading}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          cohortCountByCourse={cohortCountByCourse}
+          onOpenCourse={handleSelectCourse}
+          onNewCourse={() => setIsNewCourseOpen(true)}
+        />
+      ) : (
+        <>
+          <TopBar>
+            <CoursesBreadcrumb
+              courseTitle={selectedCourse.title}
+              onCoursesClick={handleBackToCourses}
+            />
+          </TopBar>
+          <div className="mx-auto w-full max-w-[1400px] px-4 pb-5 pt-6 sm:px-8">
+            <PageHeader
+              title={selectedCourse.title}
+              description={selectedCourse.summary || undefined}
+              meta={
+                <>
+                  {selectedCourse.locked && (
+                    <Badge
+                      tone="neutral"
+                      icon={Lock}
+                      title="Only items linked to this course's objectives are delivered"
+                    >
+                      Locked
+                    </Badge>
+                  )}
+                  {selectedCurriculum && (
+                    <span className="text-[13px] text-stone-400">{selectedCurriculum.title}</span>
+                  )}
+                </>
+              }
+              actions={
+                <>
+                  <Button variant="secondary" icon={Pencil} onClick={() => setIsDetailsOpen(true)}>
+                    Edit details
+                  </Button>
+                  <Menu
+                    label="Course actions"
+                    items={[
+                      {
+                        label: 'Delete course',
+                        icon: Trash2,
+                        tone: 'danger',
+                        onSelect: () => setCourseToDelete(selectedCourse),
+                      },
+                    ]}
+                  />
+                </>
+              }
+            />
+          </div>
+          <CourseStepNav tabs={tabs} active={activeTab} onSelect={selectTab} />
+          <div className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8">
+            {renderPanel(selectedCourse)}
+          </div>
+
+          <CourseDetailsDialog
+            open={isDetailsOpen}
+            course={selectedCourse}
+            onClose={() => setIsDetailsOpen(false)}
+            onSave={handleSaveCourse}
+          />
+        </>
+      )}
+
+      <NewCourseDialog
+        open={isNewCourseOpen}
         curricula={curricula}
-        selectedCurriculum={selectedCurriculum}
-        isLoadingCurricula={isLoadingCurricula}
-        curriculumError={curriculumError}
-        onCurriculumChange={handleCurriculumChange}
-        courses={curriculumCourses}
-        filteredCourses={filteredCourses}
-        selectedCourseId={selectedCourseId}
-        isLoading={isLoading}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onSelect={handleSelectCourse}
-        onDelete={handleDeleteCourse}
-        onCreateCourse={handleCreateCourse}
-        totals={totals}
-        cohortCountByCourse={cohortCountByCourse}
-        learnerCountByCourse={learnerCountByCourse}
+        defaultCurriculumId={selectedCurriculumId}
+        onClose={() => setIsNewCourseOpen(false)}
+        onCreate={handleCreateCourse}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden bg-white">
-        {!selectedCurriculum ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center text-slate-400">
-            <Layers size={48} className="mb-5 opacity-30" />
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
-              Select a curriculum
-            </p>
-            <p className="mt-2 max-w-sm text-xs font-medium">
-              Choose the curriculum first, then the course library will scope to
-              that track and new courses will be created inside it.
-            </p>
-          </div>
-        ) : !selectedCourse ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center text-slate-400">
-            <Layers size={48} className="mb-5 opacity-30" />
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
-              Select a course
-            </p>
-            <p className="mt-2 max-w-sm text-xs font-medium">
-              Pick a course from {selectedCurriculum.title} to manage its shell,
-              attach learning objectives, and run the AI objective factory on
-              uploaded sources.
-            </p>
-          </div>
-        ) : (
+      <ConfirmDialog
+        open={Boolean(courseToDelete)}
+        title="Delete course?"
+        description={
           <>
-            {/* Toolbar */}
-            <div className="border-b border-slate-100 px-6 pt-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <h2 className="truncate text-2xl font-black tracking-tight text-slate-900">
-                      {selectedCourse.title}
-                    </h2>
-                    <span
-                      className={`rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${STAGE_STYLES[getCourseStage(selectedCourse)]}`}
-                    >
-                      {getCourseStage(selectedCourse)}
-                    </span>
-                    {selectedCourse.locked && (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">
-                        <Lock size={11} />
-                        Locked
-                      </span>
-                    )}
-                  </div>
-                  {selectedCourse.summary && (
-                    <p className="mt-1.5 max-w-2xl truncate text-sm text-slate-500">
-                      {selectedCourse.summary}
-                    </p>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleDeleteCourse(selectedCourse.id)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-rose-600 transition hover:bg-rose-50"
-                >
-                  <Trash2 size={14} /> Delete
-                </button>
-              </div>
-
-              {/* Tabs */}
-              <div className="mt-4 overflow-x-auto overflow-y-hidden custom-scrollbar">
-                <div className="flex min-w-max items-center gap-1">
-                  {tabs.map((tab) => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => selectTab(tab.id)}
-                        className={`relative inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${
-                          isActive
-                            ? 'border-[#1BD183] text-slate-900'
-                            : 'border-transparent text-slate-400 hover:text-slate-600'
-                        }`}
-                      >
-                        <Icon size={15} />
-                        {tab.label}
-                        {tab.badge ? (
-                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] leading-none text-slate-500">
-                            {tab.badge}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Panel body */}
-            <div className="flex-1 overflow-y-auto bg-white p-6 custom-scrollbar">
-              {activeTab === 'overview' && (
-                <CourseOverviewPanel
-                  course={selectedCourse}
-                  cohortsUsingCourse={cohortsUsingSelectedCourse}
-                  learnerCount={learnerCountByCourse.get(selectedCourse.id) || 0}
-                  pendingSuggestions={selectedCoursePendingSuggestions}
-                  onSave={handleSaveCourse}
-                />
-              )}
-              {activeTab === 'objectives' && (
-                selectedCourseNeedsObjectives ? (
-                  renderObjectivesGate(selectedCourse)
-                ) : (
-                  <CourseObjectivesPanel
-                    course={selectedCourse}
-                    attachedIds={selectedCourseObjectiveIds}
-                    factory={factory}
-                    isGenerateOpen={isObjectiveFactoryOpen}
-                    onGenerateOpenChange={setIsObjectiveFactoryOpen}
-                    onAttach={handleAttachObjective}
-                    onAddAll={handleAddAllObjectives}
-                    onCreate={handleCreateObjective}
-                    onRemove={handleRemoveObjective}
-                    onBuildContent={(objective) => {
-                      itemFactory.selectObjective(objective.id);
-                      selectTab('content');
-                    }}
-                  />
-                )
-              )}
-              {activeTab === 'content' && (
-                selectedCourseNeedsObjectives ? (
-                  renderObjectivesGate(selectedCourse)
-                ) : (
-                  <CourseContentPanel
-                    course={selectedCourse}
-                    itemFactory={itemFactory}
-                    onCreateItem={handleCreateItem}
-                    onCreateSession={handleCreateSessionFromContent}
-                    onOpenItem={(item) => void handleOpenItem(item)}
-                    refreshSignal={contentRefreshKey}
-                  />
-                )
-              )}
-              {activeTab === 'sessions' && (
-                selectedCourseNeedsObjectives ? (
-                  renderObjectivesGate(selectedCourse)
-                ) : (
-                  <CourseModulesPanel
-                    course={selectedCourse}
-                    entryAction={pendingModulesAction}
-                    onEntryActionHandled={handleModulesActionHandled}
-                  />
-                )
-              )}
-              {activeTab === 'resources' && (
-                <CourseResourcesPanel course={selectedCourse} />
-              )}
-            </div>
+            <span className="font-medium text-stone-900">{courseToDelete?.title}</span> will be
+            permanently deleted. This can't be undone.
           </>
-        )}
-      </div>
+        }
+        confirmLabel="Delete course"
+        busy={isDeletingCourse}
+        onConfirm={() => void handleDeleteCourse()}
+        onCancel={() => setCourseToDelete(null)}
+      />
 
-      {/* In-page item editor overlay — keeps authoring inside the course page */}
+      {/* Item editors open full-screen over the course so authoring never leaves the page. */}
       {authoring && (
-        <div className="absolute inset-0 z-[70] overflow-y-auto bg-slate-50 p-4 custom-scrollbar sm:p-6">
+        <div className="fixed inset-0 z-[90] overflow-y-auto bg-canvas p-4 custom-scrollbar sm:p-6">
           {authoring.modality === 'mcq' && (
             <QuestionEditor
               initialQuestion={authoring.item}
@@ -952,28 +986,38 @@ const CoursesView: React.FC = () => {
         </div>
       )}
 
-      {/* Floating toasts — overlay so they never shift the layout */}
+      {/* Toasts */}
       {(message || loadError) && (
-        <div className="pointer-events-none fixed bottom-6 right-6 z-[120] flex w-[min(92vw,360px)] flex-col gap-2">
+        <div
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-5 left-1/2 z-[140] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2"
+        >
           {message && (
-            <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-700 shadow-xl shadow-emerald-900/10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <CheckCircle2 size={16} className="flex-shrink-0 text-emerald-500" />
+            <div className="pointer-events-auto flex items-center gap-2.5 rounded-lg bg-stone-900 px-4 py-3 text-sm text-white shadow-pop animate-dialog-in">
+              <CheckCircle2 size={16} className="flex-shrink-0 text-brand-400" />
               <span className="flex-1">{message}</span>
               <button
+                type="button"
                 onClick={() => setMessage(null)}
-                className="rounded-lg p-0.5 text-emerald-400 transition hover:bg-emerald-50"
+                aria-label="Dismiss"
+                className="rounded p-0.5 text-stone-400 transition hover:text-white"
               >
                 <X size={14} />
               </button>
             </div>
           )}
           {loadError && (
-            <div className="pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-white px-4 py-3 shadow-xl shadow-rose-900/10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-rose-500" />
-              <p className="flex-1 text-sm font-semibold text-rose-700">{loadError}</p>
+            <div
+              role="alert"
+              className="pointer-events-auto flex items-start gap-2.5 rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-red-700 shadow-pop animate-dialog-in"
+            >
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-red-500" />
+              <p className="flex-1">{loadError}</p>
               <button
+                type="button"
                 onClick={() => setLoadError(null)}
-                className="rounded-lg p-0.5 text-rose-400 transition hover:bg-rose-100"
+                aria-label="Dismiss"
+                className="rounded p-0.5 text-red-400 transition hover:text-red-700"
               >
                 <X size={14} />
               </button>

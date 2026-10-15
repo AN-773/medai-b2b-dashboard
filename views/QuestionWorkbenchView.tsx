@@ -1,10 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Question,
   QuestionType,
   BloomsLevel,
-  Issue,
   ItemType,
   BackendItem,
 } from '../types';
@@ -23,20 +22,25 @@ import FlashcardEditor from '../components/FlashcardEditor';
 import LecturePlayerView from '../components/LecturePlayerView';
 import ItemIntegrityView from '../components/ItemIntegrityView';
 import AILabView from '../components/AILabView';
+import { ChevronDown, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import {
-  Plus,
-  Layout,
-  Database,
-  ClipboardCheck,
-  FileText,
-  MonitorPlay,
-  CheckCircle,
-  X,
-  FlaskConical,
-  ShieldCheck,
-  ChevronRight,
-  Layers,
-} from 'lucide-react';
+  Button,
+  InlineAlert,
+  Menu,
+  PageHeader,
+  SegmentedControl,
+  Spinner,
+} from '@/components/ui';
+import WorkbenchTabs, { panelId, tabId } from '@/components/workbench/WorkbenchTabs';
+import WorkbenchToast, {
+  type ToastMessage,
+  type ToastTone,
+} from '@/components/workbench/WorkbenchToast';
+import {
+  ITEM_TYPES,
+  ITEM_TYPE_SPEC,
+  apiTypeLabel,
+} from '@/components/workbench/itemTypes';
 
 type WorkbenchViewMode =
   | 'DASHBOARD'
@@ -48,19 +52,13 @@ type WorkbenchViewMode =
   | 'SAQ_EDITOR'
   | 'FLASHCARD_EDITOR';
 
-// Authoring modalities surfaced in the workbench type switcher
-const ITEM_MODALITIES: {
-  type: ItemType;
-  label: string;
-  desc: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-}[] = [
-  { type: ItemType.MCQ, label: 'MCQ', desc: 'Single best answer', icon: ClipboardCheck },
-  { type: ItemType.SAQ, label: 'SAQ', desc: 'Short answer', icon: FileText },
-  { type: ItemType.FLASHCARD, label: 'Flashcard', desc: 'Active recall', icon: Layers },
-  { type: ItemType.LECTURE, label: 'Lecture', desc: 'Instructional', icon: MonitorPlay },
-];
 type WorkbenchTab = 'DASHBOARD' | 'INTEGRITY' | 'LAB';
+
+const TAB_PREFIX = 'workbench';
+
+// The AI lab and integrity audit have no working backend yet; they were hidden
+// before the redesign and stay hidden until they do.
+const SHOW_PREVIEW_SECTIONS = false;
 
 // Adapter: convert BackendApiItem to legacy BackendItem for downstream components
 // (ItemIntegrityView, AILabView) that haven't been migrated yet
@@ -111,25 +109,30 @@ const QuestionWorkbenchView: React.FC = () => {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [totalLiveQuestions, setTotalLiveQuestions] = useState(0);
   const [totalDraftQuestions, setTotalDraftQuestions] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: 'success' | 'error';
-  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  // Which type `itemsList` currently holds, so a type switch shows a spinner
+  // instead of the previous type's items.
+  const [loadedType, setLoadedType] = useState<ItemType | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const latestRequestedType = useRef<ItemType>(activeItemType);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
-  console.log('Question ID', searchParams.get('questionId'));
-  console.log('View mode', viewMode);
-
-  const showToast = (
-    message: string,
-    type: 'success' | 'error' = 'success',
-  ) => {
+  const showToast = (message: string, type: ToastTone = 'success') => {
+    window.clearTimeout(toastTimer.current);
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    // Progress toasts stay until the next message replaces them.
+    if (type !== 'progress') {
+      toastTimer.current = window.setTimeout(() => setToast(null), 3000);
+    }
   };
 
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
   const loadItems = async (itemType: ItemType = activeItemType) => {
+    latestRequestedType.current = itemType;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const typeFilter = itemType.toLowerCase();
       const [draft, live, pending, response] = await Promise.all([
@@ -138,16 +141,21 @@ const QuestionWorkbenchView: React.FC = () => {
         testsService.getItems(1, 1, typeFilter, 'pending'),
         testsService.getItems(1, 200, typeFilter),
       ]);
+      // A newer type switch superseded this request.
+      if (latestRequestedType.current !== itemType) return;
 
       setTotalQuestions(response.total);
       setTotalDraftQuestions(draft.total + pending.total);
       setTotalLiveQuestions(live.total);
       setItemsList(response.items);
+      setLoadedType(itemType);
     } catch (error) {
       console.error('Failed to fetch items:', error);
-      showToast('Failed to fetch items', 'error');
+      if (latestRequestedType.current === itemType) {
+        setLoadError(`Couldn't load ${ITEM_TYPE_SPEC[itemType].plural}. Check your connection and try again.`);
+      }
     } finally {
-      setIsLoading(false);
+      if (latestRequestedType.current === itemType) setIsLoading(false);
     }
   };
 
@@ -240,7 +248,9 @@ const QuestionWorkbenchView: React.FC = () => {
 
   // Map BackendApiItem[] to Question[] for ItemModuleDashboard
   const questions: Question[] = useMemo(() => {
-    const statusMap = (s: string) => s === 'live' ? 'Published' : s === 'draft' ? 'Draft' : 'Archived';
+    // Pending items count as drafts (see the Drafts figure), not as archived.
+    const statusMap = (s: string): Question['status'] =>
+      s === 'live' ? 'Published' : s === 'draft' || s === 'pending' ? 'Draft' : 'Archived';
 
     return itemsList.map((item) => ({
       id: item.id,
@@ -280,21 +290,19 @@ const QuestionWorkbenchView: React.FC = () => {
     setSearchParams(params);
   };
 
-  const handleCreateNew = () => {
+  const handleCreateNew = (type: ItemType = activeItemType) => {
     const params = new URLSearchParams();
-
-    if (activeItemType === ItemType.LECTURE) {
-      params.set('questionId', 'new_lecture');
-    } else if (activeItemType === ItemType.SAQ) {
-      params.set('questionId', 'new_saq');
-    } else if (activeItemType === ItemType.FLASHCARD) {
-      params.set('questionId', 'new_flashcard');
-    } else {
-      params.set('questionId', 'new');
-    }
+    params.set('questionId', ITEM_TYPE_SPEC[type].newParam);
 
     if (redirectPath) {
       params.set('redirect', redirectPath);
+    }
+
+    // Creating another type from the "New item" menu switches the list to that
+    // type, so the saved item lands in the list it belongs to.
+    if (type !== activeItemType) {
+      setActiveItemType(type);
+      setActiveTab('DASHBOARD');
     }
 
     setSearchParams(params);
@@ -313,7 +321,7 @@ const QuestionWorkbenchView: React.FC = () => {
   const handleSelectType = (type: ItemType) => {
     if (type === activeItemType) return;
     setActiveItemType(type);
-    setActiveTab('DASHBOARD');
+    setActiveTab((current) => (current === 'LAB' ? 'DASHBOARD' : current));
     setViewMode('DASHBOARD');
     setEditingItem(null);
     setSelectedItem(null);
@@ -325,263 +333,293 @@ const QuestionWorkbenchView: React.FC = () => {
   // Accepts ItemUpsertRequest directly from editors
   const handleSaveItem = async (request: ItemUpsertRequest) => {
     try {
-      showToast('Saving...', 'success');
+      showToast('Saving…', 'progress');
       const savedItem = await testsService.upsertItem(request);
+      const label = apiTypeLabel(savedItem.type);
 
       const isNew = !itemsList.find((item) => item.id === savedItem.id);
 
       if (isNew) {
         setItemsList((prev) => [savedItem, ...prev]);
-        showToast(`${activeItemType} Created Successfully`);
+        showToast(`${label} created.`);
       } else {
         setItemsList((prev) =>
           prev.map((item) => (item.id === savedItem.id ? savedItem : item)),
         );
-        showToast(`${activeItemType} Updated Successfully`);
+        showToast(`${label} saved.`);
       }
       handleBackToDashboard();
     } catch (error) {
       console.error('Failed to save item:', error);
-      showToast('Failed to save item', 'error');
+      showToast("Couldn't save the item. Try again.", 'error');
     }
   };
 
   const handleDeleteItem = async (identifier: string) => {
     try {
-      showToast('Deleting item...', 'success');
       await testsService.deleteItem(identifier);
       await loadItems();
-      showToast('Asset Deleted', 'success');
+      showToast('Item deleted.');
     } catch (error) {
       console.error('Failed to delete item:', error);
-      showToast('Failed to delete item', 'error');
+      showToast("Couldn't delete the item. Try again.", 'error');
     }
   };
 
-  if (viewMode === 'QUESTION_EDITOR')
-    return (
-      <QuestionEditor
-        onBack={handleBackToDashboard}
-        onSave={handleSaveItem}
-        initialQuestion={editingItem}
-      />
-    );
-  if (viewMode === 'LECTURE_WIZARD')
-    return (
-      <LectureCreationWizard
-        onBack={handleBackToDashboard}
-        onComplete={handleSaveItem}
-        initialItem={selectedItem}
-      />
-    );
-  if (viewMode === 'SAQ_EDITOR')
-    return (
-      <SAQEditor
-        initialQuestion={selectedItem}
-        onBack={handleBackToDashboard}
-        onSave={handleSaveItem}
-      />
-    );
-  if (viewMode === 'FLASHCARD_EDITOR')
-    return (
-      <FlashcardEditor
-        initialQuestion={selectedItem}
-        onBack={handleBackToDashboard}
-        onSave={handleSaveItem}
-      />
-    );
-  if (viewMode === 'LECTURE_EDITOR')
-    return (
-      <LectureEditor
-        initialData={selectedItem}
-        onBack={() => setViewMode('DASHBOARD')}
-        onSave={() => {
-          showToast('Saved');
-          setViewMode('DASHBOARD');
-        }}
-      />
-    );
+  // --- Editors: full-width on the canvas, over the workbench -----------------
+  const renderEditor = () => {
+    switch (viewMode) {
+      case 'QUESTION_EDITOR':
+        return (
+          <QuestionEditor
+            onBack={handleBackToDashboard}
+            onSave={handleSaveItem}
+            initialQuestion={editingItem}
+          />
+        );
+      case 'LECTURE_WIZARD':
+        return (
+          <LectureCreationWizard
+            onBack={handleBackToDashboard}
+            onComplete={handleSaveItem}
+            initialItem={selectedItem}
+          />
+        );
+      case 'SAQ_EDITOR':
+        return (
+          <SAQEditor
+            initialQuestion={selectedItem}
+            onBack={handleBackToDashboard}
+            onSave={handleSaveItem}
+          />
+        );
+      case 'FLASHCARD_EDITOR':
+        return (
+          <FlashcardEditor
+            initialQuestion={selectedItem}
+            onBack={handleBackToDashboard}
+            onSave={handleSaveItem}
+          />
+        );
+      case 'LECTURE_EDITOR':
+        return (
+          <LectureEditor
+            initialData={selectedItem}
+            onBack={() => setViewMode('DASHBOARD')}
+            onSave={() => {
+              showToast('Lecture saved.');
+              setViewMode('DASHBOARD');
+            }}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const editor = renderEditor();
+  const toastHost = <WorkbenchToast toast={toast} onDismiss={() => setToast(null)} />;
+
   if (viewMode === 'LECTURE_PLAYER' && selectedItem)
     return (
-      <LecturePlayerView
-        lectureId={selectedItem.id}
-        onBack={() => setViewMode('DASHBOARD')}
-        onEdit={(l) => {
-          setSelectedItem(l);
-          setViewMode('LECTURE_EDITOR');
-        }}
-      />
+      <>
+        <LecturePlayerView
+          lectureId={selectedItem.id}
+          onBack={() => setViewMode('DASHBOARD')}
+          onEdit={(l) => {
+            setSelectedItem(l);
+            setViewMode('LECTURE_EDITOR');
+          }}
+        />
+        {toastHost}
+      </>
     );
 
+  const activeSpec = ITEM_TYPE_SPEC[activeItemType];
+  const listIsCurrent = loadedType === activeItemType;
+
+  const typeSwitcher = (
+    <SegmentedControl<ItemType>
+      label="Item type"
+      value={activeItemType}
+      onChange={handleSelectType}
+      options={ITEM_TYPES.map((spec) => ({ value: spec.type, label: spec.plural }))}
+    />
+  );
+
+  const loadErrorAlert = loadError && (
+    <InlineAlert
+      tone="error"
+      title={`Couldn't load ${activeSpec.plural}`}
+      action={
+        <Button
+          size="sm"
+          icon={RefreshCw}
+          loading={isLoading}
+          onClick={() => void loadItems()}
+        >
+          Retry
+        </Button>
+      }
+    >
+      {loadError}
+    </InlineAlert>
+  );
+
+  const renderItemsTab = () => (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        {typeSwitcher}
+        {isLoading && listIsCurrent && <Spinner label="Refreshing…" />}
+      </div>
+      {loadErrorAlert}
+      {isLoading && !listIsCurrent ? (
+        <Spinner label={`Loading ${activeSpec.plural}…`} className="py-24" />
+      ) : listIsCurrent ? (
+        <ItemModuleDashboard
+          key={activeItemType}
+          onCreateClick={() => handleCreateNew(activeItemType)}
+          onViewAllClick={() => navigate('/bank-explorer')}
+          onEditClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
+          onDelete={handleDeleteItem}
+          onIssueClick={() => {
+            setActiveTab('INTEGRITY');
+          }}
+          onItemClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
+          totalQuestions={totalQuestions}
+          totalDraftQuestions={totalDraftQuestions}
+          totalLiveQuestions={totalLiveQuestions}
+          questions={questions}
+          issues={filteredIssues}
+          itemType={activeItemType}
+        />
+      ) : null}
+    </div>
+  );
+
+  const renderIntegrityTab = () => (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        {typeSwitcher}
+        <p className="text-[13px] text-stone-500">
+          Audit items for writing flaws and difficulty drift, then apply a suggested rewrite.
+        </p>
+      </div>
+      {loadErrorAlert}
+      {isLoading && !listIsCurrent ? (
+        <Spinner label={`Loading ${activeSpec.plural}…`} className="py-24" />
+      ) : listIsCurrent ? (
+        <ItemIntegrityView
+          key={activeItemType}
+          items={itemsList
+            .filter((i) => i.type === activeItemType.toLowerCase())
+            .map(toBackendItem)}
+          onUpdate={(updated) => {
+            // Convert back: find and update in itemsList by id
+            setItemsList((prev) =>
+              prev.map((i) => (i.id === updated.id ? { ...i, status: updated.status as any } : i)),
+            );
+            showToast('Rewrite applied.');
+          }}
+        />
+      ) : null}
+    </div>
+  );
+
+  const renderLabTab = () => (
+    <AILabView
+      onSaveNew={(newItem) => {
+        // AILabView still emits BackendItem — convert minimally
+        const apiItem: BackendApiItem = {
+          id: newItem.id,
+          identifier: newItem.identifier || '',
+          type: newItem.type?.toLowerCase() as any || 'mcq',
+          status: newItem.status === 'Published' ? 'live' : 'draft',
+          learningObjectiveId: newItem.learningObjective || null,
+          createdAt: newItem.createdAt,
+          updatedAt: newItem.updatedAt,
+          mcq: { stem: newItem.stem, choices: [] },
+          saq: null,
+          lecture: null,
+          flashcard: null,
+          tags: [],
+        };
+        setItemsList((prev) => [apiItem, ...prev]);
+        showToast('Draft added to the list.');
+        setActiveTab('DASHBOARD');
+      }}
+    />
+  );
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 relative">
-      {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-10 w-[90vw] xl:w-auto">
-          <div
-            className={`px-6 xl:px-8 py-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} text-white`}
-          >
-            <div className="flex items-center gap-3 overflow-hidden">
-              <CheckCircle size={20} className="shrink-0" />
-              <span className="text-xs xl:text-sm font-black uppercase tracking-widest truncate">
-                {toast.message}
-              </span>
-            </div>
-            <button onClick={() => setToast(null)} className="shrink-0">
-              <X size={16} />
-            </button>
-          </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Item workbench"
+        description="Write MCQs, SAQs, flashcards and lectures for your item bank, or draft new items with AI."
+        actions={
+          <>
+            {SHOW_PREVIEW_SECTIONS && (
+              <Button variant="ai" icon={Sparkles} onClick={() => setActiveTab('LAB')}>
+                Generate with AI
+              </Button>
+            )}
+            <Menu
+              label="New item"
+              align="end"
+              items={ITEM_TYPES.map((spec) => ({
+                label: spec.menuLabel,
+                icon: spec.icon,
+                hint: spec.description,
+                onSelect: () => handleCreateNew(spec.type),
+              }))}
+              trigger={({ ref, ...triggerProps }) => (
+                <Button
+                  ref={ref}
+                  variant="primary"
+                  icon={Plus}
+                  iconRight={ChevronDown}
+                  {...triggerProps}
+                >
+                  New item
+                </Button>
+              )}
+            />
+          </>
+        }
+      />
+
+      {SHOW_PREVIEW_SECTIONS && (
+        <WorkbenchTabs<WorkbenchTab>
+          label="Workbench sections"
+          idPrefix={TAB_PREFIX}
+          active={activeTab}
+          onSelect={setActiveTab}
+          tabs={[
+            { id: 'DASHBOARD', label: 'Items' },
+            { id: 'LAB', label: 'AI lab', badge: 'Preview' },
+            { id: 'INTEGRITY', label: 'Integrity audit', badge: 'Preview' },
+          ]}
+        />
+      )}
+
+      <div
+        role="tabpanel"
+        id={panelId(TAB_PREFIX, activeTab)}
+        aria-labelledby={tabId(TAB_PREFIX, activeTab)}
+      >
+        {activeTab === 'DASHBOARD' && renderItemsTab()}
+        {activeTab === 'INTEGRITY' && renderIntegrityTab()}
+        {activeTab === 'LAB' && renderLabTab()}
+      </div>
+
+      {/* Item editors open full-width on the canvas, over the workbench. */}
+      {editor && (
+        <div className="fixed inset-0 z-[90] !mt-0 overflow-y-auto bg-canvas p-4 custom-scrollbar sm:p-6">
+          {editor}
         </div>
       )}
 
-      {/* Authoring Modality Switcher */}
-      <div className="flex flex-col xl:flex-row xl:items-stretch gap-3 xl:gap-4">
-        <div className="flex-1 bg-white border border-slate-200 rounded-[2rem] shadow-sm p-2 xl:p-2.5">
-          <div className="flex items-center gap-1 mb-1 px-3 pt-1">
-            <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">
-              Authoring Modality
-            </span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {ITEM_MODALITIES.map((modality) => {
-              const isActive = activeItemType === modality.type;
-              const Icon = modality.icon;
-              return (
-                <button
-                  key={modality.type}
-                  onClick={() => handleSelectType(modality.type)}
-                  className={`group flex items-center gap-3 px-3 xl:px-4 py-3 xl:py-3.5 rounded-[1.5rem] text-left transition-all ${
-                    isActive
-                      ? 'bg-primary-gradient text-white shadow-lg shadow-emerald-100'
-                      : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  <span
-                    className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-slate-100 text-slate-400 group-hover:text-[#1BD183]'
-                    }`}
-                  >
-                    <Icon size={17} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[11px] font-black uppercase tracking-widest truncate">
-                      {modality.label}
-                    </span>
-                    <span
-                      className={`block text-[9px] font-bold uppercase tracking-wider truncate ${
-                        isActive ? 'text-white/70' : 'text-slate-400'
-                      }`}
-                    >
-                      {modality.desc}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <button
-          onClick={() => navigate('/bank-explorer')}
-          className="xl:w-48 flex items-center justify-center gap-2 px-6 py-4 bg-[#191A19] border border-slate-800 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest hover:bg-[#2a2b2a] shadow-sm transition-colors"
-        >
-          <Database size={15} /> Global Repository
-        </button>
-      </div>
-
-      {/* Workbench Sub-Navigation */}
-      {/* <div className="flex items-center gap-2 w-full xl:w-auto">
-        <div className="flex gap-2 p-1.5 bg-white border border-slate-200 rounded-[2rem] w-full xl:w-fit shadow-sm overflow-x no-scrollbar">
-          {[
-            { id: 'DASHBOARD', icon: Layout, label: 'Dashboard' },
-            {
-              id: 'INTEGRITY',
-              icon: ShieldCheck,
-              label: 'Integrity Audit',
-              alert: filteredIssues.length > 0,
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-shrink-0 flex items-center gap-2 px-4 xl:px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all relative whitespace-nowrap ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`}
-            >
-              <tab.icon size={14} />
-              {tab.label}
-              {tab.alert && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] font-black border-2 border-white">
-                  {filteredIssues.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div> */}
-
-      {/* View Content */}
-      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {activeTab === 'DASHBOARD' &&
-          (isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            </div>
-          ) : (
-            <ItemModuleDashboard
-              onCreateClick={handleCreateNew}
-              onViewAllClick={() => navigate('/bank-explorer')}
-              onEditClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
-              onDelete={handleDeleteItem}
-              onIssueClick={() => {
-                setActiveTab('INTEGRITY');
-              }}
-              onItemClick={(q) => handleEditItem(activeItemType, q.identifier || q.id)}
-              totalQuestions={totalQuestions}
-              totalDraftQuestions={totalDraftQuestions}
-              totalLiveQuestions={totalLiveQuestions}
-              questions={questions}
-              issues={filteredIssues}
-              itemType={activeItemType}
-            />
-          ))}
-        {activeTab === 'INTEGRITY' && (
-          <ItemIntegrityView
-            items={itemsList
-              .filter((i) => i.type === activeItemType.toLowerCase())
-              .map(toBackendItem)}
-            onUpdate={(updated) => {
-              // Convert back: find and update in itemsList by id
-              setItemsList((prev) =>
-                prev.map((i) => (i.id === updated.id ? { ...i, status: updated.status as any } : i)),
-              );
-              showToast('Item Remediated Successfully');
-            }}
-          />
-        )}
-        {activeTab === 'LAB' && (
-          <AILabView
-            onSaveNew={(newItem) => {
-              // AILabView still emits BackendItem — convert minimally
-              const apiItem: BackendApiItem = {
-                id: newItem.id,
-                identifier: newItem.identifier || '',
-                type: newItem.type?.toLowerCase() as any || 'mcq',
-                status: newItem.status === 'Published' ? 'live' : 'draft',
-                learningObjectiveId: newItem.learningObjective || null,
-                createdAt: newItem.createdAt,
-                updatedAt: newItem.updatedAt,
-                mcq: { stem: newItem.stem, choices: [] },
-                saq: null,
-                lecture: null,
-                flashcard: null,
-                tags: [],
-              };
-              setItemsList((prev) => [apiItem, ...prev]);
-              showToast('Lab Asset Committed to Bank');
-              setActiveTab('DASHBOARD');
-            }}
-          />
-        )}
-      </div>
+      {toastHost}
     </div>
   );
 };

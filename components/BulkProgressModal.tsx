@@ -1,6 +1,20 @@
-import React from 'react';
-import { createPortal } from 'react-dom';
-import { Loader2, CheckCircle2, XCircle, X } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
+import { Button, Dialog, ProgressBar, cn } from '@/components/ui';
+
+export type BulkItemState = 'queued' | 'working' | 'done' | 'failed';
+
+/** One row of the per-item results list. */
+export interface BulkItemResult {
+  id: string;
+  /** What people recognise the item by, e.g. its QID. */
+  label: string;
+  /** Secondary text, e.g. the stem. */
+  detail?: string;
+  state: BulkItemState;
+  /** Why it failed. */
+  message?: string;
+}
 
 interface BulkProgressModalProps {
   isOpen: boolean;
@@ -10,7 +24,23 @@ interface BulkProgressModalProps {
   failedItems: number;
   isProcessing: boolean;
   onClose: () => void;
+  /** Optional per-item results, listed under the progress bar. */
+  results?: BulkItemResult[];
 }
+
+const STATE_ICON: Record<BulkItemState, React.ReactNode> = {
+  queued: <Circle size={15} className="text-stone-300" aria-hidden="true" />,
+  working: <Loader2 size={15} className="animate-spin text-brand-600" aria-hidden="true" />,
+  done: <CheckCircle2 size={15} className="text-brand-600" aria-hidden="true" />,
+  failed: <XCircle size={15} className="text-red-500" aria-hidden="true" />,
+};
+
+const STATE_LABEL: Record<BulkItemState, string> = {
+  queued: 'Waiting',
+  working: 'Working…',
+  done: 'Done',
+  failed: 'Failed',
+};
 
 const BulkProgressModal: React.FC<BulkProgressModalProps> = ({
   isOpen,
@@ -20,108 +50,104 @@ const BulkProgressModal: React.FC<BulkProgressModalProps> = ({
   failedItems,
   isProcessing,
   onClose,
+  results,
 }) => {
-  if (!isOpen) return null;
+  const processed = completedItems + failedItems;
+  const percent = totalItems > 0 ? Math.min(100, Math.round((processed / totalItems) * 100)) : 0;
 
-  const progress = totalItems > 0 ? ((completedItems + failedItems) / totalItems) * 100 : 0;
-  const isDone = !isProcessing && (completedItems + failedItems) === totalItems && totalItems > 0;
+  // Once the run is over, surface failures first so they're not buried.
+  const orderedResults = useMemo(() => {
+    if (!results) return [];
+    if (isProcessing) return results;
+    return [...results].sort(
+      (left, right) => Number(right.state === 'failed') - Number(left.state === 'failed'),
+    );
+  }, [isProcessing, results]);
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" />
-      
-      {/* Modal */}
-      <div className="relative bg-white rounded-[2rem] shadow-2xl w-full max-w-md mx-4 animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-2xl shadow-lg ${
-              isDone && failedItems === 0 
-                ? 'bg-gradient-to-br from-[#1BD183] to-[#15a968] shadow-[#1BD183]/20' 
-                : isDone && failedItems > 0
-                  ? 'bg-gradient-to-br from-amber-500 to-amber-600 shadow-amber-500/20'
-                  : 'bg-gradient-to-br from-[#1BD183] to-emerald-600 shadow-[#1BD183]/20'
-            }`}>
-              {isProcessing ? (
-                <Loader2 size={24} className="animate-spin text-white" />
-              ) : isDone && failedItems === 0 ? (
-                <CheckCircle2 size={24} className="text-white" />
-              ) : (
-                <XCircle size={24} className="text-white" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900">{title}</h2>
-              <p className="text-sm text-slate-500 font-medium">
-                {isProcessing ? 'Please wait...' : isDone ? 'Operation complete' : ''}
-              </p>
-            </div>
-          </div>
-          {isDone && (
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
-            >
-              <X size={20} className="text-slate-400" />
-            </button>
+  const summary = isProcessing
+    ? `Working through ${totalItems.toLocaleString()} ${totalItems === 1 ? 'item' : 'items'}. Keep this window open.`
+    : failedItems > 0
+      ? `${completedItems.toLocaleString()} succeeded, ${failedItems.toLocaleString()} failed.`
+      : `${completedItems.toLocaleString()} of ${totalItems.toLocaleString()} done.`;
+
+  return (
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      dismissible={!isProcessing}
+      width="max-w-lg"
+      title={title}
+      description={summary}
+      footer={
+        <Button variant="primary" onClick={onClose} disabled={isProcessing}>
+          {isProcessing ? 'Working…' : 'Done'}
+        </Button>
+      }
+    >
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-[13px] text-stone-500">
+          <span className="tabular-nums" aria-live="polite">
+            {processed.toLocaleString()} of {totalItems.toLocaleString()}
+          </span>
+          <span className="tabular-nums">{percent}%</span>
+        </div>
+        <ProgressBar
+          value={processed}
+          max={totalItems}
+          tone={failedItems > 0 ? 'amber' : 'brand'}
+          label="Bulk action progress"
+        />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-[13px]">
+          <span className="inline-flex items-center gap-1.5 text-stone-700">
+            <CheckCircle2 size={14} className="text-brand-600" aria-hidden="true" />
+            <span className="tabular-nums">{completedItems.toLocaleString()}</span> done
+          </span>
+          {failedItems > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-red-700">
+              <XCircle size={14} className="text-red-500" aria-hidden="true" />
+              <span className="tabular-nums">{failedItems.toLocaleString()}</span> failed
+            </span>
           )}
         </div>
-
-        {/* Body */}
-        <div className="p-6 space-y-5">
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-300 ${
-                  failedItems > 0 ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 'bg-gradient-to-r from-[#1BD183] to-[#15a968]'
-                }`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="text-xs font-bold text-slate-400 text-right">
-              {Math.round(progress)}%
-            </p>
-          </div>
-
-          {/* Stats */}
-          <div className="flex items-center justify-center gap-6">
-            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl">
-              <CheckCircle2 size={14} className="text-[#1BD183]" />
-              <span className="text-sm font-bold text-slate-700">{completedItems} done</span>
-            </div>
-            {failedItems > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 rounded-xl">
-                <XCircle size={14} className="text-rose-500" />
-                <span className="text-sm font-bold text-rose-700">{failedItems} failed</span>
-              </div>
-            )}
-            <div className="flex items-center px-4 py-2 bg-slate-50 rounded-xl">
-              <span className="text-sm font-bold text-slate-400">
-                {completedItems + failedItems} / {totalItems}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Actions */}
-        {isDone && (
-          <div className="flex items-center justify-end p-6 pt-0">
-            <button
-              onClick={onClose}
-              className="px-6 py-3 bg-gradient-to-r from-[#1BD183] to-[#15a968] text-white text-sm font-bold rounded-xl  transition-all"
-            >
-              Done
-            </button>
-          </div>
-        )}
       </div>
-    </div>
-  );
 
-  if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
+      {orderedResults.length > 0 && (
+        <ul
+          aria-label="Results per item"
+          className="mt-4 max-h-64 divide-y divide-stone-100 overflow-y-auto rounded-lg border border-stone-200 custom-scrollbar"
+        >
+          {orderedResults.map((result) => (
+            <li key={result.id} className="flex items-start gap-3 px-3 py-2">
+              <span className="mt-0.5 flex-shrink-0">{STATE_ICON[result.state]}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium tabular-nums text-stone-900">
+                  {result.label}
+                </p>
+                {result.detail && (
+                  <p className="truncate text-xs text-stone-500">{result.detail}</p>
+                )}
+                {result.state === 'failed' && result.message && (
+                  <p className="mt-0.5 text-xs text-red-600">{result.message}</p>
+                )}
+              </div>
+              <span
+                className={cn(
+                  'mt-0.5 flex-shrink-0 text-xs',
+                  result.state === 'failed'
+                    ? 'font-medium text-red-600'
+                    : result.state === 'done'
+                      ? 'text-brand-700'
+                      : 'text-stone-400',
+                )}
+              >
+                {STATE_LABEL[result.state]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
 };
 
 export default BulkProgressModal;

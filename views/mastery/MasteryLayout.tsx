@@ -1,10 +1,8 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Outlet, useOutletContext, useParams } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { Outlet, useOutletContext } from 'react-router-dom';
 import { academyStudioBackend } from '@/services/academyStudioBackend';
 import type { TeacherCohort, TeacherCourse } from '@/types/AcademyStudioTypes';
-import MasterySidebar from './MasterySidebar';
 import { MasteryLoadingView } from './masteryShared';
 
 export interface MasteryOutletContext {
@@ -16,8 +14,13 @@ export interface MasteryOutletContext {
 
 export const useMasteryContext = () => useOutletContext<MasteryOutletContext>();
 
+/**
+ * Loads the cohort/course catalog once for the Mastery overview and cohort
+ * pages. It renders no chrome of its own: each page starts with its
+ * PageHeader (cohort switching lives in the cohort page's header actions) and
+ * shows `catalogError` under it.
+ */
 const MasteryLayout: React.FC = () => {
-  const { cohortId } = useParams();
   const [cohorts, setCohorts] = useState<TeacherCohort[]>([]);
   const [courses, setCourses] = useState<TeacherCourse[]>([]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
@@ -56,11 +59,7 @@ const MasteryLayout: React.FC = () => {
     isCatalogLoading && cohorts.length === 0 && courses.length === 0;
 
   if (isBootstrapping) {
-    return (
-      <div>
-        <MasteryLoadingView />
-      </div>
-    );
+    return <MasteryLoadingView label="Loading cohorts…" />;
   }
 
   const contextValue: MasteryOutletContext = {
@@ -70,24 +69,7 @@ const MasteryLayout: React.FC = () => {
     catalogError,
   };
 
-  return (
-    <div className="flex flex-col xl:flex-row gap-8 pb-20 animate-in fade-in duration-700">
-      <MasterySidebar
-        cohorts={cohorts}
-        isCatalogLoading={isCatalogLoading}
-        selectedCohortRouteId={cohortId || null}
-      />
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-8">
-        {catalogError && (
-          <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700 shadow-sm flex items-center gap-3">
-            <AlertTriangle size={16} />
-            {catalogError}
-          </div>
-        )}
-        <Outlet context={contextValue} />
-      </div>
-    </div>
-  );
+  return <Outlet context={contextValue} />;
 };
 
 export default MasteryLayout;

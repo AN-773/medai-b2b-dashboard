@@ -1,21 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  FileText,
-  Loader2,
-  Save,
-  X,
-} from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, FileText, Save, X } from 'lucide-react';
 import {
   LearningObjectiveSuggestion,
   SuggestionEvidenceChunk,
   SUGGESTION_BLOOM_LEVELS,
 } from '@/types/CourseStudioTypes';
 import MarkdownContent from '@/components/MarkdownContent';
-import { bloomStyle } from './shared';
+import { Badge, Button, Select, Textarea, cn } from '@/components/ui';
 
 interface SuggestionReviewCardProps {
   suggestion: LearningObjectiveSuggestion;
@@ -26,12 +17,6 @@ interface SuggestionReviewCardProps {
   onAccept: () => Promise<boolean>;
   onReject: () => Promise<boolean>;
 }
-
-const STATUS_BADGE: Record<string, string> = {
-  accepted: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  rejected: 'bg-rose-50 text-rose-600 border-rose-200',
-  pending: 'bg-amber-50 text-amber-700 border-amber-200',
-};
 
 const evidenceCanExpand = (content: string) =>
   content.trim().length > 260 || content.split(/\n+/).length > 4;
@@ -50,47 +35,51 @@ const EvidenceChunkCard: React.FC<EvidenceChunkCardProps> = ({
   const canExpand = evidenceCanExpand(chunk.content);
 
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3">
-      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-        <FileText size={12} className="flex-shrink-0" />
+    <div className="rounded-lg border border-stone-200 bg-stone-50 px-3.5 py-3">
+      <div className="flex items-center gap-1.5 text-xs text-stone-500">
+        <FileText size={13} className="flex-shrink-0 text-stone-400" aria-hidden="true" />
         <span className="truncate">{chunk.sourceFile || 'Source'}</span>
         {chunk.heading && (
           <>
-            <span className="text-slate-300">·</span>
-            <span className="truncate text-slate-600">{chunk.heading}</span>
+            <span aria-hidden="true" className="text-stone-300">
+              ·
+            </span>
+            <span className="truncate text-stone-600">{chunk.heading}</span>
           </>
         )}
         {typeof chunk.chunkIndex === 'number' && (
-          <span className="ml-auto flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-400">
+          <span className="ml-auto flex-shrink-0 tabular-nums text-stone-400">
             #{chunk.chunkIndex}
           </span>
         )}
       </div>
 
-      <div className="mt-2">
-        <div className={`relative ${!expanded && canExpand ? 'max-h-32 overflow-hidden' : ''}`}>
+      <div className="mt-2 text-sm text-stone-700">
+        <div className={cn('relative', !expanded && canExpand && 'max-h-32 overflow-hidden')}>
           <MarkdownContent content={chunk.content} />
           {!expanded && canExpand && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent" />
           )}
         </div>
 
         {canExpand && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={expanded ? ChevronUp : ChevronDown}
             onClick={onToggleExpanded}
             aria-expanded={expanded}
-            className="mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:border-slate-300"
+            className="-ml-2.5 mt-1"
           >
-            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {expanded ? 'Collapse' : 'Expand'}
-          </button>
+            {expanded ? 'Show less' : 'Show more'}
+          </Button>
         )}
       </div>
     </div>
   );
 };
 
+/** One AI-suggested objective: edit its text / Bloom level, then accept or reject. */
 const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   suggestion,
   isBusy,
@@ -118,8 +107,7 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   }, [suggestion.id]);
 
   const isDirty = useMemo(
-    () =>
-      title.trim() !== suggestion.title || bloomLevel !== suggestion.bloomLevel,
+    () => title.trim() !== suggestion.title || bloomLevel !== suggestion.bloomLevel,
     [title, bloomLevel, suggestion.title, suggestion.bloomLevel],
   );
 
@@ -139,29 +127,35 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
   const chunkCount = suggestion.chunks?.length || 0;
 
   return (
-    <div className={`px-1 py-4 transition ${isPending ? '' : 'opacity-75'}`}>
-      <div className="flex items-start justify-between gap-3">
+    <div
+      className={cn(
+        'px-4 py-3.5',
+        // Amber edge = still needs a decision.
+        isPending && 'shadow-[inset_2px_0_0_#fbbf24]',
+      )}
+    >
+      <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           {isPending ? (
-            <textarea
+            <Textarea
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               rows={2}
-              className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold leading-snug text-slate-900 outline-none transition focus:border-[#1BD183] focus:bg-white focus:ring-2 focus:ring-[#1BD183]/15"
+              aria-label="Suggested objective"
+              className="text-stone-900"
             />
           ) : (
-            <p className="text-sm font-bold leading-snug text-slate-800">
-              {suggestion.title}
-            </p>
+            <p className="text-sm leading-6 text-stone-600">{suggestion.title}</p>
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {isPending ? (
-              <div className="relative">
-                <select
+              <div className="w-36">
+                <Select
                   value={bloomLevel}
                   onChange={(event) => setBloomLevel(event.target.value)}
-                  className={`appearance-none rounded-lg border px-2.5 py-1 pr-7 text-[11px] font-black uppercase tracking-[0.12em] outline-none ${bloomStyle(bloomLevel)}`}
+                  aria-label="Bloom level"
+                  className="!h-8 text-[13px]"
                 >
                   {SUGGESTION_BLOOM_LEVELS.map((level) => (
                     <option key={level} value={level}>
@@ -171,78 +165,74 @@ const SuggestionReviewCard: React.FC<SuggestionReviewCardProps> = ({
                   {!SUGGESTION_BLOOM_LEVELS.includes(bloomLevel as never) && (
                     <option value={bloomLevel}>{bloomLevel}</option>
                   )}
-                </select>
-                <ChevronDown
-                  size={12}
-                  className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-60"
-                />
+                </Select>
               </div>
             ) : (
-              <span
-                className={`rounded-lg border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${bloomStyle(suggestion.bloomLevel)}`}
-              >
-                {suggestion.bloomLevel}
-              </span>
-            )}
-
-            {chunkCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowEvidence((open) => !open)}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:border-slate-300"
-              >
-                {showEvidence ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                {chunkCount} evidence chunk{chunkCount === 1 ? '' : 's'}
-              </button>
+              <Badge>{suggestion.bloomLevel}</Badge>
             )}
 
             {!isPending && (
-              <span
-                className={`rounded-lg border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${STATUS_BADGE[suggestion.status]}`}
+              <Badge tone={suggestion.status === 'accepted' ? 'green' : 'red'} dot>
+                {suggestion.status === 'accepted' ? 'Accepted' : 'Rejected'}
+              </Badge>
+            )}
+
+            {chunkCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={showEvidence ? ChevronDown : ChevronRight}
+                onClick={() => setShowEvidence((open) => !open)}
+                aria-expanded={showEvidence}
               >
-                {suggestion.status}
-              </span>
+                {chunkCount} evidence {chunkCount === 1 ? 'excerpt' : 'excerpts'}
+              </Button>
+            )}
+
+            {isPending && isDirty && (
+              <span className="text-xs text-amber-700">Unsaved edits</span>
             )}
           </div>
         </div>
 
         {isPending && (
-          <div className="flex flex-shrink-0 items-center gap-1.5">
+          <div className="flex flex-shrink-0 items-center gap-1">
             {isDirty && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={Save}
                 onClick={() => void persistEdits()}
                 disabled={actionsDisabled || !title.trim()}
-                title="Save edits"
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-slate-300 disabled:opacity-50"
               >
-                <Save size={13} />
-              </button>
+                Save
+              </Button>
             )}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={X}
               onClick={() => void onReject()}
               disabled={actionsDisabled}
-              title="Reject"
-              className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white p-2 text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
             >
-              <X size={16} />
-            </button>
-            <button
-              type="button"
+              Reject
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Check}
+              loading={isBusy}
               onClick={() => void handleAccept()}
               disabled={actionsDisabled || !title.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1BD183] px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#06241a] transition hover:brightness-105 disabled:opacity-50"
             >
-              {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               Accept
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {showEvidence && chunkCount > 0 && (
-        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+        <div className="mt-3 space-y-2">
           {suggestion.chunks.map((chunk) => (
             <EvidenceChunkCard
               key={chunk.id}

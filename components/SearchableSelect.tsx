@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Search, X, Check, Plus } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown, Plus, X } from 'lucide-react';
+import { cn, controlClass } from '@/components/ui';
+import { SelectPopover, filterOptions, isTypeaheadKey } from '@/components/select/SelectPopover';
 
 export interface SelectOption {
   id: string;
@@ -19,6 +21,11 @@ interface SearchableSelectProps {
   addLabel?: string;
 }
 
+/**
+ * Single-value combobox with a searchable, portaled listbox. `allOption` is
+ * always the first option and doubles as the "nothing selected" value that
+ * the clear button resets to.
+ */
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   value,
@@ -33,162 +40,161 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [popupDirection, setPopupDirection] = useState<'down' | 'up'>('down');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setSearchQuery('');
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Focus input when dropdown opens
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-
-    if (isOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const dropdownHeight = 320; // Approx height of search input + max-h-60 list
-
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        setPopupDirection('up');
-      } else {
-        setPopupDirection('down');
-      }
-    }
-  }, [isOpen]);
+  const baseId = useId();
+  const triggerId = `${baseId}-trigger`;
+  const labelId = `${baseId}-label`;
+  const listboxId = `${baseId}-listbox`;
 
   const allOptions = [allOption, ...options];
-
-  const filteredOptions = allOptions.filter(option =>
-    option?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const selectedOption = allOptions.find(opt => opt.id === value);
+  const filteredOptions = filterOptions(allOptions, searchQuery);
+  const selectedOption = allOptions.find((option) => option.id === value);
   const displayValue = selectedOption?.name || placeholder;
+  const isAllSelected = value === allOption.id;
+  const canClear = !isAllSelected && !disabled;
+
+  const close = (restoreFocus: boolean) => {
+    setIsOpen(false);
+    setSearchQuery('');
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+
+  // A control that becomes disabled while open (e.g. a parent reloading) closes.
+  useEffect(() => {
+    if (disabled && isOpen) close(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled]);
 
   const handleSelect = (optionId: string) => {
     onChange(optionId);
-    setIsOpen(false);
-    setSearchQuery('');
+    close(true);
   };
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleClear = () => {
     onChange(allOption.id);
     setSearchQuery('');
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled || isOpen) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setIsOpen(true);
+    } else if (isTypeaheadKey(event)) {
+      // Typing on the closed control opens it with the search pre-filled.
+      event.preventDefault();
+      setSearchQuery(event.key);
+      setIsOpen(true);
+    }
   };
 
   return (
-    <div className={`space-y-2 ${className}`} ref={containerRef}>
+    <div className={cn('min-w-0', className)} ref={rootRef}>
       {label && (
-        <div className="flex justify-between items-center px-1">
-          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <label
+            id={labelId}
+            htmlFor={triggerId}
+            className="text-[13px] font-medium text-stone-700"
+          >
             {label}
           </label>
           {onAddClick && (
-            <button 
-              type="button" 
-              onClick={(e) => { e.preventDefault(); onAddClick(); }} 
-              className="text-[9px] font-bold text-[#1BD183] uppercase tracking-widest hover:text-[#14A567] flex items-center gap-1"
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                onAddClick();
+              }}
+              className="inline-flex items-center gap-1 rounded text-[13px] font-medium text-stone-500 transition-colors hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
             >
-              <Plus size={10} strokeWidth={3} /> {addLabel || 'Add'}
+              <Plus size={13} aria-hidden="true" />
+              {addLabel || 'Add'}
             </button>
           )}
         </div>
       )}
-      
-      <div className="relative">
-        {/* Trigger Button */}
+
+      <div ref={anchorRef} className="relative">
         <button
           ref={triggerRef}
+          id={triggerId}
           type="button"
+          role="combobox"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? listboxId : undefined}
+          aria-labelledby={label ? labelId : undefined}
+          aria-label={label ? undefined : placeholder}
           disabled={disabled}
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          className={`w-full flex items-center justify-between px-5 py-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black uppercase tracking-tight text-slate-700 focus:ring-2 focus:ring-[#1BD183] outline-none transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-            isOpen ? 'ring-2 ring-[#1BD183] border-[#1BD183]' : ''
-          }`}
+          onClick={() => {
+            if (disabled) return;
+            if (isOpen) close(false);
+            else setIsOpen(true);
+          }}
+          onKeyDown={handleTriggerKeyDown}
+          title={selectedOption && !isAllSelected ? selectedOption.name : undefined}
+          className={cn(
+            controlClass,
+            'flex h-9 cursor-pointer items-center text-left',
+            canClear ? 'pr-14' : 'pr-8',
+            isOpen && 'border-brand-500 ring-[3px] ring-brand-500/15',
+          )}
         >
-          <span className={value === allOption.id ? 'text-slate-400' : 'text-slate-700'}>
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate',
+              !selectedOption
+                ? 'text-stone-400'
+                : disabled || isAllSelected
+                  ? 'text-stone-500'
+                  : 'text-stone-900',
+            )}
+          >
             {displayValue}
           </span>
-          <div className="flex items-center gap-2">
-            {value !== allOption.id && !disabled && (
-              <X
-                size={14}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                onClick={handleClear}
-              />
-            )}
-            <ChevronDown
-              size={14}
-              className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            />
-          </div>
         </button>
 
-        {/* Dropdown */}
-        {isOpen && (
-          <div 
-            className={`absolute z-50 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200 ${
-              popupDirection === 'up' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'
-            }`}
-          >
-            {/* Search Input */}
-            <div className="p-3 border-b border-slate-100">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-[#1BD183] outline-none transition"
-                />
-              </div>
-            </div>
-
-            {/* Options List */}
-            <div className="max-h-60 overflow-y-auto">
-              {filteredOptions.length === 0 ? (
-                <div className="px-4 py-6 text-center text-xs font-bold text-slate-400">
-                  No options found
-                </div>
-              ) : (
-                filteredOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => handleSelect(option.id)}
-                    className={`w-full flex items-center justify-between px-4 py-3 text-left text-xs font-bold transition-colors ${
-                      value === option.id
-                        ? 'bg-[#1BD183]/10 text-[#1BD183]'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="uppercase tracking-tight">{option.name}</span>
-                    {value === option.id && <Check size={14} />}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+        <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-0.5">
+          {canClear && (
+            <button
+              type="button"
+              onClick={handleClear}
+              aria-label={label ? `Clear ${label}` : 'Clear selection'}
+              title="Clear"
+              className="pointer-events-auto rounded p-0.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+            >
+              <X size={14} />
+            </button>
+          )}
+          <ChevronDown
+            size={15}
+            aria-hidden="true"
+            className={cn(
+              'text-stone-400 transition-transform duration-150',
+              isOpen && 'rotate-180',
+            )}
+          />
+        </div>
       </div>
+
+      <SelectPopover
+        open={isOpen}
+        anchorRef={anchorRef}
+        insideRef={rootRef}
+        listboxId={listboxId}
+        label={label || placeholder}
+        options={filteredOptions}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        isSelected={(id) => id === value}
+        onPick={handleSelect}
+        onDismiss={close}
+      />
     </div>
   );
 };

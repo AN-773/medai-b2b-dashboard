@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
+import { Button, cn } from '@/components/ui';
 import type { CourseGenerationJob } from '@/types/CourseAITypes';
 import { isJobAwaitingReview, isJobRunning } from './planUtils';
 import { STAGE_LABELS } from './stageLabels';
@@ -18,47 +19,47 @@ const ModuleGenerationBanner: React.FC<ModuleGenerationBannerProps> = ({ job, on
 
   const detail = running
     ? job.cancelRequestedAt
-      ? 'Cancelling…'
+      ? 'Stopping…'
       : job.status === 'queued'
         ? 'Waiting to start'
         : job.stage
           ? STAGE_LABELS[job.stage]
           : 'Working'
-    : 'Edit it, then accept to create the modules.';
+    : 'Edit the plan, then accept it to create the modules.';
 
   return (
     <div className="pt-4">
       <div
         role="status"
-        className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${
-          running ? 'border-emerald-200 bg-emerald-50/70' : 'border-[#16324F]/15 bg-[#16324F]/[0.04]'
-        }`}
+        className={cn(
+          'flex flex-wrap items-center gap-3 rounded-xl px-4 py-3',
+          running ? 'border border-stone-200 bg-stone-50' : 'border-ai-gradient shadow-card',
+        )}
       >
-        <span
-          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
-            running ? 'bg-white text-emerald-600' : 'bg-[#16324F] text-white'
-          }`}
-        >
-          {running ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-        </span>
+        {running ? (
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 ring-1 ring-inset ring-stone-200">
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+          </span>
+        ) : (
+          <span className="bg-ai-gradient flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white">
+            <Sparkles size={16} aria-hidden="true" />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-black text-slate-900">
-            {running ? 'AI is building modules…' : 'AI draft ready for review.'}
+          <p className="text-sm font-medium text-stone-900">
+            {running ? 'AI is drafting modules…' : 'AI draft ready for review'}
           </p>
-          <p className="text-xs font-semibold text-slate-500">{detail}</p>
+          <p className="text-[13px] text-stone-500">{detail}</p>
         </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition ${
-            running
-              ? 'border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300'
-              : 'bg-[#16324F] text-white hover:bg-[#1B3E62]'
-          }`}
-        >
-          {running ? 'View' : 'Review'}
-          <ArrowRight size={13} />
-        </button>
+        {running ? (
+          <Button variant="secondary" size="sm" onClick={onOpen}>
+            View
+          </Button>
+        ) : (
+          <Button variant="primary" size="sm" onClick={onOpen}>
+            Review
+          </Button>
+        )}
       </div>
     </div>
   );

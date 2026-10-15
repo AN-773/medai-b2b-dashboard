@@ -1,25 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowDown, FileText, GitBranch, Layers } from 'lucide-react';
+import { BookOpen, GitBranch, Layers, Sparkles, Target } from 'lucide-react';
 import { studyPlanAuditService } from '@/services/studyPlanAuditService';
 import type { GetItemLineageResponse } from '@/types/StudyPlanAuditTypes';
+import { Button } from '@/components/ui';
 import {
   Drawer,
-  EmptyBlock,
   ErrorBlock,
   IdChip,
-  KV,
-  KVGrid,
-  LangfuseLink,
   LoadingBlock,
-  Section,
   StagePill,
-  StatusPill,
   TenantTag,
-  TimeAgo,
-  computeDurationMs,
-  formatDurationMs,
-  formatNumber,
+  plural,
 } from '../shared';
+import { ChunkList, LineageNode, LineageTree, toChunkView } from '../lineage';
+import { RunError, RunFacts, RunHeadline } from '../runs';
 
 type Props = {
   itemIdentifier: string | null;
@@ -55,6 +49,10 @@ const ItemLineagePanel: React.FC<Props> = ({
     if (itemIdentifier) {
       setData(null);
       load();
+    } else {
+      // Closed: drop the old record so reopening never flashes (or focuses) stale content.
+      setData(null);
+      setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemIdentifier]);
@@ -73,206 +71,93 @@ const ItemLineagePanel: React.FC<Props> = ({
       subtitle={
         data
           ? `Type ${data.item.type} · plan ${data.study_plan_id}`
-          : itemIdentifier ?? undefined
+          : (itemIdentifier ?? undefined)
       }
     >
-      {loading && <LoadingBlock />}
+      {loading && <LoadingBlock label="Tracing item lineage…" />}
       {error && <ErrorBlock error={error} onRetry={load} />}
       {data && !loading && !error && (
-        <div className="space-y-5">
-          {/* Item -> LO -> Run -> Chunks */}
-          <Section title="Item">
-            <KVGrid cols={3}>
-              <KV label="Identifier" mono>
-                {data.item.identifier}
-              </KV>
-              <KV label="Type">
+        <LineageTree label="Item lineage: item, objective, producing run, source chunks">
+          {/* Item → objective → run → chunks */}
+          <LineageNode
+            icon={BookOpen}
+            relation="Item"
+            title={<code className="font-mono">{data.item.identifier}</code>}
+            current
+            meta={
+              <>
                 <StagePill value={data.item.type} />
-              </KV>
-              <KV label="Tenant">
+                <IdChip value={data.item.id} label="ID" />
                 <TenantTag tenantId={data.tenant_id} />
-              </KV>
-            </KVGrid>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <IdChip value={data.item.id} label="item" />
-              <IdChip value={data.study_plan_id} label="plan" />
-            </div>
-            {data.item.stem_or_question_or_front && (
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
-                {data.item.stem_or_question_or_front}
-              </div>
-            )}
-          </Section>
-
-          <Arrow label="generated for" />
-
-          <Section
-            title="Learning objective"
-            right={
-              <button
-                type="button"
-                onClick={() => onOpenLo(data.learning_objective.identifier)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <GitBranch size={11} />
-                Open LO lineage
-              </button>
+                <IdChip value={data.study_plan_id} label="Plan" />
+              </>
             }
           >
-            <div className="flex flex-col gap-1">
-              <div className="text-sm font-semibold text-slate-900">
-                {data.learning_objective.title || '(untitled)'}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-                <span className="font-mono">
+            {data.item.stem_or_question_or_front ? (
+              <p className="whitespace-pre-line rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-800">
+                {data.item.stem_or_question_or_front}
+              </p>
+            ) : (
+              <p className="text-[13px] text-stone-400">No stem recorded.</p>
+            )}
+          </LineageNode>
+
+          <LineageNode
+            icon={Target}
+            relation="Generated for objective"
+            title={data.learning_objective.title || 'Untitled objective'}
+            meta={
+              <>
+                <code className="font-mono text-stone-600">
                   {data.learning_objective.identifier}
-                </span>
-                <IdChip value={data.learning_objective.id} label="lo" />
+                </code>
+                <IdChip value={data.learning_objective.id} label="ID" />
                 <TenantTag tenantId={data.learning_objective.tenant_id} />
-              </div>
+              </>
+            }
+            action={
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={GitBranch}
+                onClick={() => onOpenLo(data.learning_objective.identifier)}
+              >
+                Objective lineage
+              </Button>
+            }
+          />
+
+          <LineageNode
+            icon={Sparkles}
+            relation="Produced by run"
+            title={<RunHeadline run={data.generation_run} />}
+          >
+            <div className="space-y-4 rounded-lg border border-stone-200 p-4">
+              <RunError run={data.generation_run} />
+              <RunFacts run={data.generation_run} />
             </div>
-          </Section>
+          </LineageNode>
 
-          <Arrow label="produced by run" />
-
-          <Section title="Producing run">
-            <RunDetails run={data.generation_run} />
-          </Section>
-
-          <Arrow label="grounded on chunks" />
-
-          <Section
-            title={`Source chunks (${data.chunks.length})`}
-            subtitle="Chunks resolved from the run's chunk_ids"
+          <LineageNode
+            icon={Layers}
+            relation="Grounded on"
+            title={plural(data.chunks.length, 'source chunk')}
+            meta="Resolved from the run's chunk_ids"
+            last
           >
             {data.chunks.length === 0 ? (
-              <EmptyBlock
-                title="No chunks attached"
-                hint={`Often true when chunk_source = "internal_reused" or "internal_generated".`}
-              />
+              <p className="rounded-lg border border-dashed border-stone-200 px-4 py-3 text-[13px] text-stone-500">
+                No chunks attached. This is expected when the run's chunk source is{' '}
+                <code className="font-mono">internal_reused</code> or{' '}
+                <code className="font-mono">internal_generated</code>.
+              </p>
             ) : (
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                {data.chunks.map((c) => (
-                  <div
-                    key={c.id}
-                    className="rounded-md border border-slate-200 bg-white p-2"
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-                      <Layers size={11} />
-                      <span className="font-mono">#{c.chunk_index}</span>
-                      <span className="font-mono">{c.source_file}</span>
-                      <IdChip value={c.id} label="chunk" />
-                      <span className="font-mono">
-                        tok {formatNumber(c.token_count)}
-                      </span>
-                    </div>
-                    {c.heading && (
-                      <div className="mt-1 text-[11px] font-semibold text-slate-700">
-                        {c.heading}
-                      </div>
-                    )}
-                    {c.content_snippet && (
-                      <div className="mt-1 line-clamp-4 text-[11px] text-slate-600">
-                        {c.content_snippet}
-                      </div>
-                    )}
-                    {c.upload && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2 text-[10.5px] text-slate-500">
-                        <FileText size={11} />
-                        <span className="font-mono">{c.upload.file_name}</span>
-                        <IdChip value={c.upload.id} label="upload" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <ChunkList chunks={data.chunks.map(toChunkView)} />
             )}
-          </Section>
-        </div>
+          </LineageNode>
+        </LineageTree>
       )}
     </Drawer>
-  );
-};
-
-const Arrow: React.FC<{ label: string }> = ({ label }) => (
-  <div className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-    <ArrowDown size={12} />
-    {label}
-    <ArrowDown size={12} />
-  </div>
-);
-
-const RunDetails: React.FC<{
-  run: GetItemLineageResponse['generation_run'];
-}> = ({ run }) => {
-  const duration =
-    computeDurationMs(run.started_at, run.ended_at) ?? run.latency_ms;
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPill value={run.status} />
-        <StagePill value={run.stage} />
-        <span className="font-mono text-[10.5px] text-slate-500">
-          {run.model}
-        </span>
-        <span className="font-mono text-[10.5px] text-slate-500">
-          attempt #{run.attempt}
-        </span>
-        {run.error_code && (
-          <span className="font-mono text-[10.5px] text-rose-600">
-            {run.error_code}
-          </span>
-        )}
-      </div>
-      <div className="mt-3">
-        <KVGrid cols={3}>
-          <KV label="Prompt type" mono>
-            {run.prompt_type || '—'}
-          </KV>
-          <KV label="Tokens (in / out)" mono>
-            {formatNumber(run.input_token_count)} /{' '}
-            {formatNumber(run.output_token_count)}
-          </KV>
-          <KV label="Duration" mono>
-            {formatDurationMs(duration)}
-          </KV>
-          <KV label="Error message">
-            {run.error_message ? (
-              <span className="whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-700">
-                {run.error_message}
-              </span>
-            ) : (
-              <span className="text-slate-400">—</span>
-            )}
-          </KV>
-          <KV label="Started">
-            <TimeAgo iso={run.started_at} />
-          </KV>
-          <KV label="Ended">
-            <TimeAgo iso={run.ended_at} />
-          </KV>
-          <KV label="Langfuse">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {run.langfuse_trace_id && (
-                <IdChip value={run.langfuse_trace_id} label="trace" />
-              )}
-              {run.langfuse_span_id && (
-                <IdChip value={run.langfuse_span_id} label="span" />
-              )}
-              {run.langfuse_trace_url && (
-                <LangfuseLink href={run.langfuse_trace_url} label="trace" />
-              )}
-              {run.langfuse_span_url && (
-                <LangfuseLink href={run.langfuse_span_url} label="span" />
-              )}
-            </div>
-          </KV>
-        </KVGrid>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <IdChip value={run.id} label="run" />
-      </div>
-    </>
   );
 };
 

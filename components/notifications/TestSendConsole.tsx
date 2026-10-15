@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, Send } from 'lucide-react';
-import ConfirmationModal from '../ConfirmationModal';
+import { ArrowRight, Send } from 'lucide-react';
 import {
   DeliveryResult,
   NOTIFICATION_CHANNELS,
@@ -11,23 +10,58 @@ import {
   notificationService,
 } from '../../services/notificationService';
 import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  InlineAlert,
+  Input,
+  SectionHeader,
+  Select,
+  Spinner,
+  Textarea,
+  cn,
+} from '@/components/ui';
+import {
+  CHANNEL_ICON,
   ChannelBadge,
-  ErrorBanner,
-  Panel,
+  CopyButton,
   StatusBadge,
+  channelLabel,
   errorMessage,
-  inputClass,
-  labelClass,
-  primaryButtonClass,
 } from './shared';
+import { SEND_LINK_KEYS, useLinkParams, useNotificationTabs } from './navigation';
+
+const FormSection: React.FC<{
+  title: string;
+  description?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, description, children }) => (
+  <section className="space-y-4 px-5 py-5">
+    <div>
+      <h3 className="text-sm font-semibold text-stone-900">{title}</h3>
+      {description && <p className="mt-0.5 text-[13px] text-stone-500">{description}</p>}
+    </div>
+    {children}
+  </section>
+);
 
 const TestSendConsole: React.FC = () => {
+  const { openTab } = useNotificationTabs();
+  // A template's "Send a test" action links here with its key and channel.
+  const link = useLinkParams(SEND_LINK_KEYS);
+
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
   const [webhooks, setWebhooks] = useState<TeamsWebhook[]>([]);
   const [loadError, setLoadError] = useState('');
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
 
-  const [templateKey, setTemplateKey] = useState('');
-  const [channels, setChannels] = useState<NotificationChannel[]>(['email']);
+  const [templateKey, setTemplateKey] = useState(() => link.template ?? '');
+  const [channels, setChannels] = useState<NotificationChannel[]>(() =>
+    NOTIFICATION_CHANNELS.includes(link.channel as NotificationChannel)
+      ? [link.channel as NotificationChannel]
+      : ['email']
+  );
   const [email, setEmail] = useState('');
   const [userId, setUserId] = useState('');
   const [webhookKey, setWebhookKey] = useState('');
@@ -51,6 +85,8 @@ const TestSendConsole: React.FC = () => {
       } catch (err) {
         console.error('Failed to load send options:', err);
         setLoadError(errorMessage(err, 'Unable to load templates for the test console.'));
+      } finally {
+        setIsLoadingOptions(false);
       }
     };
     load();
@@ -142,241 +178,318 @@ const TestSendConsole: React.FC = () => {
     }
   };
 
+  // Only the recipients the chosen channels will actually use.
   const recipientSummary = [
-    email.trim() && `email ${email.trim()}`,
-    webhookKey.trim() && `Teams webhook "${webhookKey.trim()}"`,
-    userId.trim() && `push to user ${userId.trim()}`,
+    channels.includes('email') && email.trim() && `email ${email.trim()}`,
+    channels.includes('teams') && webhookKey.trim() && `Teams webhook "${webhookKey.trim()}"`,
+    channels.includes('push') &&
+      (userId.trim()
+        ? `push to user ${userId.trim()}`
+        : pushTokens.trim() && 'push to the listed device tokens'),
   ]
     .filter(Boolean)
     .join(', ');
 
+  const trimmedKey = templateKey.trim();
+  const isKnownTemplate = templateKeys.includes(trimmedKey);
+  const missingVariants =
+    trimmedKey && availableChannels.length > 0
+      ? channels.filter((channel) => !availableChannels.includes(channel))
+      : [];
+
+  const summary =
+    trimmedKey && channels.length > 0
+      ? `Sends ${trimmedKey} over ${channels.map(channelLabel).join(', ')}${
+          recipientSummary ? ` to ${recipientSummary}` : ''
+        }.`
+      : 'Choose a template and at least one channel.';
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-bold text-slate-900">Send a Test</h3>
-        <p className="text-sm text-slate-500">
-          Dispatches a real notification through the live channels — the recipient receives it.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <SectionHeader
+        title="Test send"
+        description="Dispatches a real notification through the live channels, exactly as a service would publish it."
+      />
 
-      <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-        <p className="text-sm">
-          This is not a preview. Use a template preview to check wording; use this only to verify a
-          channel end to end, and prefer your own address.
-        </p>
-      </div>
+      <InlineAlert tone="warning" title="This is not a preview — the recipient receives it">
+        Check wording with a template’s live preview. Use this only to verify a channel end to end,
+        and prefer your own address.
+      </InlineAlert>
 
-      <ErrorBanner message={loadError} />
+      {loadError && <InlineAlert className="break-words">{loadError}</InlineAlert>}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.8fr)] gap-6 items-start">
-        <form onSubmit={handleRequestSend}>
-          <Panel title="Compose" description="Mirrors the payload a service would publish.">
-            <div className="p-6 space-y-5">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                  <label htmlFor="send-template" className={labelClass}>
-                    Template key
-                  </label>
-                  <input
-                    id="send-template"
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+        <form
+          onSubmit={handleRequestSend}
+          aria-label="Compose a test notification"
+          className="divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white shadow-card"
+        >
+          <FormSection title="Message" description="The stored template to render, and the channels to send it on.">
+            <Field
+              label="Template key"
+              description={
+                !trimmedKey ? (
+                  'Start typing to pick from stored templates.'
+                ) : isLoadingOptions ? (
+                  'Checking stored templates…'
+                ) : !isKnownTemplate ? (
+                  <span className="text-amber-700">
+                    No stored template with this key — the send will fail.
+                  </span>
+                ) : (
+                  `Stored for: ${availableChannels.map(channelLabel).join(', ')}`
+                )
+              }
+            >
+              {(id) => (
+                <>
+                  <Input
+                    id={id}
                     list="send-template-options"
-                    type="text"
                     value={templateKey}
                     onChange={(event) => setTemplateKey(event.target.value)}
                     placeholder="user.invited"
-                    className={`${inputClass} font-mono`}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono text-[13px] sm:max-w-md"
                   />
                   <datalist id="send-template-options">
                     {templateKeys.map((key) => (
                       <option key={key} value={key} />
                     ))}
                   </datalist>
-                  {templateKey && availableChannels.length > 0 && (
-                    <p className="text-xs text-slate-500">
-                      Stored for: {availableChannels.join(', ')}
-                    </p>
-                  )}
-                  {templateKey && templateKeys.includes(templateKey) === false && (
-                    <p className="text-xs text-amber-700">
-                      No stored template with this key — the send will fail.
-                    </p>
-                  )}
-                </div>
+                </>
+              )}
+            </Field>
 
-                <div className="space-y-2">
-                  <span className={labelClass}>Channels</span>
-                  <div className="flex flex-wrap gap-3 pt-1">
-                    {NOTIFICATION_CHANNELS.map((channel) => (
-                      <label
-                        key={channel}
-                        className="inline-flex items-center gap-2 text-sm text-slate-700 capitalize"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={channels.includes(channel)}
-                          onChange={() => toggleChannel(channel)}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        {channel}
-                      </label>
-                    ))}
-                  </div>
-                  {templateKey &&
-                    channels.some(
-                      (c) => availableChannels.length > 0 && !availableChannels.includes(c)
-                    ) && (
-                      <p className="text-xs text-amber-700">
-                        Some selected channels have no template variant and will fail.
-                      </p>
+            <fieldset>
+              <legend className="mb-1.5 text-[13px] font-medium text-stone-700">Channels</legend>
+              <div className="flex flex-wrap gap-2">
+                {NOTIFICATION_CHANNELS.map((channel) => {
+                  const Icon = CHANNEL_ICON[channel];
+                  const checked = channels.includes(channel);
+                  const noVariant =
+                    Boolean(trimmedKey) &&
+                    availableChannels.length > 0 &&
+                    !availableChannels.includes(channel);
+                  return (
+                    <label
+                      key={channel}
+                      className={cn(
+                        'inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border px-3 text-sm shadow-card transition-colors focus-within:ring-[3px] focus-within:ring-brand-500/15',
+                        checked
+                          ? 'border-brand-500 bg-brand-50/60 text-stone-900'
+                          : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50',
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleChannel(channel)}
+                        className="h-4 w-4 rounded border-stone-300 accent-brand-600"
+                      />
+                      <Icon
+                        size={15}
+                        className={checked ? 'text-brand-700' : 'text-stone-400'}
+                        aria-hidden="true"
+                      />
+                      {channelLabel(channel)}
+                      {noVariant && <span className="text-xs text-amber-700">· no template</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              {missingVariants.length > 0 && (
+                <p className="mt-1.5 text-xs text-amber-700">
+                  Some selected channels have no template variant and will fail.
+                </p>
+              )}
+            </fieldset>
+          </FormSection>
+
+          <FormSection
+            title="Recipients"
+            description="Only the channels you picked need a recipient."
+          >
+            {channels.length === 0 ? (
+              <p className="text-[13px] text-stone-500">Pick a channel to add its recipient.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {channels.includes('email') && (
+                  <Field label="Recipient email">
+                    {(id) => (
+                      <Input
+                        id={id}
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@medicalstudent.ai"
+                      />
                     )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                  <label htmlFor="send-email" className={labelClass}>
-                    Recipient email
-                  </label>
-                  <input
-                    id="send-email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@medicalstudent.ai"
-                    className={inputClass}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="send-user-id" className={labelClass}>
-                    User ID <span className="normal-case font-semibold text-slate-400">(push)</span>
-                  </label>
-                  <input
-                    id="send-user-id"
-                    type="text"
-                    value={userId}
-                    onChange={(event) => setUserId(event.target.value)}
-                    placeholder="users/42"
-                    className={`${inputClass} font-mono text-xs`}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                  <label htmlFor="send-webhook" className={labelClass}>
-                    Teams webhook key
-                  </label>
-                  <select
-                    id="send-webhook"
-                    value={webhookKey}
-                    onChange={(event) => setWebhookKey(event.target.value)}
-                    className={inputClass}
+                  </Field>
+                )}
+                {channels.includes('push') && (
+                  <>
+                    <Field label="User ID" description="Push goes to the devices registered for this user.">
+                      {(id) => (
+                        <Input
+                          id={id}
+                          value={userId}
+                          onChange={(event) => setUserId(event.target.value)}
+                          placeholder="users/42"
+                          spellCheck={false}
+                          className="font-mono text-[13px]"
+                        />
+                      )}
+                    </Field>
+                    <Field
+                      label="Device tokens"
+                      hint="Optional"
+                      description="Comma-separated; overrides the user's registry."
+                    >
+                      {(id) => (
+                        <Input
+                          id={id}
+                          value={pushTokens}
+                          onChange={(event) => setPushTokens(event.target.value)}
+                          placeholder="fcm-token-1, fcm-token-2"
+                          spellCheck={false}
+                          className="font-mono text-[13px]"
+                        />
+                      )}
+                    </Field>
+                  </>
+                )}
+                {channels.includes('teams') && (
+                  <Field
+                    label="Teams webhook"
+                    description={
+                      !isLoadingOptions && webhooks.length === 0
+                        ? 'No webhooks configured — add one under Webhooks.'
+                        : undefined
+                    }
                   >
-                    <option value="">None</option>
-                    {webhooks.map((webhook) => (
-                      <option key={webhook.key} value={webhook.key}>
-                        {webhook.key}
-                        {webhook.enabled ? '' : ' (disabled)'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="send-tokens" className={labelClass}>
-                    Device tokens{' '}
-                    <span className="normal-case font-semibold text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    id="send-tokens"
-                    type="text"
-                    value={pushTokens}
-                    onChange={(event) => setPushTokens(event.target.value)}
-                    placeholder="Comma-separated; overrides the user's registry"
-                    className={`${inputClass} font-mono text-xs`}
-                  />
-                </div>
+                    {(id) => (
+                      <Select
+                        id={id}
+                        value={webhookKey}
+                        onChange={(event) => setWebhookKey(event.target.value)}
+                      >
+                        <option value="">None</option>
+                        {webhooks.map((webhook) => (
+                          <option key={webhook.key} value={webhook.key}>
+                            {webhook.key}
+                            {webhook.enabled ? '' : ' (disabled)'}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                )}
               </div>
+            )}
+          </FormSection>
 
-              <div className="space-y-2">
-                <label htmlFor="send-variables" className={labelClass}>
-                  Variables (JSON)
-                </label>
-                <textarea
-                  id="send-variables"
+          <FormSection title="Variables" description="A JSON object passed to the template.">
+            <Field label="Variables (JSON)">
+              {(id) => (
+                <Textarea
+                  id={id}
                   value={variablesText}
                   onChange={(event) => setVariablesText(event.target.value)}
-                  rows={8}
-                  className={`${inputClass} font-mono text-xs`}
+                  rows={7}
+                  spellCheck={false}
+                  className="resize-y font-mono text-[13px]"
                 />
-              </div>
+              )}
+            </Field>
+          </FormSection>
 
-              <ErrorBanner message={sendError} />
-
-              <div className="flex justify-end pt-2">
-                <button type="submit" disabled={isSending} className={primaryButtonClass}>
-                  {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  Send Notification
-                </button>
-              </div>
+          <div className="space-y-3 rounded-b-xl bg-stone-50/60 px-5 py-4">
+            {sendError && (
+              <InlineAlert onDismiss={() => setSendError('')} className="break-words">
+                {sendError}
+              </InlineAlert>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 break-words text-[13px] text-stone-500">{summary}</p>
+              <Button type="submit" variant="primary" icon={Send} loading={isSending}>
+                Send notification
+              </Button>
             </div>
-          </Panel>
+          </div>
         </form>
 
-        <Panel title="Result" description="Per-channel outcome from the dispatcher.">
-          <div className="p-6">
-            {result ? (
-              <div className="space-y-4">
+        <section
+          aria-labelledby="test-send-result-title"
+          className="rounded-xl border border-stone-200 bg-white shadow-card xl:sticky xl:top-16"
+        >
+          <header className="border-b border-stone-100 px-5 py-4">
+            <h3 id="test-send-result-title" className="text-sm font-semibold text-stone-900">
+              Result
+            </h3>
+            <p className="mt-0.5 text-[13px] text-stone-500">Per-channel outcome from the dispatcher.</p>
+          </header>
+
+          <div aria-live="polite">
+            {isSending ? (
+              <Spinner label="Dispatching…" className="py-14" />
+            ) : result ? (
+              <div className="space-y-4 p-5">
                 <div>
-                  <p className={labelClass}>Notification ID</p>
-                  <p className="mt-1 font-mono text-xs text-slate-700 break-all">
-                    {result.notification_id}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Paste this into the Delivery Log tab to see every attempt.
-                  </p>
+                  <p className="text-xs text-stone-500">Notification ID</p>
+                  <div className="mt-1 flex items-start gap-1">
+                    <code className="min-w-0 flex-1 break-all font-mono text-[13px] text-stone-800">
+                      {result.notification_id}
+                    </code>
+                    <CopyButton value={result.notification_id} label="Copy notification ID" className="-my-1" />
+                  </div>
                 </div>
 
-                <div className="space-y-3">
+                <ul className="divide-y divide-stone-100 rounded-lg border border-stone-200">
                   {Object.entries(result.per_channel).map(([channel, status]) => (
-                    <div
-                      key={channel}
-                      className="rounded-xl border border-slate-200 px-4 py-3 space-y-2"
-                    >
+                    <li key={channel} className="px-3.5 py-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <ChannelBadge channel={channel as NotificationChannel} />
                         <StatusBadge status={status} />
                       </div>
                       {result.errors?.[channel] && (
-                        <p className="text-xs text-rose-700 break-words">
+                        <p className="mt-1.5 break-words text-xs text-red-700">
                           {result.errors[channel]}
                         </p>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
+
+                <Button
+                  size="sm"
+                  iconRight={ArrowRight}
+                  onClick={() => openTab('deliveries', { notification: result.notification_id })}
+                >
+                  View attempts in the delivery log
+                </Button>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center text-center text-slate-500 py-12">
-                <Send size={36} className="text-slate-200 mb-3" />
-                <p className="text-sm font-medium text-slate-900">Nothing sent yet</p>
-                <p className="text-xs mt-1">The dispatch result appears here.</p>
-              </div>
+              <EmptyState
+                compact
+                icon={Send}
+                title="Nothing sent yet"
+                description="The dispatch result appears here, with a link to its delivery attempts."
+              />
             )}
           </div>
-        </Panel>
+        </section>
       </div>
 
-      <ConfirmationModal
-        isOpen={isConfirming}
+      <ConfirmDialog
+        open={isConfirming}
+        tone="default"
         title="Send a real notification?"
-        message={`This delivers "${templateKey}" over ${channels.join(', ')} to ${
-          recipientSummary || 'the recipient below'
+        description={`This delivers "${templateKey}" over ${channels.join(', ')} to ${
+          recipientSummary || 'the recipient you entered'
         }. It is not a drill — the recipient will receive it.`}
-        confirmLabel="Send"
-        variant="warning"
+        confirmLabel="Send now"
         onConfirm={() => {
           setIsConfirming(false);
           handleSend();

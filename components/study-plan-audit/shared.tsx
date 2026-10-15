@@ -1,134 +1,193 @@
-import React, { useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { Building2, Check, Copy, ExternalLink, Inbox, RefreshCw } from 'lucide-react';
 import {
-  AlertCircle,
-  Check,
-  Copy,
-  ExternalLink,
-  Loader2,
-  XCircle,
-} from 'lucide-react';
+  Badge,
+  Button,
+  Drawer as UIDrawer,
+  IconButton,
+  InlineAlert,
+  Spinner,
+  StatusDot,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
 
-// ---------- Status colors ----------
+// ---------- Value helpers ----------
 
-const STATUS_TONE: Record<string, string> = {
-  succeeded:
-    'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  started: 'bg-sky-50 text-sky-700 ring-sky-200',
-  failed: 'bg-rose-50 text-rose-700 ring-rose-200',
-  no_items_generated:
-    'bg-amber-50 text-amber-700 ring-amber-200',
+/** `no_items_generated` → "No items generated". */
+export const humanize = (value: string) => {
+  const text = value.replace(/[_-]+/g, ' ').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : value;
 };
 
-const STRATEGY_TONE: Record<string, string> = {
-  weak: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  random_fill: 'bg-sky-50 text-sky-700 ring-sky-200',
-  internal_reused: 'bg-violet-50 text-violet-700 ring-violet-200',
-  fallback: 'bg-amber-50 text-amber-700 ring-amber-200',
+const STATUS_TONE: Record<string, BadgeTone> = {
+  succeeded: 'green',
+  success: 'green',
+  completed: 'green',
+  complete: 'green',
+  active: 'green',
+  ready: 'green',
+  processed: 'green',
+  done: 'green',
+  live: 'green',
+  started: 'blue',
+  running: 'blue',
+  processing: 'blue',
+  generating: 'blue',
+  pending: 'blue',
+  queued: 'blue',
+  in_progress: 'blue',
+  uploaded: 'blue',
+  failed: 'red',
+  error: 'red',
+  errored: 'red',
+  no_items_generated: 'amber',
+  partial: 'amber',
+  partially_succeeded: 'amber',
 };
 
-const CHUNK_SOURCE_TONE: Record<string, string> = {
-  linked: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  similarity_fallback: 'bg-amber-50 text-amber-700 ring-amber-200',
-  random_fallback: 'bg-rose-50 text-rose-700 ring-rose-200',
-  internal_reused: 'bg-violet-50 text-violet-700 ring-violet-200',
-  internal_generated: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200',
+/** Colour for any run / session / upload / plan status the audit API returns. */
+export const statusTone = (value: string | null | undefined): BadgeTone =>
+  STATUS_TONE[(value ?? '').toLowerCase()] ?? 'neutral';
+
+const STRATEGY_TONE: Record<string, BadgeTone> = {
+  weak: 'green',
+  random_fill: 'blue',
+  internal_reused: 'violet',
+  fallback: 'amber',
 };
+
+const CHUNK_SOURCE_TONE: Record<string, BadgeTone> = {
+  linked: 'green',
+  similarity_fallback: 'amber',
+  random_fallback: 'red',
+  internal_reused: 'violet',
+  internal_generated: 'violet',
+};
+
+/** Chunk sources that mean generation wasn't grounded on the objective's own chunks. */
+export const FALLBACK_CHUNK_SOURCES = new Set(['similarity_fallback', 'random_fallback']);
 
 // ---------- Atoms ----------
 
 export const StatusPill: React.FC<{ value: string; size?: 'sm' | 'md' }> = ({
   value,
   size = 'sm',
-}) => {
-  const tone =
-    STATUS_TONE[value] || 'bg-slate-100 text-slate-700 ring-slate-200';
-  const px = size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs';
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-md font-mono font-semibold uppercase tracking-wider ring-1 ${tone} ${px}`}
-    >
-      {value === 'failed' && <XCircle size={10} />}
-      {value === 'succeeded' && <Check size={10} />}
-      {value}
-    </span>
-  );
-};
-
-export const StrategyPill: React.FC<{ value: string }> = ({ value }) => {
-  const tone =
-    STRATEGY_TONE[value] || 'bg-slate-100 text-slate-700 ring-slate-200';
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ring-1 ${tone}`}
-    >
-      {value}
-    </span>
-  );
-};
-
-export const ChunkSourcePill: React.FC<{ value: string }> = ({ value }) => {
-  const tone =
-    CHUNK_SOURCE_TONE[value] || 'bg-slate-100 text-slate-700 ring-slate-200';
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider ring-1 ${tone}`}
-    >
-      {value}
-    </span>
-  );
-};
-
-export const StagePill: React.FC<{ value: string }> = ({ value }) => (
-  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200">
-    {value}
-  </span>
-);
-
-export const TenantTag: React.FC<{ tenantId: string | null }> = ({
-  tenantId,
 }) => (
-  <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 ring-1 ring-slate-200">
-    tenant
-    <span className="text-slate-700">{tenantId ?? '—'}</span>
+  <Badge
+    tone={statusTone(value)}
+    dot
+    title={value}
+    className={size === 'md' ? 'px-2 py-1' : undefined}
+  >
+    {humanize(value || 'unknown')}
+  </Badge>
+);
+
+/** Lighter status for dense table rows. */
+export const StatusLabel: React.FC<{ value: string }> = ({ value }) => (
+  <span title={value}>
+    <StatusDot tone={statusTone(value)}>{humanize(value || 'unknown')}</StatusDot>
   </span>
 );
 
-// ---------- ID chip (click to copy) ----------
+export const StrategyPill: React.FC<{ value: string }> = ({ value }) => (
+  <Badge tone={STRATEGY_TONE[value] ?? 'neutral'} title={value}>
+    {humanize(value || 'unknown')}
+  </Badge>
+);
+
+export const ChunkSourcePill: React.FC<{ value: string }> = ({ value }) => (
+  <Badge tone={CHUNK_SOURCE_TONE[value] ?? 'neutral'} title={`Chunk source: ${value}`}>
+    {humanize(value || 'unknown')}
+  </Badge>
+);
+
+/** Raw pipeline identifiers (stage, item type, session mode) — shown as code. */
+export const StagePill: React.FC<{ value: string }> = ({ value }) => (
+  <Badge className="font-mono">{value}</Badge>
+);
+
+export const TenantTag: React.FC<{ tenantId: string | null }> = ({ tenantId }) => (
+  <span
+    className="inline-flex min-w-0 max-w-[16rem] items-center gap-1 text-xs text-stone-500"
+    title={tenantId ? `Tenant ${tenantId}` : 'No tenant'}
+  >
+    <Building2 size={12} className="flex-shrink-0 text-stone-400" aria-hidden="true" />
+    <span className="sr-only">Tenant</span>
+    {tenantId ? (
+      <span className="truncate font-mono text-stone-600">{tenantId}</span>
+    ) : (
+      <span>No tenant</span>
+    )}
+  </span>
+);
+
+// ---------- Copy ----------
+
+const useCopy = (text: string) => {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }, [text]);
+  return { copied, copy };
+};
+
+/** Icon-only copy action. Never bubbles, so it's safe inside clickable rows. */
+export const CopyButton: React.FC<{ text: string; label: string; className?: string }> = ({
+  text,
+  label,
+  className,
+}) => {
+  const { copied, copy } = useCopy(text);
+  return (
+    <IconButton
+      icon={copied ? Check : Copy}
+      label={copied ? 'Copied' : label}
+      size="sm"
+      className={cn('-my-1.5', copied && 'text-brand-700', className)}
+      onClick={(event) => {
+        event.stopPropagation();
+        void copy();
+      }}
+    />
+  );
+};
+
+const copyLabelFor = (label?: string) =>
+  !label || /^id$/i.test(label) ? 'Copy ID' : `Copy ${label.toLowerCase()} ID`;
+
+// ---------- ID chip (monospace ID + copy) ----------
 
 export const IdChip: React.FC<{
   value: string;
   label?: string;
   truncate?: number;
 }> = ({ value, label, truncate = 10 }) => {
-  const [copied, setCopied] = useState(false);
-  const display =
-    value.length > truncate ? `${value.slice(0, truncate)}…` : value;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* noop */
-    }
-  };
-
+  const display = value.length > truncate ? `${value.slice(0, truncate)}…` : value;
   return (
-    <button
-      type="button"
-      onClick={copy}
-      title={`${label ?? 'id'}: ${value}`}
-      className="inline-flex items-center gap-1 rounded-md bg-slate-900/90 px-1.5 py-0.5 font-mono text-[10.5px] text-slate-100 ring-1 ring-slate-700 transition hover:bg-slate-800"
-    >
-      {label && (
-        <span className="text-slate-400 normal-case">{label}:</span>
-      )}
-      <span>{display}</span>
-      {copied ? <Check size={10} /> : <Copy size={10} className="opacity-60" />}
-    </button>
+    <span className="inline-flex max-w-full items-center gap-1 align-middle text-xs">
+      {label && <span className="text-stone-400">{label}</span>}
+      <code className="truncate font-mono text-stone-600" title={value}>
+        {display}
+      </code>
+      <CopyButton text={value} label={copyLabelFor(label)} />
+    </span>
   );
 };
 
@@ -137,17 +196,19 @@ export const IdChip: React.FC<{
 export const LangfuseLink: React.FC<{
   href: string;
   label?: string;
-}> = ({ href, label = 'langfuse' }) => {
+}> = ({ href, label = 'Langfuse' }) => {
   if (!href) return null;
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded text-[13px] font-medium text-stone-700 underline decoration-stone-300 underline-offset-2 transition hover:text-stone-950 hover:decoration-stone-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
     >
       {label}
-      <ExternalLink size={10} />
+      <ExternalLink size={12} aria-hidden="true" />
+      <span className="sr-only">(opens in a new tab)</span>
     </a>
   );
 };
@@ -157,29 +218,26 @@ export const LangfuseLink: React.FC<{
 const safeParse = (iso: string | null) => {
   if (!iso) return null;
   try {
-    return parseISO(iso);
+    const date = parseISO(iso);
+    return Number.isNaN(date.getTime()) ? null : date;
   } catch {
     return null;
   }
 };
 
+/** Relative (or absolute UTC) time. Inherits size and colour from its context. */
 export const TimeAgo: React.FC<{ iso: string | null; absolute?: boolean }> = ({
   iso,
   absolute = false,
 }) => {
   const d = safeParse(iso);
-  if (!d) return <span className="text-slate-400">—</span>;
-  if (absolute) {
-    return (
-      <span className="font-mono text-[11px] text-slate-600" title={iso ?? ''}>
-        {d.toISOString().replace('T', ' ').slice(0, 19)}
-      </span>
-    );
-  }
+  if (!d) return <span className="text-stone-400">—</span>;
   return (
-    <span className="font-mono text-[11px] text-slate-600" title={iso ?? ''}>
-      {formatDistanceToNowStrict(d, { addSuffix: true })}
-    </span>
+    <time dateTime={iso ?? undefined} title={iso ?? ''} className="whitespace-nowrap tabular-nums">
+      {absolute
+        ? `${d.toISOString().replace('T', ' ').slice(0, 19)} UTC`
+        : formatDistanceToNowStrict(d, { addSuffix: true })}
+    </time>
   );
 };
 
@@ -208,6 +266,9 @@ export const computeDurationMs = (
   return Math.max(0, e.getTime() - s.getTime());
 };
 
+export const plural = (count: number, word: string, pluralWord = `${word}s`) =>
+  `${formatNumber(count)} ${count === 1 ? word : pluralWord}`;
+
 // ---------- Key/value grid ----------
 
 export const KV: React.FC<{
@@ -215,15 +276,16 @@ export const KV: React.FC<{
   children: React.ReactNode;
   mono?: boolean;
 }> = ({ label, children, mono = false }) => (
-  <div className="flex flex-col gap-0.5">
-    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-      {label}
-    </span>
-    <div
-      className={`text-sm text-slate-800 ${mono ? 'font-mono' : ''}`.trim()}
+  <div className="min-w-0">
+    <dt className="text-xs text-stone-500">{label}</dt>
+    <dd
+      className={cn(
+        'mt-1 min-w-0 break-words text-sm text-stone-900',
+        mono && 'font-mono text-[13px] tabular-nums',
+      )}
     >
       {children}
-    </div>
+    </dd>
   </div>
 );
 
@@ -235,11 +297,9 @@ export const KVGrid: React.FC<{ children: React.ReactNode; cols?: number }> = ({
     cols === 2
       ? 'grid-cols-1 sm:grid-cols-2'
       : cols === 3
-        ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
-  return (
-    <div className={`grid gap-4 ${colClass}`}>{children}</div>
-  );
+        ? 'grid-cols-2 lg:grid-cols-3'
+        : 'grid-cols-2 lg:grid-cols-4';
+  return <dl className={cn('grid gap-x-6 gap-y-4', colClass)}>{children}</dl>;
 };
 
 // ---------- Section card ----------
@@ -251,20 +311,31 @@ export const Section: React.FC<{
   children: React.ReactNode;
   dense?: boolean;
 }> = ({ title, subtitle, right, children, dense = false }) => (
-  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-    <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
+  <section className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-stone-100 px-4 py-3">
       <div className="min-w-0">
-        <div className="text-[11px] font-black uppercase tracking-widest text-slate-700">
-          {title}
-        </div>
-        {subtitle && (
-          <div className="mt-0.5 text-[11px] text-slate-500">{subtitle}</div>
-        )}
+        <h3 className="text-sm font-semibold text-stone-900">{title}</h3>
+        {subtitle && <div className="mt-0.5 text-[13px] text-stone-500">{subtitle}</div>}
       </div>
-      {right && <div className="shrink-0">{right}</div>}
+      {right && <div className="flex flex-shrink-0 flex-wrap items-center gap-2">{right}</div>}
     </header>
     <div className={dense ? '' : 'p-4'}>{children}</div>
   </section>
+);
+
+/** Small heading inside a section (e.g. "Runs", "Source chunks"). */
+export const SubHeading: React.FC<{
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  children: React.ReactNode;
+  right?: React.ReactNode;
+}> = ({ icon: Icon, children, right }) => (
+  <div className="mb-2 flex items-center justify-between gap-3">
+    <h4 className="inline-flex items-center gap-1.5 text-[13px] font-medium text-stone-700">
+      {Icon && <Icon size={14} className="text-stone-400" />}
+      {children}
+    </h4>
+    {right}
+  </div>
 );
 
 // ---------- JSON block ----------
@@ -280,28 +351,13 @@ export const JsonBlock: React.FC<{ value: unknown; maxHeight?: number }> = ({
       return String(value);
     }
   }, [value]);
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* noop */
-    }
-  };
   return (
-    <div className="group relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950 text-slate-100">
-      <button
-        type="button"
-        onClick={copy}
-        className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-slate-800/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-200 ring-1 ring-slate-700 opacity-0 transition group-hover:opacity-100"
-      >
-        {copied ? <Check size={10} /> : <Copy size={10} />}
-        {copied ? 'copied' : 'copy'}
-      </button>
+    <div className="relative rounded-lg border border-stone-200 bg-stone-50">
+      <div className="absolute right-1.5 top-2.5">
+        <CopyButton text={text} label="Copy JSON" />
+      </div>
       <pre
-        className="overflow-auto p-3 font-mono text-[11.5px] leading-relaxed"
+        className="overflow-auto p-3 pr-10 font-mono text-xs leading-5 text-stone-800 custom-scrollbar"
         style={{ maxHeight }}
       >
         {text}
@@ -314,34 +370,24 @@ export const JsonBlock: React.FC<{ value: unknown; maxHeight?: number }> = ({
 
 export const LoadingBlock: React.FC<{ label?: string }> = ({
   label = 'Loading audit data…',
-}) => (
-  <div className="flex h-64 items-center justify-center text-slate-400">
-    <div className="inline-flex items-center gap-2 text-sm">
-      <Loader2 size={16} className="animate-spin" />
-      {label}
-    </div>
-  </div>
-);
+}) => <Spinner label={label} className="py-16" />;
 
 export const ErrorBlock: React.FC<{
   error: string;
   onRetry?: () => void;
 }> = ({ error, onRetry }) => (
-  <div className="flex h-64 flex-col items-center justify-center gap-3 text-rose-700">
-    <div className="inline-flex items-center gap-2 text-sm">
-      <AlertCircle size={16} />
-      {error}
-    </div>
-    {onRetry && (
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-md bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
-      >
-        Retry
-      </button>
-    )}
-  </div>
+  <InlineAlert
+    title="Couldn't load audit data"
+    action={
+      onRetry ? (
+        <Button size="sm" variant="secondary" icon={RefreshCw} onClick={onRetry}>
+          Retry
+        </Button>
+      ) : undefined
+    }
+  >
+    {error}
+  </InlineAlert>
 );
 
 export const EmptyBlock: React.FC<{
@@ -349,44 +395,64 @@ export const EmptyBlock: React.FC<{
   hint?: string;
   icon?: React.ReactNode;
 }> = ({ title, hint, icon }) => (
-  <div className="flex h-48 flex-col items-center justify-center gap-2 text-slate-400">
-    {icon}
-    <div className="text-sm font-semibold text-slate-600">{title}</div>
-    {hint && <div className="text-xs text-slate-400">{hint}</div>}
+  <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+    <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+      {icon ?? <Inbox size={17} />}
+    </div>
+    <p className="text-sm font-semibold text-stone-900">{title}</p>
+    {hint && <p className="mt-1 max-w-sm text-[13px] leading-5 text-stone-500">{hint}</p>}
   </div>
 );
 
 // ---------- Compact stat ----------
 
+const STAT_TONES = {
+  default: 'text-stone-900',
+  success: 'text-brand-700',
+  warn: 'text-amber-700',
+  danger: 'text-red-700',
+} as const;
+
+/** One figure. Place several inside a `StatStrip` so they share one frame. */
 export const Stat: React.FC<{
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
   tone?: 'default' | 'success' | 'warn' | 'danger';
-}> = ({ label, value, hint, tone = 'default' }) => {
-  const accent =
-    tone === 'success'
-      ? 'border-emerald-200 bg-emerald-50/40'
-      : tone === 'warn'
-        ? 'border-amber-200 bg-amber-50/40'
-        : tone === 'danger'
-          ? 'border-rose-200 bg-rose-50/40'
-          : 'border-slate-200 bg-white';
-  return (
-    <div className={`rounded-xl border ${accent} p-4`}>
-      <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-        {value}
-      </div>
-      {hint && <div className="mt-1 text-[11px] text-slate-500">{hint}</div>}
+}> = ({ label, value, hint, tone = 'default' }) => (
+  <div className="min-w-0 bg-white px-4 py-3.5">
+    <div className="text-[13px] text-stone-500">{label}</div>
+    <div className={cn('mt-1 text-xl font-semibold tabular-nums tracking-tight', STAT_TONES[tone])}>
+      {value}
     </div>
-  );
-};
+    {hint && <div className="mt-0.5 text-xs text-stone-500">{hint}</div>}
+  </div>
+);
+
+/**
+ * A single bordered frame with hairline dividers between `Stat`s (pass grid-cols-*).
+ * Each cell draws its own top/left rule; the outer ones are clipped away, so a
+ * part-filled last row stays white instead of showing filler.
+ */
+export const StatStrip: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className,
+}) => (
+  <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
+    <div
+      className={cn(
+        '-ml-px -mt-px grid [&>*]:border-l [&>*]:border-t [&>*]:border-stone-100',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  </div>
+);
 
 // ---------- Drawer ----------
 
+/** The audit inspector: the design-system drawer with an optional toolbar row. */
 export const Drawer: React.FC<{
   open: boolean;
   onClose: () => void;
@@ -395,44 +461,21 @@ export const Drawer: React.FC<{
   right?: React.ReactNode;
   children: React.ReactNode;
   widthClass?: string;
-}> = ({ open, onClose, title, subtitle, right, children, widthClass = 'max-w-3xl' }) => {
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex">
-      <div
-        className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <aside
-        className={`relative ml-auto flex h-full w-full ${widthClass} flex-col bg-[#F8FAFB] shadow-2xl`}
-      >
-        <header className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
-          <div className="min-w-0">
-            <div className="text-xs font-black uppercase tracking-widest text-slate-500">
-              audit inspector
-            </div>
-            <div className="mt-0.5 truncate text-base font-bold text-slate-900">
-              {title}
-            </div>
-            {subtitle && (
-              <div className="mt-0.5 text-xs text-slate-500">{subtitle}</div>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {right}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Close
-            </button>
-          </div>
-        </header>
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
-      </aside>
-    </div>,
-    document.body,
-  );
-};
+}> = ({ open, onClose, title, subtitle, right, children, widthClass = 'max-w-3xl' }) => (
+  <UIDrawer
+    open={open}
+    onClose={onClose}
+    title={title}
+    description={subtitle}
+    width={widthClass}
+    toolbar={
+      right ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-stone-100 px-6 py-2.5">
+          {right}
+        </div>
+      ) : undefined
+    }
+  >
+    <div className="px-6 py-5">{children}</div>
+  </UIDrawer>
+);

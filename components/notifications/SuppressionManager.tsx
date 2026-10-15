@@ -1,22 +1,39 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Search, ShieldAlert, ShieldCheck, Undo2, X } from 'lucide-react';
-import ConfirmationModal from '../ConfirmationModal';
+import { RefreshCw, SearchX, ShieldAlert, ShieldCheck, Undo2 } from 'lucide-react';
 import { SuppressedEmail, notificationService } from '../../services/notificationService';
 import {
-  ErrorBanner,
+  Badge,
+  Button,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  InlineAlert,
+  Input,
+  Menu,
+  SearchInput,
+  SectionHeader,
+  StatusDot,
+  cn,
+  type BadgeTone,
+} from '@/components/ui';
+import {
+  DataTable,
   LoadingRow,
   Pagination,
-  Panel,
   TableMessage,
+  Timestamp,
   errorMessage,
-  formatTimestamp,
-  inputClass,
-  labelClass,
-  primaryButtonClass,
-  secondaryButtonClass,
+  plural,
+  tdClass,
+  useToast,
 } from './shared';
 
 const PAGE_SIZE = 25;
+
+/** Waits this long after typing before searching the server. */
+const SEARCH_DEBOUNCE_MS = 350;
 
 const sourceLabel: Record<SuppressedEmail['source'], string> = {
   smtp_permanent: 'Hard bounce (SMTP)',
@@ -24,13 +41,23 @@ const sourceLabel: Record<SuppressedEmail['source'], string> = {
   manual: 'Added manually',
 };
 
-const sourceBadgeClass: Record<SuppressedEmail['source'], string> = {
-  smtp_permanent: 'bg-rose-50 text-rose-700 border-rose-200',
-  acs_delivery_report: 'bg-amber-50 text-amber-700 border-amber-200',
-  manual: 'bg-slate-100 text-slate-600 border-slate-200',
+const sourceTone: Record<SuppressedEmail['source'], BadgeTone> = {
+  smtp_permanent: 'red',
+  acs_delivery_report: 'amber',
+  manual: 'neutral',
 };
 
+const COLUMNS = [
+  { label: 'Address' },
+  { label: 'Source' },
+  { label: 'Suppressed' },
+  { label: 'Actions', srOnly: true, className: 'w-12' },
+];
+
+const ADD_FORM_ID = 'suppression-add-form';
+
 const SuppressionManager: React.FC = () => {
+  const { toast, showToast } = useToast();
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
@@ -40,11 +67,11 @@ const SuppressionManager: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [listError, setListError] = useState('');
 
+  const [isAddOpen, setIsAddOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newReason, setNewReason] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState('');
-  const [addNotice, setAddNotice] = useState('');
 
   const [pendingRemove, setPendingRemove] = useState<SuppressedEmail | null>(null);
   const [removingEmail, setRemovingEmail] = useState('');
@@ -71,10 +98,37 @@ const SuppressionManager: React.FC = () => {
     load(query, offset);
   }, [load, query, offset]);
 
+  const applySearch = useCallback(
+    (value: string) => {
+      const next = value.trim();
+      if (next === query) return;
+      setQuery(next);
+      setOffset(0);
+    },
+    [query],
+  );
+
+  // Search as you type, once typing pauses.
+  useEffect(() => {
+    const timer = window.setTimeout(() => applySearch(searchInput), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [applySearch, searchInput]);
+
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
-    setQuery(searchInput.trim());
-    setOffset(0);
+    applySearch(searchInput);
+  };
+
+  const openAdd = () => {
+    setNewEmail('');
+    setNewReason('');
+    setAddError('');
+    setIsAddOpen(true);
+  };
+
+  const closeAdd = () => {
+    if (isAdding) return;
+    setIsAddOpen(false);
   };
 
   const handleAdd = async (event: React.FormEvent) => {
@@ -88,13 +142,13 @@ const SuppressionManager: React.FC = () => {
 
     setIsAdding(true);
     setAddError('');
-    setAddNotice('');
 
     try {
       await notificationService.addSuppression(email, newReason.trim());
-      setAddNotice(`${email} will no longer receive email from medai.`);
+      showToast(`${email} will no longer receive email from medai.`);
       setNewEmail('');
       setNewReason('');
+      setIsAddOpen(false);
       await load(query, 0);
       setOffset(0);
     } catch (err) {
@@ -111,6 +165,7 @@ const SuppressionManager: React.FC = () => {
 
     try {
       await notificationService.removeSuppression(entry.email);
+      showToast(`${entry.email} can receive email again.`);
       await load(query, offset);
     } catch (err) {
       console.error('Failed to remove suppression:', err);
@@ -120,211 +175,211 @@ const SuppressionManager: React.FC = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-bold text-slate-900">Suppression List</h3>
-        <p className="text-sm text-slate-500">
-          Addresses medai will never email again. Entries arrive automatically from hard bounces
-          and provider delivery reports; removing one lets sending resume.
-        </p>
-      </div>
+  const confirmRemove = async () => {
+    if (!pendingRemove) return;
+    await handleRemove(pendingRemove);
+    setPendingRemove(null);
+  };
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.6fr)] gap-6 items-start">
-        <Panel
-          title="Suppressed addresses"
-          description={`${total.toLocaleString()} total`}
-          actions={
-            <button
-              type="button"
+  const isFirstLoad = isLoading && entries.length === 0;
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="Suppression list"
+        description="Addresses medai will never email again. Entries arrive automatically from hard bounces and provider delivery reports; removing one lets sending resume."
+        meta={
+          !isFirstLoad && !listError ? (
+            <Badge className="tabular-nums">
+              {plural(total, 'address', 'addresses')}
+              {query ? ' matching' : ''}
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          <>
+            <IconButton
+              icon={RefreshCw}
+              label="Refresh"
               onClick={() => load(query, offset)}
               disabled={isLoading}
-              className={secondaryButtonClass}
+              className={isLoading ? '[&_svg]:animate-spin' : undefined}
+            />
+            <Button icon={ShieldAlert} onClick={openAdd}>
+              Suppress address
+            </Button>
+          </>
+        }
+      />
+
+      <form role="search" aria-label="Search suppressed addresses" onSubmit={handleSearch}>
+        <SearchInput
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Search by address"
+          aria-label="Search suppressed addresses"
+          className="w-full sm:w-80"
+        />
+      </form>
+
+      {listError && (
+        <InlineAlert
+          className="break-words"
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={RefreshCw}
+              onClick={() => load(query, offset)}
+              className="-my-0.5"
             >
-              {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              Refresh
-            </button>
+              Try again
+            </Button>
           }
         >
-          <form onSubmit={handleSearch} className="px-6 py-4 border-b border-slate-200 flex gap-3">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search by address"
-                aria-label="Search suppressed addresses"
-                className={`${inputClass} pl-11`}
-              />
-            </div>
-            <button type="submit" disabled={isLoading} className={secondaryButtonClass}>
-              Search
-            </button>
-            {query && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchInput('');
-                  setQuery('');
-                  setOffset(0);
-                }}
-                className={secondaryButtonClass}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </form>
+          {listError}
+        </InlineAlert>
+      )}
 
-          {listError && (
-            <div className="px-6 pt-6">
-              <ErrorBanner message={listError} />
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-white">
-                <tr className="border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Address</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Source</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Suppressed</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
-                  <LoadingRow colSpan={4} label="Loading suppressions" />
-                ) : entries.length === 0 ? (
-                  <TableMessage colSpan={4}>
-                    {query
-                      ? `No suppressed address matches "${query}".`
-                      : 'Nothing suppressed — every address is deliverable.'}
-                  </TableMessage>
-                ) : (
-                  entries.map((entry) => (
-                    <tr key={entry.id || entry.email} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium text-slate-900 break-all">{entry.email}</p>
-                        {entry.reason && (
-                          <p className="text-xs text-slate-500 mt-1 break-words">{entry.reason}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${
-                            sourceBadgeClass[entry.source] ?? sourceBadgeClass.manual
-                          }`}
-                        >
-                          {sourceLabel[entry.source] ?? entry.source}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-700 whitespace-nowrap">
-                        {formatTimestamp(entry.created_at)}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setPendingRemove(entry)}
-                          disabled={removingEmail === entry.email}
-                          className="inline-flex items-center gap-2 px-3 py-2 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-                        >
-                          {removingEmail === entry.email ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Undo2 size={14} />
-                          )}
-                          Unsuppress
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <Pagination
-            offset={offset}
-            limit={PAGE_SIZE}
-            total={total}
-            disabled={isLoading}
-            onChange={setOffset}
-          />
-        </Panel>
-
-        <form onSubmit={handleAdd}>
-          <Panel title="Suppress an address" description="Blocks all future email to this address.">
-            <div className="p-6 space-y-5">
-              <div className="space-y-2">
-                <label htmlFor="suppress-email" className={labelClass}>
-                  Email address
-                </label>
-                <input
-                  id="suppress-email"
-                  type="email"
-                  value={newEmail}
-                  onChange={(event) => setNewEmail(event.target.value)}
-                  placeholder="bounced@example.com"
-                  className={inputClass}
+      {!(listError && entries.length === 0) && (
+        <DataTable
+          label="Suppressed addresses"
+          columns={COLUMNS}
+          busy={isLoading && entries.length > 0}
+          footer={
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={total}
+              disabled={isLoading}
+              onChange={setOffset}
+            />
+          }
+        >
+          {isFirstLoad ? (
+            <LoadingRow colSpan={COLUMNS.length} label="Loading suppressions…" />
+          ) : entries.length === 0 ? (
+            <TableMessage colSpan={COLUMNS.length}>
+              {query ? (
+                <EmptyState
+                  compact
+                  icon={SearchX}
+                  title={`No suppressed address matches “${query}”`}
+                  description="That address is not blocked, so medai can email it."
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="suppress-reason" className={labelClass}>
-                  Reason <span className="normal-case font-semibold text-slate-400">(optional)</span>
-                </label>
-                <input
-                  id="suppress-reason"
-                  type="text"
-                  value={newReason}
-                  onChange={(event) => setNewReason(event.target.value)}
-                  placeholder="Reported as spam"
-                  className={inputClass}
+              ) : (
+                <EmptyState
+                  compact
+                  icon={ShieldCheck}
+                  title="Nothing suppressed"
+                  description="Every address is deliverable."
                 />
-              </div>
-
-              <ErrorBanner message={addError} />
-
-              {addNotice && (
-                <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                  <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-                  <p>{addNotice}</p>
-                </div>
               )}
+            </TableMessage>
+          ) : (
+            entries.map((entry) => {
+              const isRemoving = removingEmail === entry.email;
+              return (
+                <tr
+                  key={entry.id || entry.email}
+                  className={cn('transition-colors hover:bg-stone-50', isRemoving && 'opacity-50')}
+                >
+                  <td className={tdClass}>
+                    <p className="max-w-[32rem] break-all font-medium text-stone-900">{entry.email}</p>
+                    {entry.reason && (
+                      <p className="mt-0.5 max-w-[32rem] break-words text-xs text-stone-500">{entry.reason}</p>
+                    )}
+                  </td>
+                  <td className={cn(tdClass, 'whitespace-nowrap')}>
+                    <StatusDot tone={sourceTone[entry.source] ?? 'neutral'}>
+                      {sourceLabel[entry.source] ?? entry.source}
+                    </StatusDot>
+                  </td>
+                  <td className={cn(tdClass, 'text-stone-600')}>
+                    <Timestamp value={entry.created_at} />
+                  </td>
+                  <td className="w-12 py-2 pr-3 text-right">
+                    <Menu
+                      size="sm"
+                      label={`Actions for ${entry.email}`}
+                      items={[
+                        {
+                          label: 'Unsuppress',
+                          icon: Undo2,
+                          disabled: Boolean(removingEmail),
+                          hint: removingEmail ? 'Wait for the current removal to finish' : undefined,
+                          onSelect: () => setPendingRemove(entry),
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </DataTable>
+      )}
 
-              <button type="submit" disabled={isAdding} className={`${primaryButtonClass} w-full`}>
-                {isAdding ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
-                Suppress Address
-              </button>
-
-              <p className="text-xs text-slate-500">
-                Suppressing protects sender reputation. Adding an address already on the list is a
-                no-op.
-              </p>
-            </div>
-          </Panel>
+      <Dialog
+        open={isAddOpen}
+        onClose={closeAdd}
+        dismissible={!isAdding}
+        title="Suppress an address"
+        description="Blocks all future email to this address. Suppressing protects sender reputation; adding an address that's already listed changes nothing."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeAdd} disabled={isAdding}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" form={ADD_FORM_ID} loading={isAdding}>
+              Suppress address
+            </Button>
+          </>
+        }
+      >
+        <form id={ADD_FORM_ID} onSubmit={handleAdd} className="space-y-4">
+          {addError && <InlineAlert className="break-words">{addError}</InlineAlert>}
+          <Field label="Email address">
+            {(id) => (
+              <Input
+                id={id}
+                type="email"
+                value={newEmail}
+                onChange={(event) => setNewEmail(event.target.value)}
+                placeholder="bounced@example.com"
+                autoComplete="off"
+              />
+            )}
+          </Field>
+          <Field label="Reason" hint="Optional">
+            {(id) => (
+              <Input
+                id={id}
+                value={newReason}
+                onChange={(event) => setNewReason(event.target.value)}
+                placeholder="Reported as spam"
+              />
+            )}
+          </Field>
         </form>
-      </div>
+      </Dialog>
 
-      <ConfirmationModal
-        isOpen={pendingRemove !== null}
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        tone="default"
         title="Remove from suppression list?"
-        message={
+        description={
           pendingRemove
             ? `medai will start emailing ${pendingRemove.email} again. If it was suppressed for a hard bounce, sending to it can hurt sender reputation and it may be re-suppressed on the next bounce.`
             : ''
         }
         confirmLabel="Unsuppress"
-        variant="warning"
-        onConfirm={() => {
-          if (pendingRemove) {
-            handleRemove(pendingRemove);
-          }
-          setPendingRemove(null);
-        }}
+        busy={Boolean(removingEmail)}
+        onConfirm={() => void confirmRemove()}
         onCancel={() => setPendingRemove(null)}
       />
+
+      {toast}
     </div>
   );
 };

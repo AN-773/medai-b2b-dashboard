@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { Badge, Button, ConfirmDialog, IconButton, Input, Menu, cn } from '@/components/ui';
 import type { ItemSuggestion } from '@/types/CourseAITypes';
 import type { BackendApiItem } from '@/types/TestsServiceTypes';
 import type {
@@ -22,7 +23,6 @@ import type {
   ModulePlanItemRef,
   ModulePlanSession,
 } from '@/types/ModuleGenerationTypes';
-import ConfirmationModal from '@/components/ConfirmationModal';
 import {
   itemTitle,
   MODALITIES,
@@ -70,17 +70,52 @@ interface PlanTreeProps {
 
 const modalityByType = new Map(MODALITIES.map((modality) => [modality.type, modality] as const));
 
-const hintClass = (hint: DropHint, key: string) => {
+/** Insertion line above / below the hovered row. */
+const edgeHint = (hint: DropHint, key: string) => {
   if (!hint || hint.key !== key) return '';
-  if (hint.position === 'before') return 'shadow-[inset_0_3px_0_0_#1BD183]';
-  if (hint.position === 'after') return 'shadow-[inset_0_-3px_0_0_#1BD183]';
-  return 'ring-2 ring-[#1BD183]/60 bg-emerald-50/60';
+  if (hint.position === 'before') return 'shadow-[inset_0_2px_0_0_theme(colors.brand.500)]';
+  if (hint.position === 'after') return 'shadow-[inset_0_-2px_0_0_theme(colors.brand.500)]';
+  return '';
 };
+
+/** Highlight for dropping something into the hovered container. */
+const intoHint = (hint: DropHint, key: string) =>
+  hint?.key === key && hint.position === 'into'
+    ? 'bg-brand-50/70 ring-2 ring-inset ring-brand-400'
+    : '';
 
 const halfOf = (event: React.DragEvent<HTMLElement>): 'before' | 'after' => {
   const rect = event.currentTarget.getBoundingClientRect();
   return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 };
+
+/** Compact native select for the "Move…" controls. */
+const moveSelectClass =
+  'h-7 w-[5.5rem] flex-shrink-0 cursor-pointer rounded-md border border-stone-200 bg-white pl-2 pr-1 text-xs text-stone-600 shadow-card outline-none transition hover:border-stone-300 focus:border-brand-500 focus:ring-[3px] focus:ring-brand-500/15 disabled:cursor-not-allowed disabled:opacity-40';
+
+const DragHandle: React.FC<{
+  disabled: boolean;
+  title: string;
+  onDragStart: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+  size?: number;
+  className?: string;
+}> = ({ disabled, title, onDragStart, onDragEnd, size = 14, className }) => (
+  <span
+    draggable={!disabled}
+    onDragStart={onDragStart}
+    onDragEnd={onDragEnd}
+    title={title}
+    aria-hidden="true"
+    className={cn(
+      'flex w-4 flex-shrink-0 justify-center text-stone-300 transition-colors',
+      disabled ? 'cursor-default' : 'cursor-grab hover:text-stone-500 active:cursor-grabbing',
+      className,
+    )}
+  >
+    <GripVertical size={size} />
+  </span>
+);
 
 // ---------------------------------------------------------------------------
 // Inline title editor
@@ -101,9 +136,10 @@ const InlineTitle: React.FC<{
       if (draft !== value) onCommit(draft.trim() ? draft.trim() : draft);
       setDraft(null);
     };
+    const length = draft.trim().length;
     return (
       <span className="flex min-w-0 flex-1 items-center gap-2">
-        <input
+        <Input
           autoFocus
           onFocus={(event) => event.target.select()}
           value={draft}
@@ -113,16 +149,21 @@ const InlineTitle: React.FC<{
           onBlur={commit}
           onKeyDown={(event) => {
             if (event.key === 'Enter') commit();
-            if (event.key === 'Escape') setDraft(null);
+            if (event.key === 'Escape') {
+              // Cancel the rename without closing the wizard.
+              event.stopPropagation();
+              setDraft(null);
+            }
           }}
-          className="min-w-0 flex-1 rounded-lg border border-[#1BD183] bg-white px-2.5 py-1 text-sm font-bold text-slate-900 outline-none ring-2 ring-[#1BD183]/15"
+          className="!h-8 min-w-0 flex-1 font-medium"
         />
         <span
-          className={`flex-shrink-0 text-[10px] font-bold ${
-            draft.trim().length > MAX_PLAN_TITLE_LENGTH ? 'text-rose-600' : 'text-slate-400'
-          }`}
+          className={cn(
+            'flex-shrink-0 text-xs tabular-nums',
+            length > MAX_PLAN_TITLE_LENGTH ? 'text-red-600' : 'text-stone-400',
+          )}
         >
-          {draft.trim().length}/{MAX_PLAN_TITLE_LENGTH}
+          {length}/{MAX_PLAN_TITLE_LENGTH}
         </span>
       </span>
     );
@@ -134,12 +175,20 @@ const InlineTitle: React.FC<{
       disabled={disabled}
       onClick={() => setDraft(value)}
       title="Rename"
-      className={`group/title flex min-w-0 flex-1 items-center gap-1.5 text-left ${className}`}
+      aria-label={`Rename ${label.toLowerCase()}: ${value.trim() || 'Untitled'}`}
+      className={cn(
+        'group/title -mx-1 flex min-w-0 max-w-full items-start gap-1.5 rounded-md px-1 text-left transition-colors hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default disabled:hover:bg-transparent',
+        className,
+      )}
     >
-      <span className={`min-w-0 break-words ${invalid ? 'text-rose-600' : ''}`}>
+      <span className={cn('min-w-0 break-words', invalid && 'text-red-600')}>
         {value.trim() || 'Untitled'}
       </span>
-      <Pencil size={12} className="flex-shrink-0 text-slate-300 opacity-0 transition group-hover/title:opacity-100" />
+      <Pencil
+        size={12}
+        aria-hidden="true"
+        className="mt-[0.3em] flex-shrink-0 text-stone-400 opacity-0 transition group-hover/title:opacity-100 group-focus-visible/title:opacity-100"
+      />
     </button>
   );
 };
@@ -317,54 +366,40 @@ const PlanTree: React.FC<PlanTreeProps> = ({
       <li
         key={`${id}-${ii}`}
         data-drag-card
-        className={`group flex items-center gap-2 rounded-xl border px-2 py-1.5 ${
-          stale ? 'border-rose-300 bg-rose-50' : 'border-slate-100 bg-white'
-        }`}
+        className={cn('flex items-center gap-2 bg-white py-1.5 pl-1.5 pr-1', stale && 'bg-red-50')}
       >
-        <span
-          draggable={!disabled}
+        <DragHandle
+          disabled={disabled}
+          title="Drag to another session"
           onDragStart={startDrag({ kind: 'item', module: mi, session: si, item: ii })}
           onDragEnd={endDrag}
-          title="Drag to another session"
-          className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        >
-          <GripVertical size={14} />
+          size={13}
+        />
+        <span className="flex-shrink-0 text-stone-400" title={modality?.label}>
+          <Icon size={14} />
+          <span className="sr-only">{modality?.label ?? 'Item'}:</span>
         </span>
         <span
-          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg border ${
-            modality?.badge ?? 'border-slate-200 bg-slate-50 text-slate-400'
-          }`}
-          title={modality?.label}
+          className={cn(
+            'line-clamp-2 min-w-0 flex-1 break-words text-[13px] leading-5',
+            stale ? 'text-red-700 line-through' : loading ? 'text-stone-400' : 'text-stone-700',
+          )}
         >
-          <Icon size={12} />
-        </span>
-        <span className={`min-w-0 flex-1 truncate text-[13px] font-semibold ${stale ? 'text-rose-700 line-through' : 'text-slate-700'}`}>
           {title}
         </span>
         {suggestion && (
-          <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-[#1BD183]/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700">
-            <Sparkles size={10} /> New
-          </span>
+          <Badge tone="violet" icon={Sparkles} title="Drafted by AI; created when you accept">
+            New
+          </Badge>
         )}
-        {stale && (
-          <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-rose-700">
-            Deleted
-          </span>
-        )}
+        {stale && <Badge tone="red">Deleted</Badge>}
         {preview && (
-          <button
-            type="button"
-            onClick={() => onPreview(preview)}
-            title="Preview"
-            className="flex-shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Eye size={14} />
-          </button>
+          <IconButton size="sm" icon={Eye} label="Preview item" onClick={() => onPreview(preview)} />
         )}
         <select
           value=""
           disabled={disabled}
-          aria-label="Move item to session"
+          aria-label="Move item to another session"
           title="Move to another session"
           onChange={(event) => {
             const [toModule, toSession] = event.target.value.split(':').map(Number);
@@ -372,7 +407,7 @@ const PlanTree: React.FC<PlanTreeProps> = ({
               moveItem(current, { module: mi, session: si, item: ii }, { module: toModule, session: toSession }),
             );
           }}
-          className="w-[4.5rem] flex-shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] font-bold text-slate-500 outline-none hover:border-slate-300"
+          className={moveSelectClass}
         >
           <option value="" disabled>
             Move…
@@ -387,17 +422,15 @@ const PlanTree: React.FC<PlanTreeProps> = ({
             </optgroup>
           ))}
         </select>
-        <button
-          type="button"
+        <IconButton
+          size="sm"
+          icon={X}
+          tone="danger"
+          label="Remove from session"
           disabled={disabled}
           onClick={() => onEdit((current) => deleteItem(current, mi, si, ii))}
-          title="Remove from session"
-          className={`flex-shrink-0 rounded-lg p-1 transition ${
-            stale ? 'text-rose-600 hover:bg-rose-100' : 'text-slate-300 hover:bg-rose-50 hover:text-rose-500'
-          }`}
-        >
-          <X size={14} />
-        </button>
+          className={stale ? 'text-red-600' : undefined}
+        />
       </li>
     );
   };
@@ -410,7 +443,9 @@ const PlanTree: React.FC<PlanTreeProps> = ({
       .map((id) => objectiveTitles.get(id))
       .filter((title): title is string => Boolean(title));
     const objectiveCount = session.learningObjectiveIds?.length ?? 0;
-    const files = (session.sourceFileIds ?? []).map((id) => uploadNames.get(id)).filter(Boolean);
+    const files = (session.sourceFileIds ?? [])
+      .map((id) => uploadNames.get(id))
+      .filter((name): name is string => Boolean(name));
 
     return (
       <li
@@ -419,31 +454,26 @@ const PlanTree: React.FC<PlanTreeProps> = ({
         onDragOver={sessionBodyDragOver(mi, si)}
         onDrop={sessionBodyDrop(mi, si)}
         onDragLeave={() => setHint((current) => (current?.key === key ? null : current))}
-        className={`rounded-2xl border bg-slate-50/70 transition ${
-          stale
-            ? 'border-rose-300 bg-rose-50/40'
-            : nodeIssues.length > 0
-              ? 'border-amber-300'
-              : 'border-slate-200'
-        } ${hint?.key === key && hint.position === 'into' ? hintClass(hint, key) : ''}`}
+        className={cn(
+          'transition-colors last:rounded-b-xl',
+          intoHint(hint, key) ||
+            (stale ? 'bg-red-50/40' : nodeIssues.length > 0 && 'bg-amber-50/40'),
+          edgeHint(hint, key),
+        )}
       >
         <div
           onDragOver={sessionHeaderDragOver(mi, si)}
           onDrop={sessionHeaderDrop(mi, si)}
-          className={`flex items-start gap-2 rounded-t-2xl px-3 pt-2.5 ${
-            hint?.key === key && hint.position !== 'into' ? hintClass(hint, key) : ''
-          }`}
+          className="flex items-start gap-2 px-3 pt-3"
         >
-          <span
-            draggable={!disabled}
+          <DragHandle
+            disabled={disabled}
+            title="Drag to reorder or move to another module"
             onDragStart={startDrag({ kind: 'session', module: mi, session: si })}
             onDragEnd={endDrag}
-            title="Drag to reorder or move to another module"
-            className="mt-1 cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-          >
-            <GripVertical size={15} />
-          </span>
-          <span className="mt-0.5 flex h-6 min-w-[1.5rem] flex-shrink-0 items-center justify-center rounded-lg bg-white px-1.5 text-[11px] font-black text-slate-500">
+            className="mt-0.5"
+          />
+          <span className="mt-0.5 w-8 flex-shrink-0 text-xs leading-5 tabular-nums text-stone-400">
             {mi + 1}.{si + 1}
           </span>
           <div className="min-w-0 flex-1">
@@ -452,76 +482,74 @@ const PlanTree: React.FC<PlanTreeProps> = ({
               label="Session title"
               disabled={disabled}
               onCommit={(title) => onEdit((current) => renameSession(current, mi, si, title))}
-              className="text-sm font-bold text-slate-800"
+              className="text-sm font-medium leading-6 text-stone-900"
             />
             {session.rationale && (
-              <p className="mt-1 flex items-start gap-1.5 text-xs font-medium italic leading-5 text-slate-500">
-                <Lightbulb size={12} className="mt-1 flex-shrink-0 text-amber-400" />
+              <p className="mt-0.5 flex items-start gap-1.5 text-[13px] leading-5 text-stone-500">
+                <Lightbulb size={13} className="mt-[3px] flex-shrink-0 text-stone-400" aria-hidden="true" />
                 {session.rationale}
               </p>
             )}
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-slate-400">
-              {objectiveCount > 0 && (
-                <span
-                  className="flex items-center gap-1"
-                  title={objectiveNames.length > 0 ? objectiveNames.join('\n') : undefined}
-                >
-                  <Target size={11} />
-                  {objectiveCount} objective{objectiveCount === 1 ? '' : 's'}
-                </span>
-              )}
-              {files.map((name) => (
-                <span key={name} className="flex min-w-0 items-center gap-1">
-                  <FileText size={11} className="flex-shrink-0" />
-                  <span className="truncate">{name}</span>
-                </span>
-              ))}
-              {stale && (
-                <span className="flex items-center gap-2 font-black text-rose-600">
-                  <span className="flex items-center gap-1">
-                    <AlertTriangle size={11} /> Needs attention
-                  </span>
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => onEdit((current) => removeStaleFromSession(current, mi, si, staleIds))}
-                    className="rounded-md border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+            {(objectiveCount > 0 || files.length > 0) && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+                {objectiveCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1"
+                    title={objectiveNames.length > 0 ? objectiveNames.join('\n') : undefined}
                   >
-                    Remove stale references
-                  </button>
+                    <Target size={12} className="text-stone-400" aria-hidden="true" />
+                    {objectiveCount} objective{objectiveCount === 1 ? '' : 's'}
+                  </span>
+                )}
+                {files.map((name) => (
+                  <span key={name} className="inline-flex min-w-0 max-w-full items-center gap-1" title={name}>
+                    <FileText size={12} className="flex-shrink-0 text-stone-400" aria-hidden="true" />
+                    <span className="truncate">{name}</span>
+                  </span>
+                ))}
+              </p>
+            )}
+            {stale && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
+                  <AlertTriangle size={12} aria-hidden="true" /> Refers to deleted content
                 </span>
-              )}
-            </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => onEdit((current) => removeStaleFromSession(current, mi, si, staleIds))}
+                >
+                  Remove stale references
+                </Button>
+              </div>
+            )}
             {nodeIssues.map((text) => (
-              <p key={text} className="mt-1 text-[11px] font-bold text-amber-700">
+              <p key={text} className="mt-1 text-xs text-amber-700">
                 {text}
               </p>
             ))}
           </div>
-          <div className="flex flex-shrink-0 items-center">
-            <button
-              type="button"
+          <div className="flex flex-shrink-0 items-center gap-0.5">
+            <IconButton
+              size="sm"
+              icon={ChevronUp}
+              label="Move session up"
               disabled={disabled || si === 0}
               onClick={() => onEdit((current) => moveSession(current, { module: mi, session: si }, mi, si - 1))}
-              title="Move up"
-              className="rounded-lg p-1 text-slate-300 transition hover:bg-white hover:text-slate-600 disabled:opacity-30"
-            >
-              <ChevronUp size={14} />
-            </button>
-            <button
-              type="button"
+            />
+            <IconButton
+              size="sm"
+              icon={ChevronDown}
+              label="Move session down"
               disabled={disabled || si === sessionCount - 1}
               onClick={() => onEdit((current) => moveSession(current, { module: mi, session: si }, mi, si + 2))}
-              title="Move down"
-              className="rounded-lg p-1 text-slate-300 transition hover:bg-white hover:text-slate-600 disabled:opacity-30"
-            >
-              <ChevronDown size={14} />
-            </button>
+            />
             {plan.modules.length > 1 && (
               <select
                 value=""
                 disabled={disabled}
-                aria-label="Move session to module"
+                aria-label="Move session to another module"
                 title="Move to another module"
                 onChange={(event) => {
                   const toModule = Number(event.target.value);
@@ -529,7 +557,7 @@ const PlanTree: React.FC<PlanTreeProps> = ({
                     moveSession(current, { module: mi, session: si }, toModule, current.modules[toModule].sessions.length),
                   );
                 }}
-                className="ml-1 w-[4.5rem] cursor-pointer rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] font-bold text-slate-500 outline-none hover:border-slate-300"
+                className={cn(moveSelectClass, 'mx-0.5')}
               >
                 <option value="" disabled>
                   Move…
@@ -541,26 +569,32 @@ const PlanTree: React.FC<PlanTreeProps> = ({
                 ))}
               </select>
             )}
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => setPendingDelete({ kind: 'session', module: mi, session: si })}
-              title="Delete session"
-              className="ml-0.5 rounded-lg p-1 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
-            >
-              <Trash2 size={14} />
-            </button>
+            <Menu
+              size="sm"
+              label="Session actions"
+              items={[
+                {
+                  label: 'Delete session',
+                  icon: Trash2,
+                  tone: 'danger',
+                  disabled,
+                  onSelect: () => setPendingDelete({ kind: 'session', module: mi, session: si }),
+                },
+              ]}
+            />
           </div>
         </div>
-        <ul className="space-y-1 px-3 pb-3 pt-2">
+        <div className="pb-3 pl-[4.75rem] pr-3 pt-2">
           {session.items.length === 0 ? (
-            <li className="rounded-xl border border-dashed border-amber-300 px-3 py-2 text-center text-[11px] font-bold text-amber-700">
+            <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50/50 px-3 py-2 text-center text-xs text-amber-800">
               Drag an item here, or delete this session.
-            </li>
+            </p>
           ) : (
-            session.items.map((ref, ii) => renderItem(ref, mi, si, ii))
+            <ul className="divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200">
+              {session.items.map((ref, ii) => renderItem(ref, mi, si, ii))}
+            </ul>
           )}
-        </ul>
+        </div>
       </li>
     );
   };
@@ -574,100 +608,106 @@ const PlanTree: React.FC<PlanTreeProps> = ({
             sessionDependencyIds(session).some((id) => staleIds.has(id)),
           );
           const nodeIssues = issuesByNode.get(key) ?? [];
+          const sessionCount = module.sessions.length;
           return (
             <li
               key={`${mi}-${module.title}`}
               data-drag-card
-              className={`rounded-3xl border bg-white transition ${
-                stale ? 'border-rose-200' : nodeIssues.length > 0 ? 'border-amber-300' : 'border-slate-200'
-              }`}
+              className={cn(
+                'rounded-xl border bg-white transition-shadow',
+                stale ? 'border-red-200' : nodeIssues.length > 0 ? 'border-amber-300' : 'border-stone-200',
+                edgeHint(hint, key) || 'shadow-card',
+              )}
             >
               <div
                 onDragOver={moduleHeaderDragOver(mi)}
                 onDrop={moduleHeaderDrop(mi)}
                 onDragLeave={() => setHint((current) => (current?.key === key ? null : current))}
-                className={`flex items-start gap-2.5 rounded-t-3xl px-4 py-3 ${hintClass(hint, key)}`}
+                className={cn(
+                  'flex items-start gap-2 rounded-t-xl px-3 py-3 transition-colors',
+                  sessionCount === 0 && 'rounded-b-xl',
+                  intoHint(hint, key) || 'bg-stone-50/70',
+                )}
               >
-                <span
-                  draggable={!disabled}
+                <DragHandle
+                  disabled={disabled}
+                  title="Drag to reorder modules"
                   onDragStart={startDrag({ kind: 'module', module: mi })}
                   onDragEnd={endDrag}
-                  title="Drag to reorder modules"
-                  className="mt-1.5 cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-                >
-                  <GripVertical size={16} />
-                </span>
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#16324F] text-xs font-black text-white">
+                  size={15}
+                  className="mt-1"
+                />
+                <span className="mt-0.5 w-8 flex-shrink-0 text-[13px] font-medium leading-6 tabular-nums text-stone-400">
                   {mi + 1}
                 </span>
-                <div className="min-w-0 flex-1 pt-1">
+                <div className="min-w-0 flex-1">
                   <InlineTitle
                     value={module.title}
                     label="Module title"
                     disabled={disabled}
                     onCommit={(title) => onEdit((current) => renameModule(current, mi, title))}
-                    className="text-base font-black tracking-tight text-slate-900"
+                    className="text-[15px] font-semibold leading-7 text-stone-900"
                   />
                   {module.rationale && (
-                    <p className="mt-1 text-xs font-medium leading-5 text-slate-500">{module.rationale}</p>
+                    <p className="mt-0.5 text-[13px] leading-5 text-stone-500">{module.rationale}</p>
                   )}
                   {nodeIssues.map((text) => (
-                    <p key={text} className="mt-1 text-[11px] font-bold text-amber-700">
+                    <p key={text} className="mt-1 text-xs text-amber-700">
                       {text}
                     </p>
                   ))}
                 </div>
-                <div className="flex flex-shrink-0 items-center pt-1">
-                  <span className="mr-2 text-[11px] font-bold text-slate-400">
-                    {module.sessions.length} session{module.sessions.length === 1 ? '' : 's'}
+                <div className="flex flex-shrink-0 items-center gap-0.5 pt-0.5">
+                  <span className="mr-1.5 text-xs tabular-nums text-stone-500">
+                    {sessionCount} session{sessionCount === 1 ? '' : 's'}
                   </span>
-                  <button
-                    type="button"
+                  <IconButton
+                    size="sm"
+                    icon={ChevronUp}
+                    label="Move module up"
                     disabled={disabled || mi === 0}
                     onClick={() => onEdit((current) => moveModule(current, mi, mi - 1))}
-                    title="Move up"
-                    className="rounded-lg p-1 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
-                  >
-                    <ChevronUp size={15} />
-                  </button>
-                  <button
-                    type="button"
+                  />
+                  <IconButton
+                    size="sm"
+                    icon={ChevronDown}
+                    label="Move module down"
                     disabled={disabled || mi === plan.modules.length - 1}
                     onClick={() => onEdit((current) => moveModule(current, mi, mi + 2))}
-                    title="Move down"
-                    className="rounded-lg p-1 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"
-                  >
-                    <ChevronDown size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setPendingDelete({ kind: 'module', module: mi })}
-                    title="Delete module"
-                    className="ml-0.5 rounded-lg p-1 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  />
+                  <Menu
+                    size="sm"
+                    label="Module actions"
+                    items={[
+                      {
+                        label: 'Delete module',
+                        icon: Trash2,
+                        tone: 'danger',
+                        disabled,
+                        onSelect: () => setPendingDelete({ kind: 'module', module: mi }),
+                      },
+                    ]}
+                  />
                 </div>
               </div>
-              <ol className="space-y-2 px-4 pb-4">
-                {module.sessions.length === 0 ? (
-                  <li className="rounded-2xl border border-dashed border-amber-300 px-3 py-3 text-center text-xs font-bold text-amber-700">
-                    No sessions. Drag a session onto this module’s title, or delete the module.
-                  </li>
-                ) : (
-                  module.sessions.map((session, si) => renderSession(session, mi, si, module.sessions.length))
-                )}
-              </ol>
+              {sessionCount === 0 ? (
+                <p className="rounded-b-xl border-t border-stone-100 bg-amber-50/40 px-4 py-3 text-center text-xs text-amber-800">
+                  No sessions. Drag a session onto this module’s title, or delete the module.
+                </p>
+              ) : (
+                <ol className="divide-y divide-stone-100 border-t border-stone-100">
+                  {module.sessions.map((session, si) => renderSession(session, mi, si, sessionCount))}
+                </ol>
+              )}
             </li>
           );
         })}
       </ol>
 
-      <ConfirmationModal
-        isOpen={Boolean(pendingDelete)}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
         title={pendingDelete?.kind === 'module' ? 'Delete module from draft?' : 'Delete session from draft?'}
-        message={
+        description={
           pendingDelete?.kind === 'module'
             ? `Remove “${plan.modules[pendingDelete.module]?.title || 'this module'}” and its sessions from the draft? Its items stay in the course; drafted items in it are dropped when you accept.`
             : pendingDelete

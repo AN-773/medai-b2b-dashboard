@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, GitBranch, Layers } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import { studyPlanAuditService } from '@/services/studyPlanAuditService';
 import type {
   GetUploadAuditResponse,
   UploadAuditChunk,
 } from '@/types/StudyPlanAuditTypes';
+import { Button, IconButton, InlineAlert } from '@/components/ui';
 import {
   Drawer,
   EmptyBlock,
@@ -15,14 +16,16 @@ import {
   LangfuseLink,
   LoadingBlock,
   Section,
-  StagePill,
   StatusPill,
   TenantTag,
   TimeAgo,
-  computeDurationMs,
   formatDurationMs,
   formatNumber,
+  plural,
+  statusTone,
 } from '../shared';
+import { ChunkList, toChunkView } from '../lineage';
+import { RunError, RunHeadline, isFailedRun, runDurationMs } from '../runs';
 
 type Props = {
   uploadIdentifier: string | null;
@@ -58,6 +61,10 @@ const UploadAuditPanel: React.FC<Props> = ({
     if (uploadIdentifier) {
       setData(null);
       load();
+    } else {
+      // Closed: drop the old record so reopening never flashes (or focuses) stale content.
+      setData(null);
+      setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadIdentifier]);
@@ -66,24 +73,19 @@ const UploadAuditPanel: React.FC<Props> = ({
     <Drawer
       open={!!uploadIdentifier}
       onClose={onClose}
-      title={
-        loading
-          ? 'Loading upload…'
-          : data
-            ? data.file_name
-            : 'Upload'
-      }
+      title={loading ? 'Loading upload…' : data ? data.file_name : 'Upload'}
       subtitle={
         data
           ? `Upload ${uploadIdentifier ?? data.upload_id}`
-          : uploadIdentifier ?? undefined
+          : (uploadIdentifier ?? undefined)
       }
     >
-      {loading && <LoadingBlock />}
+      {loading && <LoadingBlock label="Loading upload audit…" />}
       {error && <ErrorBlock error={error} onRetry={load} />}
       {data && !loading && !error && (
-        <div className="space-y-5">
-          <Section title="Upload">
+        <div className="space-y-6">
+          <UploadAlerts data={data} />
+          <Section title="Summary">
             <KVGrid cols={4}>
               <KV label="Status">
                 <StatusPill value={data.status} />
@@ -94,21 +96,21 @@ const UploadAuditPanel: React.FC<Props> = ({
               <KV label="Chunks" mono>
                 {formatNumber(data.chunk_count)}
               </KV>
-              <KV label="LOs extracted" mono>
+              <KV label="Objectives extracted" mono>
                 {formatNumber(data.learning_objectives.length)}
               </KV>
               <KV label="Upload">
-                <IdChip value={data.upload_id} label="upload" />
+                <IdChip value={data.upload_id} label="ID" />
               </KV>
               <KV label="Study plan">
                 {data.study_plan_id ? (
-                  <IdChip value={data.study_plan_id} label="plan" />
+                  <IdChip value={data.study_plan_id} label="ID" />
                 ) : (
-                  <span className="text-slate-400">—</span>
+                  <span className="text-stone-400">—</span>
                 )}
               </KV>
               <KV label="File name">
-                <span className="font-mono text-[11px]">{data.file_name}</span>
+                <span className="break-all font-mono text-[13px]">{data.file_name}</span>
               </KV>
               <KV label="Extraction runs" mono>
                 {formatNumber(data.extraction_runs.length)}
@@ -118,99 +120,108 @@ const UploadAuditPanel: React.FC<Props> = ({
 
           <ExtractionRuns runs={data.extraction_runs} />
           <ExtractedLOs los={data.learning_objectives} onOpenLo={onOpenLo} />
-          <UnlinkedChunks chunks={data.unlinked_chunks} />
+          <UnlinkedChunks chunks={data.unlinked_chunks} total={data.chunk_count} />
         </div>
       )}
     </Drawer>
   );
 };
 
+// ---------- Detected problems ----------
+
+const UploadAlerts: React.FC<{ data: GetUploadAuditResponse }> = ({ data }) => {
+  const failedRuns = data.extraction_runs.filter(isFailedRun).length;
+  const uploadFailed = statusTone(data.status) === 'red';
+  const noObjectives = data.learning_objectives.length === 0 && data.chunk_count > 0;
+  if (!uploadFailed && failedRuns === 0 && !noObjectives) return null;
+  return (
+    <div className="space-y-2">
+      {uploadFailed && (
+        <InlineAlert tone="error" title="Upload processing failed">
+          The upload is marked <code className="font-mono">{data.status}</code>. Check the
+          extraction runs below for the error.
+        </InlineAlert>
+      )}
+      {failedRuns > 0 && (
+        <InlineAlert
+          tone="warning"
+          title={`${formatNumber(failedRuns)} of ${plural(data.extraction_runs.length, 'extraction run')} failed`}
+        >
+          Their error codes and messages are shown under Extraction runs.
+        </InlineAlert>
+      )}
+      {noObjectives && (
+        <InlineAlert tone="warning" title="No objectives were extracted">
+          This upload has {plural(data.chunk_count, 'chunk')}, but none are linked to a learning
+          objective.
+        </InlineAlert>
+      )}
+    </div>
+  );
+};
+
+// ---------- Extraction runs ----------
+
 const ExtractionRuns: React.FC<{
   runs: GetUploadAuditResponse['extraction_runs'];
 }> = ({ runs }) => (
   <Section
     title="Extraction runs"
-    subtitle="Upload-scoped runs from LO extraction stages"
+    subtitle="Upload-scoped runs from the objective extraction stages"
     dense
   >
     {runs.length === 0 ? (
       <EmptyBlock title="No extraction runs recorded" />
     ) : (
-      <div className="space-y-2 p-4">
-        {runs.map((r) => {
-          const duration =
-            computeDurationMs(r.started_at, r.ended_at) ?? r.latency_ms;
-          return (
-            <div
-              key={r.id}
-              className="rounded-lg border border-slate-200 bg-white p-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill value={r.status} />
-                  <StagePill value={r.stage} />
-                  <span className="font-mono text-[10.5px] text-slate-500">
-                    {r.model}
-                  </span>
-                  <span className="font-mono text-[10.5px] text-slate-500">
-                    attempt #{r.attempt}
-                  </span>
-                  {r.error_code && (
-                    <span className="font-mono text-[10.5px] text-rose-600">
-                      {r.error_code}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-[11px] text-slate-600">
-                  <span className="font-mono tabular-nums">
-                    tok {formatNumber(r.input_token_count)} →{' '}
-                    {formatNumber(r.output_token_count)}
-                  </span>
-                  <span className="font-mono tabular-nums">
-                    {formatDurationMs(duration)}
-                  </span>
-                  {r.langfuse_trace_url && (
-                    <LangfuseLink href={r.langfuse_trace_url} />
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-slate-500">
-                <IdChip value={r.id} label="run" />
-                {r.langfuse_trace_id && (
-                  <IdChip value={r.langfuse_trace_id} label="trace" />
+      <ul className="divide-y divide-stone-100">
+        {runs.map((r) => (
+          <li key={r.id} className="px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+              <RunHeadline run={r} />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-stone-500">
+                <span title="Input → output tokens">
+                  {formatNumber(r.input_token_count)} → {formatNumber(r.output_token_count)} tokens
+                </span>
+                <span>{formatDurationMs(runDurationMs(r))}</span>
+                {r.langfuse_trace_url && (
+                  <LangfuseLink href={r.langfuse_trace_url} label="Open trace" />
                 )}
-                <span>started <TimeAgo iso={r.started_at} /></span>
               </div>
-              {r.error_message && (
-                <div className="mt-2 whitespace-pre-wrap break-words rounded-md bg-rose-50 px-2 py-1 text-[11px] leading-snug text-rose-700 ring-1 ring-rose-200">
-                  {r.error_message}
-                </div>
-              )}
             </div>
-          );
-        })}
-      </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-500">
+              <IdChip value={r.id} label="Run" />
+              {r.langfuse_trace_id && <IdChip value={r.langfuse_trace_id} label="Trace" />}
+              <span>
+                Started <TimeAgo iso={r.started_at} />
+              </span>
+            </div>
+            <RunError run={r} className="mt-2.5" />
+          </li>
+        ))}
+      </ul>
     )}
   </Section>
 );
+
+// ---------- Extracted objectives (objective → chunks) ----------
 
 const ExtractedLOs: React.FC<{
   los: GetUploadAuditResponse['learning_objectives'];
   onOpenLo: (identifier: string) => void;
 }> = ({ los, onOpenLo }) => (
   <Section
-    title={`Extracted learning objectives (${los.length})`}
-    subtitle="Chunks linked to each LO, deduplicated"
+    title={`Extracted objectives (${formatNumber(los.length)})`}
+    subtitle="Chunks linked to each objective, deduplicated"
     dense
   >
     {los.length === 0 ? (
-      <EmptyBlock title="No LOs extracted from this upload" />
+      <EmptyBlock title="No objectives extracted from this upload" />
     ) : (
-      <div className="space-y-2 p-4">
+      <ul className="divide-y divide-stone-100">
         {los.map((lo) => (
           <LOAccordion key={lo.id} lo={lo} onOpenLo={onOpenLo} />
         ))}
-      </div>
+      </ul>
     )}
   </Section>
 );
@@ -220,99 +231,79 @@ const LOAccordion: React.FC<{
   onOpenLo: (identifier: string) => void;
 }> = ({ lo, onOpenLo }) => {
   const [open, setOpen] = useState(false);
+  const hasChunks = lo.chunks.length > 0;
+  const regionId = `upload-lo-${lo.id}`;
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-      >
-        <div className="flex min-w-0 items-start gap-2">
-          {open ? (
-            <ChevronDown size={14} className="mt-0.5 text-slate-400" />
-          ) : (
-            <ChevronRight size={14} className="mt-0.5 text-slate-400" />
-          )}
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-800">
-              {lo.title || '(untitled)'}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-              <span className="font-mono">{lo.identifier}</span>
-              <IdChip value={lo.id} label="lo" />
-              <TenantTag tenantId={lo.tenant_id} />
-              <span className="font-mono">
-                {lo.chunks.length} chunks
-              </span>
-            </div>
+    <li>
+      <div className="flex items-start gap-2 px-3 py-3 sm:px-4">
+        <IconButton
+          icon={open ? ChevronDown : ChevronRight}
+          label={open ? 'Hide linked chunks' : 'Show linked chunks'}
+          size="sm"
+          aria-expanded={open}
+          aria-controls={regionId}
+          disabled={!hasChunks}
+          onClick={() => setOpen((v) => !v)}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-medium text-stone-900">
+            {lo.title || 'Untitled objective'}
+          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-stone-500">
+            <code className="font-mono text-stone-600">{lo.identifier}</code>
+            <IdChip value={lo.id} label="ID" />
+            <TenantTag tenantId={lo.tenant_id} />
+            <span className="tabular-nums">{plural(lo.chunks.length, 'chunk')}</span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenLo(lo.identifier);
-          }}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={GitBranch}
+          onClick={() => onOpenLo(lo.identifier)}
+          aria-label={`Open lineage for objective ${lo.identifier}`}
         >
-          <GitBranch size={11} />
-          lineage
-        </button>
-      </button>
-      {open && lo.chunks.length > 0 && (
-        <div className="border-t border-slate-200 bg-slate-50/60 p-3">
-          <ChunkGrid chunks={lo.chunks} />
+          Lineage
+        </Button>
+      </div>
+      {open && hasChunks && (
+        <div
+          id={regionId}
+          className="border-t border-stone-100 bg-stone-50/60 py-3 pl-6 pr-4 sm:pl-12"
+        >
+          <ChunkList chunks={lo.chunks.map(toChunkView)} />
         </div>
       )}
-    </div>
+    </li>
   );
 };
 
-const UnlinkedChunks: React.FC<{ chunks: UploadAuditChunk[] }> = ({
+// ---------- Unlinked chunks ----------
+
+const UnlinkedChunks: React.FC<{ chunks: UploadAuditChunk[]; total: number }> = ({
   chunks,
+  total,
 }) => (
   <Section
-    title={`Unlinked chunks (${chunks.length})`}
-    subtitle="Upload chunks not linked to any extracted LO"
+    title={`Unlinked chunks (${formatNumber(chunks.length)})`}
+    subtitle={
+      chunks.length > 0 && total > 0
+        ? `${formatNumber(chunks.length)} of ${plural(total, 'chunk')} aren't linked to any extracted objective`
+        : 'Upload chunks not linked to any extracted objective'
+    }
     dense
   >
     {chunks.length === 0 ? (
-      <EmptyBlock title="No unlinked chunks" />
+      <EmptyBlock
+        title="No unlinked chunks"
+        hint={total > 0 ? 'Every chunk grounds at least one objective.' : undefined}
+      />
     ) : (
       <div className="p-4">
-        <ChunkGrid chunks={chunks} />
+        <ChunkList chunks={chunks.map(toChunkView)} />
       </div>
     )}
   </Section>
-);
-
-const ChunkGrid: React.FC<{ chunks: UploadAuditChunk[] }> = ({ chunks }) => (
-  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-    {chunks.map((c) => (
-      <div
-        key={c.id}
-        className="rounded-md border border-slate-200 bg-white p-2"
-      >
-        <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500">
-          <Layers size={11} className="text-slate-400" />
-          <span className="font-mono">#{c.chunk_index}</span>
-          <span className="font-mono">{c.source_file}</span>
-          <IdChip value={c.id} label="chunk" />
-          <span className="font-mono">tok {formatNumber(c.token_count)}</span>
-        </div>
-        {c.heading && (
-          <div className="mt-1 text-[11px] font-semibold text-slate-700">
-            {c.heading}
-          </div>
-        )}
-        {c.content_snippet && (
-          <div className="mt-1 line-clamp-3 text-[11px] text-slate-600">
-            {c.content_snippet}
-          </div>
-        )}
-      </div>
-    ))}
-  </div>
 );
 
 export default UploadAuditPanel;
