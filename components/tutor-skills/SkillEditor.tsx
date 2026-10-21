@@ -126,7 +126,7 @@ const SkillEditor: React.FC<SkillEditorProps> = ({
           label="Name"
           description={
             nameLocked
-              ? 'Fixed once created: it is what the tutor loads the skill by.'
+              ? 'Fixed once created: it is what Sina loads the skill by.'
               : 'Lowercase letters, digits and single hyphens, e.g. osce-station-practice. It cannot be changed later.'
           }
         >
@@ -141,7 +141,7 @@ const SkillEditor: React.FC<SkillEditorProps> = ({
             />
           )}
         </Field>
-        <Field label="Modes" description="The tutor modes whose list of skills shows this one.">
+        <Field label="Modes" description="The modes in which Sina lists this skill.">
           {() => (
             <div className="flex h-9 flex-wrap items-center gap-4">
               {SKILL_MODES.map((mode) => (
@@ -164,7 +164,7 @@ const SkillEditor: React.FC<SkillEditorProps> = ({
       <Field
         label="When to use it"
         hint={`${characters(draft.description)} / ${SKILL_DESCRIPTION_MAX}`}
-        description="One line the tutor reads to decide whether a request needs this skill. Say what it is for, in the words a student would use."
+        description="One line Sina reads to decide whether a request needs this skill. Say what it is for, in the words a student would use."
       >
         {(id) => (
           <Textarea
@@ -202,7 +202,7 @@ const SkillEditor: React.FC<SkillEditorProps> = ({
             value={draft.body}
             onChange={(event) => update({ body: event.target.value })}
             disabled={disabled}
-            placeholder={'# The method\n\nWhat the tutor does, step by step…'}
+            placeholder={'# The method\n\nWhat Sina does, step by step…'}
             className="resize-y font-mono text-[13px]"
           />
           {showPreview && (

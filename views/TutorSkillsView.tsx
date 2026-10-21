@@ -43,7 +43,7 @@ import {
   type SkillVersion,
 } from '@/services/tutorSkillsService';
 
-// Tutor skills: the written methods the AI tutor loads when a student's request
+// Sina skills: the written methods Sina, the AI tutor, loads when a student's request
 // matches one, kept in medai-agent-v2 with every version and change recorded
 // (agent-v2 DECISIONS → SKILL §9). Saving keeps every version; students get the
 // published one, from their next message.
@@ -54,7 +54,7 @@ const who = (id: string, email: string | null) => email ?? id;
 const NotConnected: React.FC = () => (
   <EmptyState
     icon={Lightbulb}
-    title="Tutor skills are not connected on this site"
+    title="Sina skills are not connected on this site"
     description="This build has no agent-v2 address (VITE_AGENT_V2_API_URL), so there is nowhere to keep skills."
   />
 );
@@ -62,15 +62,15 @@ const NotConnected: React.FC = () => (
 const Forbidden: React.FC = () => (
   <EmptyState
     icon={Lightbulb}
-    title="Only a superadmin can manage tutor skills"
-    description="The tutor refused this account's token for skill management."
+    title="Only a superadmin can manage Sina skills"
+    description="Sina's service refused this account's token for skill management."
   />
 );
 
 const BackLink: React.FC = () => (
   <Link to="/tutor-skills" className="inline-flex items-center gap-1 text-stone-500 hover:text-stone-800">
     <ChevronLeft size={14} />
-    Tutor skills
+    Sina skills
   </Link>
 );
 
@@ -111,8 +111,7 @@ const TutorSkillsView: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="Tutor skills"
-        description="Methods the tutor follows when a student's request matches one — running an OSCE station, taking an exam question apart. Saving keeps every version; students get only the published one, from their next message."
+        title="Sina skills"
         actions={
           <Button variant="primary" icon={Plus} onClick={() => navigate('/tutor-skills/new')}>
             New skill
@@ -125,8 +124,8 @@ const TutorSkillsView: React.FC = () => {
           <SwitchRow checked={showArchived} onChange={setShowArchived} label="Show archived" />
         </div>
         <Button
-          aria-label="Refresh tutor skills"
-          title="Refresh tutor skills"
+          aria-label="Refresh Sina skills"
+          title="Refresh Sina skills"
           icon={RefreshCw}
           loading={loading}
           onClick={() => void load()}
@@ -136,19 +135,19 @@ const TutorSkillsView: React.FC = () => {
 
       <div className="mt-5 space-y-4">
         {error && (
-          <InlineAlert tone="error" title="Could not load tutor skills">
+          <InlineAlert tone="error" title="Could not load Sina skills">
             {error}
           </InlineAlert>
         )}
         <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-card">
           {loading && skills.length === 0 ? (
-            <Spinner label="Loading tutor skills…" className="py-20" />
+            <Spinner label="Loading Sina skills…" className="py-20" />
           ) : skills.length === 0 ? (
             !error && (
               <EmptyState
                 icon={Lightbulb}
-                title="No tutor skills yet"
-                description="Write a method the tutor should follow for one kind of request, then publish it."
+                title="No Sina skills yet"
+                description="Write a method Sina should follow for one kind of request, then publish it."
                 action={
                   <Button variant="primary" icon={Plus} onClick={() => navigate('/tutor-skills/new')}>
                     New skill
@@ -257,7 +256,7 @@ export const TutorSkillCreateView: React.FC = () => {
 
   return (
     <div>
-      <PageHeader eyebrow={<BackLink />} title="New tutor skill" description="Saved as v1. Nothing reaches students until you publish it." />
+      <PageHeader eyebrow={<BackLink />} title="New Sina skill" description="Saved as v1. Nothing reaches students until you publish it." />
       <div className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5 shadow-card">
         {error && <InlineAlert tone="error">{error}</InlineAlert>}
         <SkillEditor
@@ -468,7 +467,7 @@ export const TutorSkillView: React.FC = () => {
       <EmptyState
         icon={Lightbulb}
         title={`There is no skill called ${name}`}
-        action={<Button onClick={() => navigate('/tutor-skills')}>Back to tutor skills</Button>}
+        action={<Button onClick={() => navigate('/tutor-skills')}>Back to Sina skills</Button>}
       />
     );
   }
