@@ -7,6 +7,7 @@ export type View =
   | 'TEAM_DIRECTORY'
   | 'NOTIFICATIONS'
   | 'STUDY_PLAN_AUDIT'
+  | 'TUTOR_SKILLS'
   | 'WORKBENCH'
   | 'BANK_EXPLORER'
   | 'QB_HEALTH'

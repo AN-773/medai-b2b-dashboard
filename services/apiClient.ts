@@ -28,8 +28,31 @@ interface RequestOptions extends AxiosRequestConfig {
   authenticated?: boolean;
 }
 
-type ApiRequestError = Error & {
+export type ApiRequestError = Error & {
   status?: number;
+  /**
+   * The response body, as the backend sent it. agent-v2 refuses with
+   * `{ error: { code, message, … } }`, and a caller that acts on the code — the
+   * tutor-skills screens do — reads it here.
+   */
+  data?: unknown;
+};
+
+/**
+ * The sentence a refusal carries: a top-level `message`, an `error` that is
+ * the sentence itself (IAM, Tests), or an `error` object with a `message`
+ * (agent-v2's envelope).
+ */
+const backendMessageOf = (body: unknown): string => {
+  if (!body || typeof body !== 'object') return '';
+  const { message, error } = body as { message?: unknown; error?: unknown };
+  if (typeof message === 'string' && message.trim()) return message.trim();
+  if (typeof error === 'string') return error.trim();
+  if (error && typeof error === 'object') {
+    const nested = (error as { message?: unknown }).message;
+    if (typeof nested === 'string') return nested.trim();
+  }
+  return '';
 };
 
 /**
@@ -93,15 +116,12 @@ class ApiClient {
             localStorage.removeItem('msai_educator_token');
             window.location.href = '/login';
           }
-          const responseData = error.response.data as
-            | { error?: string; message?: string }
-            | undefined;
-          const backendMessage =
-            responseData?.message?.trim() || responseData?.error?.trim();
+          const backendMessage = backendMessageOf(error.response.data);
           const requestError: ApiRequestError = new Error(
             backendMessage || `API Error: ${error.response.status} ${error.response.statusText}`,
           );
           requestError.status = error.response.status;
+          requestError.data = error.response.data;
           throw requestError;
         } else if (error.request) {
            // The request was made but no response was received
