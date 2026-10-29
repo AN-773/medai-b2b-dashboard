@@ -24,6 +24,25 @@ const getBaseUrl = (service: ServiceType): string => {
   }
 };
 
+/**
+ * A service's base URL, for the one caller that cannot go through axios: a
+ * streamed response (`services/facultyChatClient.ts` reads agent-v2's SSE with
+ * `fetch`). Same rule as every request here.
+ */
+export const getServiceBaseUrl = (service: ServiceType): string => getBaseUrl(service);
+
+/** Where the educator's IAM bearer lives. */
+export const AUTH_TOKEN_STORAGE_KEY = 'msai_educator_token';
+
+/** The educator's bearer, or null when signed out or storage is unavailable. */
+export const readAuthToken = (): string | null => {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
 interface RequestOptions extends AxiosRequestConfig {
   authenticated?: boolean;
 }
@@ -96,7 +115,7 @@ class ApiClient {
 
     // Handle authentication manually for each request to support dynamic exclusion
     if (options.authenticated !== false) {
-      const token = localStorage.getItem('msai_educator_token');
+      const token = readAuthToken();
       if (token) {
         config.headers = {
           ...config.headers,
