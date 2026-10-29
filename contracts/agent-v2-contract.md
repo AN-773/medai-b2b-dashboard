@@ -142,8 +142,8 @@ can widen it.
 **Wire shapes** are mirrored from agent-v2's `@medai/contracts` 0.108.0
 (`origin/test` af0de254) in `services/facultyChatWire.ts`, which holds only the
 fields this dashboard reads. **Pending agent-v2 work (FAG-1, wave 1):** the
-`faculty` value of `surface`, the `?surface=faculty` filter, the 403/409/429
-refusals and `threads.surface`. Before FAG-1 is deployed, `POST /v1/turns`
+`faculty` value of `surface`, the `?surface=faculty` filter, the faculty
+refusals (see [Errors](#errors)) and `threads.surface`. Before FAG-1 is deployed, `POST /v1/turns`
 answers `400 invalid_surface` and `GET /v1/threads` ignores `surface` and lists
 the caller's learner threads too.
 
@@ -171,15 +171,23 @@ the caller's learner threads too.
 - `message` is at most 32,000 characters and must not be blank.
 - **Never sent:** `userId`, `origin`, `voiceSessionId` (refused on presence under a
   user token), attachments, `research`, `clinicalContext`.
-- **Page context has no field** on this route (`clinicalContext` is the clinic's
-  patient identifier only). "Ask about this cohort" therefore folds it into
-  `message` as a trailer after the question:
-  `\n\n<dashboard_context>{"cohortId":…,"cohortName":…,"page":…}</dashboard_context>`.
-  Keys are optional strings of at most 200 characters; `<` is escaped as `<`
-  inside the JSON. It sits after the question so the thread title still starts with
-  the dean's words, and `facultyChatContext.ts` splits it back off a transcript.
-  It is a hint, never an authorisation. The faculty prompt (FAG-6) should say what
-  the block is.
+- **Page context has no field** on this route yet (`clinicalContext` is the
+  clinic's patient identifier only). "Ask about this cohort" therefore folds it
+  into `message` as a trailer after the question:
+  `\n\n<dashboard_context>{"cohortId":…,"page":…}</dashboard_context>`.
+  Both keys are optional strings of at most 200 characters; `<` is escaped as
+  `<` inside the JSON. **Identifiers only:** no display name (`cohortName`)
+  is sent, because free text there is prompt text the dean did not type; the agent
+  resolves the cohort from its id. The trailer sits after the question so the
+  thread title still starts with the dean's words, and `facultyChatContext.ts`
+  splits it back off a transcript. It is a hint, never an authorisation. The
+  faculty prompt (FAG-6) should say what the block is.
+- **The trailer is temporary.** The wave 1 review recommends that FAG-5 (wave 2)
+  add a typed field to this body, `facultyContext: { cohortId?, page? }`
+  (`FacultyPageContext` already has that shape). When agent-v2 accepts it, the
+  dashboard sends the field and stops folding; `splitFoldedContext` stays, to read
+  threads written before the switch (it already drops any key other than these two,
+  such as an older `cohortName`).
 - `202` means queued, not answered: the answer is on the stream.
 
 ### `GET /v1/turns/:operationId/stream` — the answer, as SSE
@@ -276,23 +284,46 @@ only the question and replays the answer from the stream.
 
 ### Errors
 
-The body is always `{ "error": { "code": "…", "message": "…" } }`. The dashboard
-switches on the **status** (codes from FAG-1 may still change) and keeps `code`
-for logs. `FacultyChatError.kind` (`facultyChatErrors.ts`):
+agent-v2's body is `{ "error": { "code": "…", "message": "…" } }`.
+`FacultyChatError.kind` (`facultyChatErrors.ts`) is decided by the **code first**
+and by the status only as a generic fallback. A status alone cannot say who
+refused: a 429 may be the tenant's cap or a WAF/CloudFront rate limit, and a 403
+may be the faculty gate or an edge block page. So no faculty-specific kind is
+ever inferred from a status.
 
-| Status | `kind` | When |
-|---|---|---|
-| 401 `unauthorized` | `unauthorized` | the agent rejects the token. **Not a logout** (AGENT_V2 is not session-owning) |
-| 403 `faculty_forbidden` | `forbidden` | not a tenant admin/owner, tenant not on `FACULTY_TENANTS`, or faculty disabled |
-| 409 (FAG-1) | `surface_mismatch` | the `threadId` belongs to another surface (a learner chat) |
-| 429 (FAG-1) | `daily_cap` | the tenant's `FACULTY_DAILY_TURN_CAP` (default 200/day, D12) |
-| 402 `prompt_limit_reached` | `daily_cap` | a learner prompt limit; faculty turns should never meet one (D12) |
-| 404 | `not_found` | turn or thread not the caller's |
-| 400 / 413 / 415 / 422 | `invalid_request` | malformed, too long, `invalid_surface` before FAG-1 |
-| 5xx | `unavailable` | retryable |
-| no response | `network` | offline, DNS, or a CORS refusal. Retryable |
-| — | `stream_lost` | the stream could not be reopened |
-| — | `turn_failed` | `turn.failed` on the stream; `code` is the stream error's |
+By code (`FACULTY_ERROR_CODE_KINDS`):
+
+| Code | Status | `kind` | When |
+|---|---|---|---|
+| `faculty_forbidden` | 403 | `forbidden` | not a tenant admin/owner, tenant not on `FACULTY_TENANTS`, or faculty disabled |
+| `thread_surface_mismatch` | 409 | `surface_mismatch` | the `threadId` belongs to another surface (a learner chat) |
+| `faculty_thread_tenant_mismatch` (or `thread_tenant_mismatch`; FAG-1 fix round, name not final) | 409 | `tenant_mismatch` | the thread belongs to another tenant than the token's |
+| `faculty_daily_limit_reached` | 429 | `daily_cap` | the tenant's `FACULTY_DAILY_TURN_CAP` (default 200/day, D12) |
+| `faculty_attachments_unavailable` (FAG-1 fix round) | 400 | `invalid_request` | the dashboard sends no attachments, so only a client bug reaches it |
+| `faculty_voice_unavailable` | 400 | `invalid_request` | voice; not used here |
+| `invalid_surface` | 400 | `not_configured` | this agent has no faculty surface yet (before FAG-1 is deployed) |
+| `prompt_limit_reached` | 402 | `daily_cap` | a learner prompt limit; faculty turns should never meet one (D12) |
+| `prompt_limit_unauthorized` / `unauthorized` | 401 | `unauthorized` | the agent rejects the token. **Not a logout** (AGENT_V2 is not session-owning) |
+| `prompt_limits_unavailable` | 503 | `unavailable` | retryable |
+| `turn_not_found` / `thread_not_found` | 404 | `not_found` | not the caller's, or does not exist |
+
+By status, when the code is unknown or absent (`kindForStatus`):
+
+| Status | `kind` |
+|---|---|
+| 401 | `unauthorized` |
+| 403 | `forbidden` with an agent-v2 body; `unavailable` (retryable) without one |
+| 404 | `not_found` |
+| 400 / 413 / 415 / 422 | `invalid_request` |
+| 429 | `rate_limited` (retryable after a wait; the stream retries it with backoff) |
+| 5xx | `unavailable` (retryable) |
+| 402, 409, anything else | `unknown` |
+| no response | `network`: offline, DNS, or a CORS refusal (retryable) |
+| — | `stream_lost`: the stream could not be reopened |
+| — | `turn_failed`: `turn.failed` on the stream; `code` is the stream error's |
+
+A new agent-v2 code with a meaning of its own for the dean is added to
+`FACULTY_ERROR_CODE_KINDS`; until then it falls back by status.
 
 ### Not used by the faculty surface
 

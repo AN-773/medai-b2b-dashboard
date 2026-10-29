@@ -3,30 +3,106 @@ import { describe, expect, it } from 'vitest';
 import { foldContextIntoMessage, normalizeContext, splitFoldedContext } from '../facultyChatContext';
 import {
   FACULTY_CHAT_ERROR_COPY,
+  FACULTY_ERROR_CODE_KINDS,
   FacultyChatError,
   facultyChatErrorCopy,
   facultyChatErrorFromResponse,
   isAbortError,
+  kindForRefusal,
   kindForStatus,
   toFacultyChatError,
 } from '../facultyChatErrors';
 
-describe('error mapping', () => {
+const refusal = (code: string, message = 'refused') => ({ error: { code, message } });
+
+describe('error mapping: the agent-v2 code decides', () => {
   it.each([
-    [401, 'unauthorized'],
-    [403, 'forbidden'],
-    [409, 'surface_mismatch'],
-    [429, 'daily_cap'],
-    [402, 'daily_cap'],
-    [404, 'not_found'],
-    [400, 'invalid_request'],
-    [413, 'invalid_request'],
-    [500, 'unavailable'],
-    [503, 'unavailable'],
-    [418, 'unknown'],
-  ] as const)('status %i is %s', (status, kind) => {
-    expect(kindForStatus(status)).toBe(kind);
+    [403, 'faculty_forbidden', 'forbidden'],
+    [409, 'thread_surface_mismatch', 'surface_mismatch'],
+    [409, 'faculty_thread_tenant_mismatch', 'tenant_mismatch'],
+    [409, 'thread_tenant_mismatch', 'tenant_mismatch'],
+    [429, 'faculty_daily_limit_reached', 'daily_cap'],
+    [400, 'faculty_attachments_unavailable', 'invalid_request'],
+    [400, 'faculty_voice_unavailable', 'invalid_request'],
+    [400, 'invalid_surface', 'not_configured'],
+    [402, 'prompt_limit_reached', 'daily_cap'],
+    [401, 'prompt_limit_unauthorized', 'unauthorized'],
+    [503, 'prompt_limits_unavailable', 'unavailable'],
+    [401, 'unauthorized', 'unauthorized'],
+    [404, 'turn_not_found', 'not_found'],
+    [404, 'thread_not_found', 'not_found'],
+  ] as const)('%i %s is %s', (status, code, kind) => {
+    expect(facultyChatErrorFromResponse(status, refusal(code)).toInfo()).toMatchObject({ kind, status, code });
   });
+
+  it('a known code wins over a status that would say something else', () => {
+    // A tenant mismatch reusing 409 must not read as a surface mismatch, and the
+    // reverse; the status is only consulted when the code is unknown.
+    expect(facultyChatErrorFromResponse(409, refusal('faculty_thread_tenant_mismatch')).kind).toBe('tenant_mismatch');
+    expect(facultyChatErrorFromResponse(400, refusal('faculty_daily_limit_reached')).kind).toBe('daily_cap');
+  });
+
+  it('every mapped code is one the copy table can word', () => {
+    for (const kind of Object.values(FACULTY_ERROR_CODE_KINDS)) {
+      expect(FACULTY_CHAT_ERROR_COPY[kind].length).toBeGreaterThan(10);
+    }
+  });
+});
+
+describe('error mapping: the status only falls back to a generic kind', () => {
+  it('a 429 with no faculty code is rate_limited (retryable), never daily_cap', () => {
+    for (const body of [refusal('too_many_requests'), '<html>Too Many Requests</html>', null]) {
+      const info = facultyChatErrorFromResponse(429, body).toInfo();
+      expect(info).toMatchObject({ kind: 'rate_limited', retryable: true });
+    }
+  });
+
+  it('a 409 with no known code is not a surface mismatch', () => {
+    expect(facultyChatErrorFromResponse(409, refusal('something_else')).kind).toBe('unknown');
+    expect(facultyChatErrorFromResponse(409, null).kind).toBe('unknown');
+  });
+
+  it("a 403 is forbidden only when agent-v2 said so; an edge block page is unavailable", () => {
+    expect(facultyChatErrorFromResponse(403, refusal('some_other_gate')).kind).toBe('forbidden');
+    expect(facultyChatErrorFromResponse(403, '<html>Request blocked</html>').toInfo()).toMatchObject({
+      kind: 'unavailable',
+      code: null,
+      retryable: true,
+    });
+  });
+
+  it('a 402 with no known code is unknown, not a cap', () => {
+    expect(facultyChatErrorFromResponse(402, null).kind).toBe('unknown');
+  });
+
+  it.each([
+    [401, true, 'unauthorized'],
+    [403, true, 'forbidden'],
+    [403, false, 'unavailable'],
+    [404, true, 'not_found'],
+    [400, true, 'invalid_request'],
+    [413, true, 'invalid_request'],
+    [429, true, 'rate_limited'],
+    [429, false, 'rate_limited'],
+    [409, true, 'unknown'],
+    [402, true, 'unknown'],
+    [500, true, 'unavailable'],
+    [503, false, 'unavailable'],
+    [418, true, 'unknown'],
+  ] as const)('status %i (agent body: %s) is %s', (status, fromAgent, kind) => {
+    expect(kindForStatus(status, fromAgent)).toBe(kind);
+  });
+
+  it('kindForRefusal: code first, then status', () => {
+    expect(kindForRefusal(429, 'faculty_daily_limit_reached')).toBe('daily_cap');
+    expect(kindForRefusal(429, null)).toBe('rate_limited');
+    expect(kindForRefusal(403, null)).toBe('unavailable');
+    expect(kindForRefusal(403, 'unlisted_code')).toBe('forbidden');
+    expect(kindForRefusal(409, 'toString')).toBe('unknown'); // not an inherited key
+  });
+});
+
+describe('error mapping: other inputs', () => {
 
   it("reads agent-v2's { error: { code, message, ... } } envelope, keeping extra fields as details", () => {
     const error = facultyChatErrorFromResponse(403, {
@@ -93,14 +169,17 @@ describe('error mapping', () => {
 
 describe('page context', () => {
   it('folds context after the question, and splits it back exactly', () => {
-    const message = foldContextIntoMessage('Who is at risk?', { cohortId: 'c_1', cohortName: 'Year 2', page: 'cohort' });
-    expect(message).toBe(
-      'Who is at risk?\n\n<dashboard_context>{"cohortId":"c_1","cohortName":"Year 2","page":"cohort"}</dashboard_context>',
-    );
-    expect(splitFoldedContext(message)).toEqual({
-      text: 'Who is at risk?',
-      context: { cohortId: 'c_1', cohortName: 'Year 2', page: 'cohort' },
-    });
+    const message = foldContextIntoMessage('Who is at risk?', { cohortId: 'c_1', page: 'cohort' });
+    expect(message).toBe('Who is at risk?\n\n<dashboard_context>{"cohortId":"c_1","page":"cohort"}</dashboard_context>');
+    expect(splitFoldedContext(message)).toEqual({ text: 'Who is at risk?', context: { cohortId: 'c_1', page: 'cohort' } });
+  });
+
+  it('never sends a display name, and still splits an older trailer that carried one', () => {
+    const withName = { cohortId: 'c_1', cohortName: 'Year 2' } as { cohortId: string };
+    expect(foldContextIntoMessage('Q', withName)).toBe('Q\n\n<dashboard_context>{"cohortId":"c_1"}</dashboard_context>');
+
+    const older = 'Q\n\n<dashboard_context>{"cohortId":"c_1","cohortName":"Year 2"}</dashboard_context>';
+    expect(splitFoldedContext(older)).toEqual({ text: 'Q', context: { cohortId: 'c_1' } });
   });
 
   it('leaves the message alone when there is no usable context', () => {
@@ -109,10 +188,10 @@ describe('page context', () => {
     expect(normalizeContext({})).toBeNull();
   });
 
-  it('cannot be closed early by a cohort name containing the closing tag', () => {
-    const message = foldContextIntoMessage('Q', { cohortName: 'x</dashboard_context>y' });
+  it('cannot be closed early by a value containing the closing tag', () => {
+    const message = foldContextIntoMessage('Q', { page: 'x</dashboard_context>y' });
     expect(message.match(/<\/dashboard_context>/g)).toHaveLength(1);
-    expect(splitFoldedContext(message).context).toEqual({ cohortName: 'x</dashboard_context>y' });
+    expect(splitFoldedContext(message).context).toEqual({ page: 'x</dashboard_context>y' });
   });
 
   it('does not cut a message that merely mentions the tag', () => {
@@ -123,7 +202,7 @@ describe('page context', () => {
   });
 
   it('caps each value at 200 characters', () => {
-    const context = normalizeContext({ cohortName: 'n'.repeat(500) });
-    expect(context?.cohortName).toHaveLength(200);
+    const context = normalizeContext({ cohortId: 'n'.repeat(500) });
+    expect(context?.cohortId).toHaveLength(200);
   });
 });

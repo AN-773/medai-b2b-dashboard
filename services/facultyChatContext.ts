@@ -9,36 +9,44 @@
  * ```
  * Which students need attention before the renal exam?
  *
- * <dashboard_context>{"cohortId":"c_123","cohortName":"Year 2"}</dashboard_context>
+ * <dashboard_context>{"cohortId":"c_123","page":"cohort"}</dashboard_context>
  * ```
  *
  * - **After the question**, so the thread title (the opening message,
  *   truncated) still starts with what the dean typed.
  * - **Tagged JSON**, so the model reads it unambiguously and this file can
  *   split it back off a transcript exactly ({@link splitFoldedContext}). `<` is
- *   escaped inside the JSON, so a cohort named `</dashboard_context>` cannot end
- *   the block early.
+ *   escaped inside the JSON, so a value containing `</dashboard_context>` cannot
+ *   end the block early.
+ * - **Identifiers only, no display names.** The shape is the one the typed
+ *   field below will have, and a free-text name is prompt text a dean did not
+ *   type; the agent resolves the cohort from its id.
  * - **A hint, never an authorisation.** The dean could type the same text.
  *   Tenancy is enforced by the database views and the signed tenant token
  *   (plan §3.2), not by anything a client says.
  *
- * FAG-6's faculty prompt should tell the model what this block is. If agent-v2
- * later grows a context field, this module is the one place to change.
+ * **Temporary.** The wave 1 review recommends a typed
+ * `facultyContext: { cohortId?, page? }` on the create-turn body (FAG-5, wave
+ * 2). When agent-v2 accepts it, {@link foldContextIntoMessage} stops being
+ * called and the client sends the field; {@link splitFoldedContext} stays, for
+ * threads written before the switch.
  */
 
 import { MAX_IDENTIFIER_CHARS } from './facultyChatWire';
 
-/** Where on the dashboard a question was asked from. Every field is optional. */
+/**
+ * Where on the dashboard a question was asked from. Every field is optional.
+ * The shape of the planned typed `facultyContext` field.
+ */
 export interface FacultyPageContext {
   /** The cohort the dean was looking at. */
   readonly cohortId?: string;
-  /** Its display name, so the model can say it back without a lookup. */
-  readonly cohortName?: string;
   /** Which page: `cohort`, `mastery`, ... Wording only. */
   readonly page?: string;
 }
 
-const CONTEXT_KEYS = ['cohortId', 'cohortName', 'page'] as const;
+/** Only these keys are sent, and only these are read back (an older trailer's other keys are dropped). */
+const CONTEXT_KEYS = ['cohortId', 'page'] as const;
 
 const OPEN_TAG = '<dashboard_context>';
 const CLOSE_TAG = '</dashboard_context>';

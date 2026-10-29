@@ -131,6 +131,22 @@ describe('streamTurn', () => {
     expect(eventTypes(items)).toEqual(turn.map((event) => event.type));
   });
 
+  it('treats an edge rate limit on reopen (429, no agent code) as rate_limited and retries it', async () => {
+    const turn = helloTurn();
+    const { fetch, calls } = scriptedFetch([
+      sseResponse(turn.slice(0, 2).map(frame)),
+      new Response('<html>Too Many Requests</html>', { status: 429 }),
+      sseResponse(turn.slice(2).map(frame)),
+    ]);
+    const items = await drain(clientWith(fetch).streamTurn(OP));
+    expect(calls).toHaveLength(3);
+    expect(items.flatMap((item) => (item.kind === 'reconnecting' ? [item.cause.kind] : []))).toEqual([
+      'stream_lost',
+      'rate_limited',
+    ]);
+    expect(eventTypes(items).at(-1)).toBe('turn.completed');
+  });
+
   it('resets the attempt count once a reconnect delivers a frame', async () => {
     const turn = helloTurn();
     const { fetch } = scriptedFetch([
@@ -268,7 +284,7 @@ describe('JSON routes', () => {
     const created = await client().createFacultyTurn({
       threadId: THREAD,
       text: '  Who needs attention?  ',
-      context: { cohortId: 'c_1', cohortName: 'Year 2' },
+      context: { cohortId: 'c_1', page: 'cohort', cohortName: 'Year 2' } as { cohortId: string; page: string },
     });
 
     expect(created.threadId).toBe(THREAD);
@@ -276,7 +292,8 @@ describe('JSON routes', () => {
     const [service, path, body] = apiClient.post.mock.calls[0];
     expect([service, path]).toEqual(['AGENT_V2', '/v1/turns']);
     expect(body).toEqual({
-      message: 'Who needs attention?\n\n<dashboard_context>{"cohortId":"c_1","cohortName":"Year 2"}</dashboard_context>',
+      // A display name is never sent, even if a caller passes one.
+      message: 'Who needs attention?\n\n<dashboard_context>{"cohortId":"c_1","page":"cohort"}</dashboard_context>',
       surface: 'faculty',
       threadId: THREAD,
       operationId: OP,
@@ -301,7 +318,8 @@ describe('JSON routes', () => {
     [401, 'unauthorized', 'unauthorized'],
     [403, 'faculty_forbidden', 'forbidden'],
     [409, 'thread_surface_mismatch', 'surface_mismatch'],
-    [429, 'faculty_daily_cap_reached', 'daily_cap'],
+    [429, 'faculty_daily_limit_reached', 'daily_cap'],
+    [429, 'too_many_requests', 'rate_limited'],
   ])('createFacultyTurn maps a %i (%s) to %s', async (status, code, kind) => {
     apiClient.post.mockRejectedValue(
       Object.assign(new Error('refused'), { status, data: { error: { code, message: 'refused' } } }),
