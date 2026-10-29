@@ -42,6 +42,15 @@ describe('error mapping: the agent-v2 code decides', () => {
     expect(facultyChatErrorFromResponse(400, refusal('faculty_daily_limit_reached')).kind).toBe('daily_cap');
   });
 
+  it('invalid_request copy is neutral, so it fits a refused attachment or voice request as well as a long question', () => {
+    for (const code of ['faculty_attachments_unavailable', 'faculty_voice_unavailable', 'message_too_long']) {
+      const copy = facultyChatErrorCopy(facultyChatErrorFromResponse(400, refusal(code)));
+      expect(copy).toBe(FACULTY_CHAT_ERROR_COPY.invalid_request);
+      expect(copy).toMatch(/rephras/i);
+      expect(copy).not.toMatch(/^.*Shorten it/);
+    }
+  });
+
   it('every mapped code is one the copy table can word', () => {
     for (const kind of Object.values(FACULTY_ERROR_CODE_KINDS)) {
       expect(FACULTY_CHAT_ERROR_COPY[kind].length).toBeGreaterThan(10);

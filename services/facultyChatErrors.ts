@@ -232,7 +232,9 @@ export const FACULTY_CHAT_ERROR_COPY: Readonly<Record<FacultyChatErrorKind, stri
   daily_cap: 'Your institution has reached today’s limit for questions. Please try again tomorrow.',
   rate_limited: 'Too many requests at the moment. Please wait a little and try again.',
   not_found: 'That conversation could not be found.',
-  invalid_request: 'That question could not be sent. Shorten it and try again.',
+  // Neutral: this kind covers a question that is too long and requests the
+  // faculty surface refuses (attachments, voice), not only length.
+  invalid_request: 'That question can’t be sent as it is. Try rephrasing it, or making it shorter.',
   unavailable: 'The assistant is temporarily unavailable. Please try again in a minute.',
   network: 'Could not connect. Check your connection and try again.',
   stream_lost: 'The connection dropped while the answer was being written. Reconnect to see the rest.',
