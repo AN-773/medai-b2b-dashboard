@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm install        # Install dependencies
 pnpm run dev        # Start dev server (Vite, port 5173)
+pnpm run dev:ask-mock # Dev server with faculty Ask on a local mock, no backend (scripts/mock-ask-backend.mjs)
 pnpm run build      # Production build (Vite bundle only — no type check)
 pnpm run preview    # Preview production build
 pnpm run typecheck  # Full TypeScript check (not part of the build)

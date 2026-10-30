@@ -188,7 +188,10 @@ dashboard and FAG-5 ship together. A dashboard ahead of FAG-5 may have its
   returns it, `page` is `cohort` or `mastery`.
   **Identifiers only:** no display name is sent, because free text there is prompt
   text the dean did not type; the agent resolves the cohort from its id. It is a
-  hint, never an authorisation: the dean could type the same thing.
+  hint, never an authorisation: the dean could type the same thing. The Ask page
+  reads it from its URL, which anyone can write, so `pageContextFrom` drops a
+  `cohortId` that does not look like an id and a `page` it does not know. The agent
+  should still treat both as data.
 - **The `<dashboard_context>` trailer is retired.** DSH-1 folded this context into
   `message`; since FAG-5 nothing writes it. `splitFoldedContext` and `threadTitleOf`
   stay, to read a thread written that way.

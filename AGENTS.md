@@ -7,6 +7,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ```bash
 pnpm install        # Install dependencies
 pnpm run dev        # Start dev server (Vite, port 5173)
+pnpm run dev:ask-mock # Dev server with faculty Ask on a local mock, no backend (scripts/mock-ask-backend.mjs)
 pnpm run typecheck  # Full TypeScript check
 pnpm run build      # Production Vite bundle (typecheck is a separate command)
 pnpm run test:progressive-files # Compile focused tests and run Node's test runner
