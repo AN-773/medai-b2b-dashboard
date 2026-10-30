@@ -126,6 +126,6 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="mt-1 max-w-3xl text-sm leading-6 text-stone-500">{description}</div>
       )}
     </div>
-    {actions && <div className="flex flex-shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+    {actions && <div className="flex max-w-full flex-shrink-0 flex-wrap items-center gap-2">{actions}</div>}
   </div>
 );
