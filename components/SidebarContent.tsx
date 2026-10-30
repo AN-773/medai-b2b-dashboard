@@ -3,7 +3,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-r
 import { View } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { cn, IconButton } from '@/components/ui';
-import { EDUCATOR_NAV, SUPERADMIN_NAV } from '@/components/shell/navigation';
+import { navGroupsFor } from '@/components/shell/navigation';
 
 interface SidebarContentProps {
   activeView: View;
@@ -40,8 +40,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const { isSuperadmin, currentUser } = useAuth();
-  const groups = isSuperadmin ? SUPERADMIN_NAV : EDUCATOR_NAV;
+  const { isSuperadmin, canAsk, currentUser } = useAuth();
+  const groups = navGroupsFor({ isSuperadmin, canAsk });
 
   // Tooltip for the collapsed rail, positioned `fixed` so the scrolling nav
   // never clips it.

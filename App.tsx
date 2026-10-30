@@ -33,6 +33,7 @@ import CoursesView from './views/CoursesView';
 import DisciplinesView from './views/DisciplinesView';
 import StudyPlanAuditView from './views/StudyPlanAuditView';
 import TutorSkillsView, { TutorSkillCreateView, TutorSkillView } from './views/TutorSkillsView';
+import { AskRoute } from './views/AskView';
 
 interface LegacyCurriculumViewProps {
   homePath: string;
@@ -112,6 +113,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/agents')) return 'AGENTS';
     if (path.startsWith('/blueprint')) return 'BLUEPRINT';
     if (path.startsWith('/faculty')) return 'FACULTY';
+    if (path.startsWith('/ask')) return 'ASK';
     if (path.startsWith('/settings')) return 'SETTINGS';
     // return 'DASHBOARD';
     return 'FACULTY';
@@ -146,6 +148,7 @@ const DashboardLayout: React.FC = () => {
       AGENTS: '/agents',
       BLUEPRINT: '/blueprint',
       FACULTY: '/faculty',
+      ASK: '/ask',
       SETTINGS: '/settings'
     };
     return routes[view];
@@ -263,6 +266,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/tutor-skills/new" element={isSuperadmin ? <TutorSkillCreateView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/tutor-skills/:name" element={isSuperadmin ? <TutorSkillView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
+              <Route path="/ask/:threadId?" element={<AskRoute />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
               <Route path="/bank-explorer" element={<BankExplorerView onEditItem={(itemId) => navigate(`/workbench?questionId=${itemId}`)} />} />
               <Route path="/qb-health" element={<QuestionBankHealth />} />

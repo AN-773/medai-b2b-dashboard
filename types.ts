@@ -23,6 +23,7 @@ export type View =
   | 'AGENTS'
   | 'BLUEPRINT'
   | 'FACULTY'
+  | 'ASK'
   | 'SETTINGS';
 
 export enum OrganSystem {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { isAgentV2Configured } from '@/services/agentV2Service';
 
 interface AuthUser {
   email?: string;
@@ -13,6 +14,8 @@ interface AuthContextType {
   loading: boolean;
   currentUser: AuthUser | null;
   isSuperadmin: boolean;
+  /** Whether this account may use faculty Ask. See {@link canAskFaculty}. */
+  canAsk: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,6 +33,13 @@ const persistAuthError = (message: string) => {
 
 const isTenantAdminRole = (role?: string) =>
   role === 'admin' || role === 'owner';
+
+/**
+ * Faculty Ask is for a tenant admin or owner, and only that: agent-v2 refuses
+ * any token without `tenant_role` admin/owner, so being a superadmin neither
+ * grants it nor takes it away.
+ */
+export const canAskFaculty = (user: AuthUser | null) => isTenantAdminRole(user?.tenantRole);
 
 const canAccessDashboard = (user: AuthUser | null) =>
   user?.role === 'superadmin' || user?.role === 'Administrator' || isTenantAdminRole(user?.tenantRole);
@@ -126,9 +136,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const isSuperadmin = currentUser?.role === 'superadmin';
+  const canAsk = canAskFaculty(currentUser) && isAgentV2Configured();
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout, loading, currentUser, isSuperadmin }}>
+    <AuthContext.Provider value={{ isAuthenticated, login, logout, loading, currentUser, isSuperadmin, canAsk }}>
       {children}
     </AuthContext.Provider>
   );

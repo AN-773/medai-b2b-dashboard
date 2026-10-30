@@ -11,6 +11,7 @@ import {
   Library,
   Lightbulb,
   Settings,
+  Sparkles,
   Ticket,
   Users,
   UsersRound,
@@ -76,10 +77,32 @@ export const SUPERADMIN_NAV: NavGroup[] = [
   },
 ];
 
+/** Faculty Ask. Not in the lists above: who sees it depends on the account, see {@link navGroupsFor}. */
+const ASK_ITEM: NavItem = { view: 'ASK', label: 'Ask', icon: Sparkles };
+
+/**
+ * The sidebar for an account. Ask sits under the Dashboard for an educator. A
+ * superadmin has no such group, so one who also holds a tenant role gets it on
+ * its own above Platform.
+ */
+export const navGroupsFor = ({
+  isSuperadmin,
+  canAsk,
+}: {
+  isSuperadmin: boolean;
+  canAsk: boolean;
+}): NavGroup[] => {
+  if (isSuperadmin) return canAsk ? [{ items: [ASK_ITEM] }, ...SUPERADMIN_NAV] : SUPERADMIN_NAV;
+  if (!canAsk) return EDUCATOR_NAV;
+  const [top, ...rest] = EDUCATOR_NAV;
+  return [{ ...top, items: [...top.items, ASK_ITEM] }, ...rest];
+};
+
 /** Page titles for every routed view, including ones not in the sidebar. */
 export const VIEW_LABELS: Record<View, string> = {
   DASHBOARD: 'Dashboard',
   FACULTY: 'Dashboard',
+  ASK: 'Ask',
   TENANTS: 'Tenants',
   PROMO_CODES: 'Promo codes',
   TEAM_DIRECTORY: 'Team cards',
