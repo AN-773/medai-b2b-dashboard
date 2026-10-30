@@ -292,12 +292,19 @@ describe('JSON routes', () => {
     const [service, path, body] = apiClient.post.mock.calls[0];
     expect([service, path]).toEqual(['AGENT_V2', '/v1/turns']);
     expect(body).toEqual({
-      // A display name is never sent, even if a caller passes one.
-      message: 'Who needs attention?\n\n<dashboard_context>{"cohortId":"c_1","page":"cohort"}</dashboard_context>',
+      // Context is its own field, and a display name is never sent, even if a caller passes one.
+      message: 'Who needs attention?',
       surface: 'faculty',
+      facultyContext: { cohortId: 'c_1', page: 'cohort' },
       threadId: THREAD,
       operationId: OP,
     });
+  });
+
+  it('createFacultyTurn sends no facultyContext when there is none', async () => {
+    apiClient.post.mockResolvedValue({ operationId: OP, threadId: 'new', created: true, stream: '', cancel: '', approvals: '' });
+    await client().createFacultyTurn({ text: 'Hi', context: { cohortId: '   ' } });
+    expect(apiClient.post.mock.calls[0][2]).not.toHaveProperty('facultyContext');
   });
 
   it('createFacultyTurn omits threadId for a new conversation and refuses a blank question', async () => {
@@ -337,6 +344,24 @@ describe('JSON routes', () => {
     await client().listFacultyThreads({ limit: 20, cursor: 'abc' });
     expect(apiClient.get.mock.calls[0].slice(0, 2)).toEqual(['AGENT_V2', '/v1/threads?surface=faculty&limit=20&cursor=abc']);
     await expect(client().listFacultyThreads({ limit: 500 })).rejects.toMatchObject({ code: 'invalid_limit' });
+  });
+
+  it('submitFacultyFeedback posts the verdict, and needs a rating or a flag', async () => {
+    apiClient.post.mockResolvedValue({ ok: true });
+    await client().submitFacultyFeedback({ operationId: OP, queryId: 'q1', learnerId: 'l1', flag: 'incorrectly_flagged' });
+    expect(apiClient.post.mock.calls[0].slice(0, 3)).toEqual([
+      'AGENT_V2',
+      '/v1/faculty/feedback',
+      { operationId: OP, queryId: 'q1', learnerId: 'l1', flag: 'incorrectly_flagged' },
+    ]);
+    await expect(client().submitFacultyFeedback({ operationId: OP })).rejects.toMatchObject({ code: 'nothing_rated' });
+  });
+
+  it('submitFacultyFeedback maps a refusal like every other route', async () => {
+    apiClient.post.mockRejectedValue(
+      Object.assign(new Error('refused'), { status: 403, data: { error: { code: 'faculty_forbidden', message: 'no' } } }),
+    );
+    await expect(client().submitFacultyFeedback({ operationId: OP, rating: 'up' })).rejects.toMatchObject({ kind: 'forbidden' });
   });
 
   it('getThreadMessages and cancelTurn address the right routes', async () => {

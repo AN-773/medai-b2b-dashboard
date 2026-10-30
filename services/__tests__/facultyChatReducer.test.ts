@@ -150,7 +150,7 @@ describe('protocol rules', () => {
     expect(after).toBe(before);
   });
 
-  it('only moves the cursor for unknown events, silent events and faculty extension events (TODO wave 2)', () => {
+  it('only moves the cursor for unknown events, silent events and faculty events it cannot read', () => {
     const before = run([submitted, accepted]);
     const after = run(
       [
@@ -158,8 +158,8 @@ describe('protocol rules', () => {
         item(ev(1, 'stream.heartbeat')),
         item(ev(2, 'usage.updated', { inputTokens: 1, outputTokens: 1, costUsd: 0, costLimitUsd: 1 })),
         item(ev(3, 'reasoning.delta', { messageId: 'm1', text: 'thinking' })),
-        item(ev(4, 'faculty.table', { queryId: 'q1', columns: ['a'], rows: [[1]], rowCount: 1, truncated: false })),
-        item(ev(5, 'faculty.chart', { queryId: 'q1', chart: { type: 'bar', x: 'a', y: ['b'] } })),
+        item(ev(4, 'faculty.table', { queryId: 'q1', columns: 'not a list', rows: [] })),
+        item(ev(5, 'faculty.chart', { chartId: 'c1', queryId: 'q1', chartType: 'sankey', x: 'a', y: ['b'], rows: [] })),
       ],
       before,
     );
@@ -167,6 +167,57 @@ describe('protocol rules', () => {
     expect(turn).toEqual({ ...before.turns[0], lastSeq: 5, lastEventId: '5' });
     expect(turn.tables).toEqual([]);
     expect(turn.charts).toEqual([]);
+  });
+
+  describe('faculty results', () => {
+    const table = {
+      queryId: 'q1',
+      purpose: 'Checking readiness snapshot',
+      sql: 'SELECT 1',
+      columns: [{ name: 'name', dataType: 'text' }],
+      rows: [{ name: 'Sara' }],
+      rowCount: 1,
+      truncated: false,
+      durationMs: 12,
+      asOf: [{ kind: 'readiness', computedAt: '2026-10-29T02:00:00.000Z' }],
+    };
+    const chart = { chartId: 'c1', queryId: 'q1', x: 'name', y: ['n'], takeaway: 'Few', rows: [{ name: 'Sara', n: 3 }] };
+    const querying = ev(0, 'tool.started', { messageId: 'm1', toolCallId: 'call-1', toolName: 'runFacultyQuery' });
+
+    it('folds a table onto its turn, and a query step takes the result’s own words', () => {
+      const state = run([submitted, accepted, item(querying), item(ev(1, 'faculty.table', table))]);
+      const [turn] = state.turns;
+      expect(turn.tables).toEqual([table]);
+      expect(turn.steps[0]).toMatchObject({ label: 'Checking readiness snapshot', status: 'running' });
+    });
+
+    it('replaces a table re-sent under the same queryId rather than showing it twice', () => {
+      const state = run([
+        submitted,
+        accepted,
+        item(ev(0, 'faculty.table', table)),
+        item(ev(1, 'faculty.table', { ...table, rows: [{ name: 'Omar' }] })),
+      ]);
+      expect(state.turns[0].tables.map((entry) => entry.rows)).toEqual([[{ name: 'Omar' }]]);
+    });
+
+    it('reads a chart’s type from chartType, or from a nested spec', () => {
+      const state = run([
+        submitted,
+        accepted,
+        item(ev(0, 'faculty.chart', { ...chart, chartType: 'bar' })),
+        item(ev(1, 'faculty.chart', { chart: { ...chart, chartId: 'c2', type: 'kpi' } })),
+      ]);
+      expect(state.turns[0].charts.map(({ chartId, type }) => ({ chartId, type }))).toEqual([
+        { chartId: 'c1', type: 'bar' },
+        { chartId: 'c2', type: 'kpi' },
+      ]);
+    });
+
+    it('keeps the rows on a replay without double-appending', () => {
+      const once = run([submitted, accepted, item(ev(0, 'faculty.table', table))]);
+      expect(run([item(ev(0, 'faculty.table', table))], once)).toBe(once);
+    });
   });
 
   it('counts malformed frames and keeps their id as the cursor', () => {
@@ -362,6 +413,38 @@ describe('transcripts', () => {
     expect(state.turns).toHaveLength(2);
     expect(state.turns[1]).toMatchObject({ phase: 'done', outcome: 'completed', question: { text: 'And why?' } });
     expect(answerTextOf(state.turns[1])).toBe('Hello');
+  });
+
+  it('rebuilds a turn’s tables and charts from its assistant rows, dropping what it cannot read', () => {
+    const table = {
+      queryId: 'q1',
+      purpose: 'Topics',
+      sql: 'SELECT 1',
+      columns: [{ name: 'topic', dataType: 'text' }],
+      rows: [{ topic: 'Renal' }],
+      rowCount: 1,
+      truncated: false,
+      durationMs: 3,
+      asOf: [],
+    };
+    const chart = { chartId: 'c1', queryId: 'q1', type: 'bar', x: 'topic', y: ['n'], takeaway: 'Renal', rows: [{ topic: 'Renal', n: 2 }] };
+    const stored = {
+      tables: [table, { queryId: 'broken' }],
+      charts: [chart, { chartId: 'c2', type: 'sankey', x: 'a', y: ['b'], rows: [] }],
+    };
+    const [turn] = turnsFromTranscript([
+      row({ messageId: 'u1', role: 'user', operationId: OLD, content: 'Hardest topics?' }),
+      row({
+        messageId: 'a1',
+        role: 'assistant',
+        operationId: OLD,
+        content: 'Renal.',
+        finishReason: 'complete',
+        facultyResults: stored as unknown as TranscriptMessageView['facultyResults'],
+      }),
+    ]);
+    expect(turn.tables).toEqual([table]);
+    expect(turn.charts).toEqual([chart]);
   });
 
   it('turn.attached for a turn it has never seen creates one to fold into', () => {

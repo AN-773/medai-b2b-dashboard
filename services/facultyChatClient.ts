@@ -13,6 +13,7 @@
  *   on the stream.
  * - `GET /v1/threads?surface=faculty` and `GET /v1/threads/:threadId/messages`
  *   list and reload conversations.
+ * - `POST /v1/faculty/feedback` records a dean's verdict on an answer or a flag.
  *
  * The JSON routes go through `apiClient` (base URL `VITE_AGENT_V2_API_URL`, the
  * `msai_educator_token` bearer, and no logout on a 401 because AGENT_V2 is not
@@ -24,7 +25,7 @@
 
 import { apiClient, getServiceBaseUrl, readAuthToken } from './apiClient';
 import { isAgentV2Configured } from './agentV2Service';
-import { foldContextIntoMessage, type FacultyPageContext } from './facultyChatContext';
+import { normalizeContext, type FacultyPageContext } from './facultyChatContext';
 import {
   FacultyChatError,
   facultyChatErrorFromResponse,
@@ -43,6 +44,7 @@ import {
   type CancelledTurn,
   type CreatedTurn,
   type CreateFacultyTurnBody,
+  type FacultyFeedbackBody,
   type FacultyStreamEvent,
   type ListThreadsResponse,
   type ThreadMessagesResponse,
@@ -50,6 +52,7 @@ import {
 
 export const TURNS_PATH = '/v1/turns';
 export const THREADS_PATH = '/v1/threads';
+export const FACULTY_FEEDBACK_PATH = '/v1/faculty/feedback';
 const LAST_EVENT_ID_HEADER = 'Last-Event-ID';
 
 /**
@@ -76,7 +79,7 @@ export interface CreateFacultyTurnInput {
   readonly threadId?: string | null;
   /** The dean's question, as typed. */
   readonly text: string;
-  /** "Ask about this cohort": folded into the message (see `facultyChatContext.ts`). */
+  /** "Ask about this cohort": sent as `facultyContext`. */
   readonly context?: FacultyPageContext | null;
   /**
    * A UUID for this turn. Generated when omitted. Sending the same one again
@@ -137,6 +140,7 @@ export interface FacultyChatClient {
   cancelTurn(operationId: string, options?: RequestOptions): Promise<CancelledTurn>;
   listFacultyThreads(options?: ListFacultyThreadsOptions): Promise<ListThreadsResponse>;
   getThreadMessages(threadId: string, options?: RequestOptions): Promise<ThreadMessagesResponse>;
+  submitFacultyFeedback(body: FacultyFeedbackBody, options?: RequestOptions): Promise<void>;
 }
 
 export interface FacultyChatClientOptions {
@@ -294,17 +298,18 @@ export const createFacultyChatClient = (options: FacultyChatClientOptions = {}):
     const text = typeof input.text === 'string' ? input.text.trim() : '';
     if (!text) throw invalid('nothing_asked', 'Type a question first.');
 
-    const message = foldContextIntoMessage(text, input.context);
-    if (message.length > MAX_TURN_MESSAGE_CHARS) {
+    if (text.length > MAX_TURN_MESSAGE_CHARS) {
       throw invalid('message_too_long', `A question may be at most ${String(MAX_TURN_MESSAGE_CHARS)} characters.`);
     }
 
     const threadId = input.threadId == null ? undefined : requireId(input.threadId, 'thread_id');
     const operationId = input.operationId ?? newOperationId() ?? undefined;
+    const facultyContext = normalizeContext(input.context);
 
     const body: CreateFacultyTurnBody = {
-      message,
+      message: text,
       surface: FACULTY_SURFACE,
+      ...(facultyContext === null ? {} : { facultyContext }),
       ...(threadId === undefined ? {} : { threadId }),
       ...(operationId ? { operationId } : {}),
     };
@@ -350,6 +355,15 @@ export const createFacultyChatClient = (options: FacultyChatClientOptions = {}):
     const id = requireId(threadId, 'thread_id');
     return await callJson(
       () => apiClient.get<ThreadMessagesResponse>('AGENT_V2', `${THREADS_PATH}/${encodeURIComponent(id)}/messages`, { signal }),
+      signal,
+    );
+  };
+
+  const submitFacultyFeedback = async (body: FacultyFeedbackBody, { signal }: RequestOptions = {}): Promise<void> => {
+    const operationId = requireId(body.operationId, 'operation_id');
+    if (!body.rating && !body.flag) throw invalid('nothing_rated', 'Feedback needs a rating or a flag.');
+    await callJson(
+      () => apiClient.post<unknown>('AGENT_V2', FACULTY_FEEDBACK_PATH, { ...body, operationId }, { signal }),
       signal,
     );
   };
@@ -469,7 +483,15 @@ export const createFacultyChatClient = (options: FacultyChatClientOptions = {}):
     }
   }
 
-  return { isConfigured, createFacultyTurn, streamTurn, cancelTurn, listFacultyThreads, getThreadMessages };
+  return {
+    isConfigured,
+    createFacultyTurn,
+    streamTurn,
+    cancelTurn,
+    listFacultyThreads,
+    getThreadMessages,
+    submitFacultyFeedback,
+  };
 };
 
 /** The client this app uses, on `VITE_AGENT_V2_API_URL` and the educator's bearer. */
@@ -485,3 +507,5 @@ export const listFacultyThreads: FacultyChatClient['listFacultyThreads'] = (opti
   facultyChatClient.listFacultyThreads(options);
 export const getThreadMessages: FacultyChatClient['getThreadMessages'] = (threadId, options) =>
   facultyChatClient.getThreadMessages(threadId, options);
+export const submitFacultyFeedback: FacultyChatClient['submitFacultyFeedback'] = (body, options) =>
+  facultyChatClient.submitFacultyFeedback(body, options);

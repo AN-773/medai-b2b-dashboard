@@ -17,8 +17,8 @@
  * - **Events are de-duplicated by `seq`.** A replay never double-appends text.
  *
  * Unknown event types only move the cursor (agent-v2 REF-6 C18: ignorable,
- * never fatal). `faculty.table` and `faculty.chart` are known but folded by a
- * no-op until FAG-5 defines them. TODO(wave 2).
+ * never fatal). `faculty.table` and `faculty.chart` fill a turn's `tables` and
+ * `charts`; a body that does not parse is ignored the same way.
  */
 
 import type { FacultyStreamItem } from './facultyChatClient';
@@ -28,9 +28,13 @@ import {
   MESSAGE_FINISH_REASONS,
   TURN_COMPLETION_REASONS,
   isPlainObject,
+  parseFacultyChart,
+  parseFacultyResults,
+  parseFacultyTable,
   type CancelledTurn,
-  type FacultyChartEvent,
+  type FacultyChart,
   type FacultyStreamEvent,
+  type FacultyTable,
   type MessageFinishReason,
   type TranscriptMessageView,
   type TurnCompletionReason,
@@ -90,23 +94,6 @@ export interface FacultyAssistantMessage {
   readonly streaming: boolean;
 }
 
-/** A query result's full rows (plan §3.6). TODO(wave 2): filled from `faculty.table` once FAG-5 defines it. */
-export interface FacultyTableResult {
-  readonly queryId: string;
-  readonly toolCallId: string | null;
-  readonly columns: readonly string[];
-  readonly rows: readonly (readonly unknown[])[];
-  readonly rowCount: number;
-  readonly truncated: boolean;
-}
-
-/** A chart for a query result. TODO(wave 2): filled from `faculty.chart` once FAG-5 defines it. */
-export interface FacultyChartResult {
-  readonly queryId: string;
-  readonly toolCallId: string | null;
-  readonly chart: FacultyChartEvent['chart'];
-}
-
 /** One question and everything that came back for it. */
 export interface FacultyTurn {
   /** Stable React key: the operation id (which the client picks up front), or a local id. */
@@ -124,10 +111,10 @@ export interface FacultyTurn {
   /** In order. Usually one; a turn that called tools has one per model step. */
   readonly messages: readonly FacultyAssistantMessage[];
   readonly steps: readonly FacultyStep[];
-  /** TODO(wave 2). Always empty until FAG-5. */
-  readonly tables: readonly FacultyTableResult[];
-  /** TODO(wave 2). Always empty until FAG-5. */
-  readonly charts: readonly FacultyChartResult[];
+  /** One per query, in the order they ran. Rows live here and only here: the model sees a preview. */
+  readonly tables: readonly FacultyTable[];
+  /** One per `showChart`, in order. Each carries its own rows. */
+  readonly charts: readonly FacultyChart[];
   /** Follow-up questions, if agent-v2 offers any (FAG-1 turns them off for faculty). */
   readonly suggestions: readonly string[];
   /** Why it failed, was rejected, or lost its stream. */
@@ -203,7 +190,9 @@ export type FacultyChatAction =
  *
  * The tool's *arguments* are not on the wire (agent-v2 keeps them off it on
  * purpose), so a label can say what kind of step this is but not "Looking up
- * 'renal'". That needs a faculty `tool.progress` kind from agent-v2.
+ * 'renal'". That needs a faculty `tool.progress` kind from agent-v2. A query
+ * step does get its own words once its `faculty.table` arrives: its `purpose`
+ * ("Checking readiness snapshot") replaces this label.
  */
 export const FACULTY_STEP_LABELS: Readonly<Record<string, string>> = {
   describeFacultyViews: 'Reading what data is available',
@@ -330,17 +319,53 @@ const withMessage = (
 const liveAgain = (phase: FacultyTurnPhase): FacultyTurnPhase =>
   phase === 'reconnecting' || phase === 'disconnected' ? 'streaming' : phase;
 
+/** The list with `item` added, or in place of the entry with the same id (a retried step re-sends it). */
+const upsertBy = <T>(items: readonly T[], item: T, idOf: (entry: T) => string): readonly T[] => {
+  const index = items.findIndex((entry) => idOf(entry) === idOf(item));
+  if (index === -1) return [...items, item];
+  const next = items.slice();
+  next[index] = item;
+  return next;
+};
+
+/**
+ * The first query step still running takes the result's own words. Queries in
+ * parallel may swap labels, which is harmless: each label is one of them.
+ */
+const labelQueryStep = (steps: readonly FacultyStep[], purpose: string): readonly FacultyStep[] => {
+  if (!purpose) return steps;
+  const index = steps.findIndex(
+    (step) =>
+      step.toolName === 'runFacultyQuery' &&
+      step.status === 'running' &&
+      step.label === FACULTY_STEP_LABELS.runFacultyQuery,
+  );
+  if (index === -1) return steps;
+  const next = steps.slice();
+  next[index] = { ...next[index], label: purpose };
+  return next;
+};
+
 /**
  * Faculty extension events (plan §3.6). Each handler folds one event onto a
- * turn. TODO(wave 2): FAG-5 fixes the shapes; then `faculty.table` appends to
- * `tables` and `faculty.chart` to `charts`. Until then both are known (so not
- * reported as unknown) and do nothing.
+ * turn; a body that does not parse changes nothing.
  */
 export const FACULTY_EXTENSION_HANDLERS: Readonly<
   Record<string, (turn: FacultyTurn, event: FacultyStreamEvent) => FacultyTurn>
 > = {
-  'faculty.table': (turn) => turn,
-  'faculty.chart': (turn) => turn,
+  'faculty.table': (turn, event) => {
+    const table = parseFacultyTable(event);
+    if (!table) return turn;
+    return {
+      ...turn,
+      tables: upsertBy(turn.tables, table, (entry) => entry.queryId),
+      steps: labelQueryStep(turn.steps, table.purpose),
+    };
+  },
+  'faculty.chart': (turn, event) => {
+    const chart = parseFacultyChart(event);
+    return chart ? { ...turn, charts: upsertBy(turn.charts, chart, (entry) => entry.chartId) } : turn;
+  },
 };
 
 /**
@@ -494,8 +519,8 @@ const toolCallsOf = (value: unknown): { toolCallId: string; toolName: string }[]
  * A thread's transcript as turns, one per operation, in order.
  *
  * Tool rows only settle the steps their calls opened (a result row exists, so
- * the call finished; whether it went well is not on the row). System rows are
- * not shown. For `activeOperationId`, only the question is kept: the stream
+ * the call finished; whether it went well is not on the row). Assistant rows
+ * carry the tables and charts as `facultyResults`. System rows are not shown. For `activeOperationId`, only the question is kept: the stream
  * replay that follows carries the whole answer, and keeping the stored half
  * too would show it twice.
  */
@@ -551,6 +576,7 @@ export const turnsFromTranscript = (
       })),
     );
     const last = messages[messages.length - 1];
+    const results = assistantRows.map((row) => parseFacultyResults(row.facultyResults));
 
     turns.push({
       ...base,
@@ -558,6 +584,8 @@ export const turnsFromTranscript = (
       outcome: last?.finishReason === 'complete' ? 'completed' : 'unknown',
       messages,
       steps,
+      tables: results.flatMap((result) => result.tables),
+      charts: results.flatMap((result) => result.charts),
     });
   }
   return turns;

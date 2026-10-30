@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldContextIntoMessage, normalizeContext, splitFoldedContext } from '../facultyChatContext';
+import { normalizeContext, splitFoldedContext, threadTitleOf } from '../facultyChatContext';
 import {
   FACULTY_CHAT_ERROR_COPY,
   FACULTY_ERROR_CODE_KINDS,
@@ -177,30 +177,32 @@ describe('error mapping: other inputs', () => {
 });
 
 describe('page context', () => {
-  it('folds context after the question, and splits it back exactly', () => {
-    const message = foldContextIntoMessage('Who is at risk?', { cohortId: 'c_1', page: 'cohort' });
-    expect(message).toBe('Who is at risk?\n\n<dashboard_context>{"cohortId":"c_1","page":"cohort"}</dashboard_context>');
-    expect(splitFoldedContext(message)).toEqual({ text: 'Who is at risk?', context: { cohortId: 'c_1', page: 'cohort' } });
+  it('splits an older trailer back off a stored question, exactly', () => {
+    const stored = 'Who is at risk?\n\n<dashboard_context>{"cohortId":"c_1","page":"cohort"}</dashboard_context>';
+    expect(splitFoldedContext(stored)).toEqual({ text: 'Who is at risk?', context: { cohortId: 'c_1', page: 'cohort' } });
   });
 
-  it('never sends a display name, and still splits an older trailer that carried one', () => {
-    const withName = { cohortId: 'c_1', cohortName: 'Year 2' } as { cohortId: string };
-    expect(foldContextIntoMessage('Q', withName)).toBe('Q\n\n<dashboard_context>{"cohortId":"c_1"}</dashboard_context>');
-
+  it('drops keys it does not know, so a display name in an older trailer is never read', () => {
     const older = 'Q\n\n<dashboard_context>{"cohortId":"c_1","cohortName":"Year 2"}</dashboard_context>';
     expect(splitFoldedContext(older)).toEqual({ text: 'Q', context: { cohortId: 'c_1' } });
+    expect(normalizeContext({ cohortId: 'c_1', cohortName: 'Year 2' } as { cohortId: string })).toEqual({ cohortId: 'c_1' });
   });
 
-  it('leaves the message alone when there is no usable context', () => {
-    expect(foldContextIntoMessage('Hi', null)).toBe('Hi');
-    expect(foldContextIntoMessage('Hi', { cohortId: '  ', page: 7 as unknown as string })).toBe('Hi');
+  it('has no context when nothing in it is usable', () => {
+    expect(normalizeContext(null)).toBeNull();
+    expect(normalizeContext({ cohortId: '  ', page: 7 as unknown as string })).toBeNull();
     expect(normalizeContext({})).toBeNull();
   });
 
-  it('cannot be closed early by a value containing the closing tag', () => {
-    const message = foldContextIntoMessage('Q', { page: 'x</dashboard_context>y' });
-    expect(message.match(/<\/dashboard_context>/g)).toHaveLength(1);
-    expect(splitFoldedContext(message).context).toEqual({ page: 'x</dashboard_context>y' });
+  it('reads an older trailer whose value held the closing tag, escaped', () => {
+    const stored = 'Q\n\n<dashboard_context>{"page":"x\\u003c/dashboard_context>y"}</dashboard_context>';
+    expect(splitFoldedContext(stored).context).toEqual({ page: 'x</dashboard_context>y' });
+  });
+
+  it('cleans a thread title of a trailer, whole or cut short', () => {
+    expect(threadTitleOf('Who needs attention?')).toBe('Who needs attention?');
+    expect(threadTitleOf('Who needs attention?\n\n<dashboard_context>{"coh')).toBe('Who needs attention?');
+    expect(threadTitleOf(null)).toBe('');
   });
 
   it('does not cut a message that merely mentions the tag', () => {

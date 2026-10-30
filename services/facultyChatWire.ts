@@ -14,10 +14,16 @@
  *   REF-6 C18): the backend adds events additively without moving
  *   `PROTOCOL_VERSION`, so a reader must skip what it does not recognise and
  *   still advance its cursor past it.
- * - **`faculty.table` and `faculty.chart`** are named here because the faculty
- *   surface will emit them (plan §3.6, FAG-5), but their shapes are not on the
- *   wire yet. TODO(wave 2): replace the provisional bodies below with FAG-5's.
+ * - **`faculty.table` and `faculty.chart`** carry rows straight out of a
+ *   database, so nothing in them is trusted to have the shape it should:
+ *   {@link parseFacultyTable} and {@link parseFacultyChart} read them
+ *   defensively, and a body that does not fit is dropped rather than rendered.
+ *
+ * The faculty shapes (FAG-5) were pinned with the agent-v2 stream before its
+ * contract bump landed, so this file is ahead of `@medai/contracts`.
  */
+
+import type { FacultyPageContext } from './facultyChatContext';
 
 // ---------------------------------------------------------------------------
 // Turns
@@ -36,13 +42,13 @@ export const MAX_IDENTIFIER_CHARS = 200;
  * The body of `POST /v1/turns` this dashboard sends.
  *
  * A user token decides who the turn belongs to, so `userId`, `origin` and
- * `voiceSessionId` are refused on presence and never sent. There is no field
- * for page context (the only context field is clinic-only `clinicalContext`),
- * which is why `facultyChatContext.ts` folds it into `message`.
+ * `voiceSessionId` are refused on presence and never sent.
  */
 export interface CreateFacultyTurnBody {
   readonly message: string;
   readonly surface: typeof FACULTY_SURFACE;
+  /** Where the question was asked from. A hint, never an authorisation (FAG-5). */
+  readonly facultyContext?: FacultyPageContext;
   /** Omitted for a new conversation: the server mints one. */
   readonly threadId?: string;
   /** A UUID the client picks, so a retried POST is the same turn (`created: false`). */
@@ -257,43 +263,172 @@ export const isTerminalStreamEventType = (type: string): boolean =>
 
 // --- Faculty extension events (plan §3.6, FAG-5) ---------------------------
 
-/**
- * The full result rows of one `runFacultyQuery` call, for the UI only (the
- * model sees a ~4,000-character preview).
- *
- * TODO(wave 2): provisional. FAG-5 decides the real body (and whether it rides
- * on `packages/artifacts` instead of a new event). Nothing reads these fields
- * yet; the reducer's handler is a no-op.
- */
-export interface FacultyTableEvent extends StreamEventEnvelope {
-  readonly type: 'faculty.table';
-  readonly queryId: string;
-  readonly toolCallId?: string;
-  readonly columns: readonly string[];
-  readonly rows: readonly (readonly unknown[])[];
-  readonly rowCount: number;
-  readonly truncated: boolean;
+export type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+
+/** One result row, by column name. Everything in it came out of a database: treat it as text. */
+export type FacultyRow = Readonly<Record<string, JsonValue>>;
+
+export interface FacultyColumn {
+  readonly name: string;
+  /** The database's name for the type (`text`, `numeric`, `timestamptz`, ...). */
+  readonly dataType: string;
+}
+
+/** How fresh one snapshot behind a result is. `kind` is `faculty.snapshot_status.kind`. */
+export interface FacultyAsOf {
+  readonly kind: string;
+  readonly computedAt: string;
 }
 
 /**
- * A validated chart spec for one query's result (`showChart`).
- *
- * TODO(wave 2): provisional, as above.
+ * The full result of one `runFacultyQuery` call, for the UI only (the model
+ * sees a ~4,000-character preview).
  */
-export interface FacultyChartEvent extends StreamEventEnvelope {
-  readonly type: 'faculty.chart';
+export interface FacultyTable {
   readonly queryId: string;
-  readonly toolCallId?: string;
-  readonly chart: {
-    readonly type: 'bar' | 'line' | 'area' | 'pie' | 'kpi';
-    readonly x: string;
-    readonly y: readonly string[];
-    readonly takeaway?: string;
-  };
+  /** What the agent understood this query to be for, in its own words. */
+  readonly purpose: string;
+  readonly sql: string;
+  readonly columns: readonly FacultyColumn[];
+  /** At most {@link MAX_FACULTY_RESULT_ROWS}. */
+  readonly rows: readonly FacultyRow[];
+  readonly rowCount: number;
+  readonly truncated: boolean;
+  readonly durationMs: number;
+  /** Empty when every source is live. */
+  readonly asOf: readonly FacultyAsOf[];
+}
+
+export const FACULTY_CHART_TYPES = ['bar', 'line', 'area', 'pie', 'kpi'] as const;
+export type FacultyChartType = (typeof FACULTY_CHART_TYPES)[number];
+
+/** A validated chart spec and the rows it draws (`showChart`). No code, only data. */
+export interface FacultyChart {
+  readonly chartId: string;
+  /** The result this chart was drawn from. */
+  readonly queryId: string;
+  readonly type: FacultyChartType;
+  readonly x: string;
+  readonly y: readonly string[];
+  readonly takeaway: string;
+  readonly rows: readonly FacultyRow[];
+}
+
+/** The most rows one `faculty.table` carries. */
+export const MAX_FACULTY_RESULT_ROWS = 500;
+
+export interface FacultyTableEvent extends StreamEventEnvelope, FacultyTable {
+  readonly type: 'faculty.table';
+}
+
+/** On the stream `type` is the event's own name, so the chart's type rides as `chartType`. */
+export interface FacultyChartEvent extends StreamEventEnvelope, Omit<FacultyChart, 'type'> {
+  readonly type: 'faculty.chart';
+  readonly chartType: FacultyChartType;
 }
 
 export const FACULTY_EXTENSION_EVENT_TYPES = ['faculty.table', 'faculty.chart'] as const;
 export type FacultyExtensionEvent = FacultyTableEvent | FacultyChartEvent;
+
+/** On an assistant transcript row: what its turn's `faculty.*` events carried. */
+export interface FacultyResults {
+  readonly tables: readonly FacultyTable[];
+  readonly charts: readonly FacultyChart[];
+}
+
+const isRow = (value: unknown): value is FacultyRow => isPlainObject(value);
+
+const readRows = (value: unknown): FacultyRow[] | null =>
+  Array.isArray(value) ? value.filter(isRow).slice(0, MAX_FACULTY_RESULT_ROWS) : null;
+
+const readColumns = (value: unknown): FacultyColumn[] | null => {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((column) =>
+    isPlainObject(column) && typeof column.name === 'string' && column.name
+      ? [{ name: column.name, dataType: typeof column.dataType === 'string' ? column.dataType : '' }]
+      : [],
+  );
+};
+
+const readAsOf = (value: unknown): FacultyAsOf[] =>
+  (Array.isArray(value) ? value : []).flatMap((entry) =>
+    isPlainObject(entry) && typeof entry.kind === 'string' && typeof entry.computedAt === 'string'
+      ? [{ kind: entry.kind, computedAt: entry.computedAt }]
+      : [],
+  );
+
+const readCount = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+
+/** A `faculty.table` body (or a stored one), or `null` when it has no id, columns or rows. */
+export const parseFacultyTable = (value: unknown): FacultyTable | null => {
+  if (!isPlainObject(value) || typeof value.queryId !== 'string' || !value.queryId) return null;
+  const columns = readColumns(value.columns);
+  const rows = readRows(value.rows);
+  if (columns === null || rows === null) return null;
+  return {
+    queryId: value.queryId,
+    purpose: typeof value.purpose === 'string' ? value.purpose.trim() : '',
+    sql: typeof value.sql === 'string' ? value.sql : '',
+    columns,
+    rows,
+    rowCount: readCount(value.rowCount, rows.length),
+    truncated: value.truncated === true,
+    durationMs: readCount(value.durationMs, 0),
+    asOf: readAsOf(value.asOf),
+  };
+};
+
+/**
+ * A `faculty.chart` body (or a stored one), or `null` when it cannot be drawn.
+ *
+ * A stored chart says `type`. An event cannot, because `type` is the event's
+ * name there, so it says `chartType`, or nests the spec under `chart`.
+ */
+export const parseFacultyChart = (value: unknown): FacultyChart | null => {
+  if (!isPlainObject(value)) return null;
+  const body = isPlainObject(value.chart) ? { ...value, ...value.chart } : value;
+  if (typeof body.chartId !== 'string' || !body.chartId) return null;
+  const type = FACULTY_CHART_TYPES.find((known) => known === (body.chartType ?? body.type));
+  const y = Array.isArray(body.y) ? body.y.filter((key): key is string => typeof key === 'string' && key !== '') : [];
+  const rows = readRows(body.rows);
+  if (!type || y.length === 0 || rows === null) return null;
+  return {
+    chartId: body.chartId,
+    queryId: typeof body.queryId === 'string' ? body.queryId : '',
+    type,
+    x: typeof body.x === 'string' ? body.x : '',
+    y,
+    takeaway: typeof body.takeaway === 'string' ? body.takeaway.trim() : '',
+    rows,
+  };
+};
+
+/** What a stored assistant row's `facultyResults` holds, with anything unreadable dropped. */
+export const parseFacultyResults = (value: unknown): FacultyResults => {
+  const results = isPlainObject(value) ? value : {};
+  return {
+    tables: (Array.isArray(results.tables) ? results.tables : []).flatMap((table) => parseFacultyTable(table) ?? []),
+    charts: (Array.isArray(results.charts) ? results.charts : []).flatMap((chart) => parseFacultyChart(chart) ?? []),
+  };
+};
+
+// --- Feedback (`POST /v1/faculty/feedback`) --------------------------------
+
+export type FacultyRating = 'up' | 'down';
+export type FacultyFlag = 'useful' | 'not_useful' | 'incorrectly_flagged' | 'fixed';
+
+/**
+ * A dean's verdict on an answer (`rating`) or on one flagged student
+ * (`learnerId` + `flag`). The server takes the dean and tenant from the token.
+ */
+export interface FacultyFeedbackBody {
+  readonly operationId: string;
+  readonly queryId?: string;
+  readonly learnerId?: string;
+  readonly rating?: FacultyRating;
+  readonly flag?: FacultyFlag;
+}
 
 /** An event whose `type` this file does not know. Ignored, but its `seq` still counts. */
 export interface UnknownStreamEvent extends StreamEventEnvelope {
@@ -313,7 +448,7 @@ export type ActiveTurnStatus = 'queued' | 'running' | 'waiting_for_human' | 'wai
 /** One conversation, as `GET /v1/threads` lists it. Every field is the caller's own view. */
 export interface ListedThread {
   readonly threadId: string;
-  /** The opening question, truncated. With page context folded in, see `facultyChatContext.ts`. */
+  /** The opening question, truncated. An older thread's may hold a context trailer: `threadTitleOf`. */
   readonly title: string | null;
   readonly turnCount: number;
   readonly createdAt: string;
@@ -356,6 +491,8 @@ export interface TranscriptMessageView {
   readonly toolCallId: string | null;
   readonly anchorMessageId: string | null;
   readonly createdAt: string;
+  /** Assistant rows only, on the faculty surface: the tables and charts of this row's step. */
+  readonly facultyResults?: FacultyResults;
 }
 
 /** The `200` body of `GET /v1/threads/:threadId/messages`. */

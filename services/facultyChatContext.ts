@@ -1,43 +1,22 @@
 /**
  * Page context for a faculty question ("Ask about this cohort").
  *
- * agent-v2's create-turn body has no field for which screen a question came
- * from: `clinicalContext` is the clinic's patient identifier and nothing else.
- * So the context rides inside `message`, as a fixed trailer after the dean's
- * own words:
+ * It travels as the typed `facultyContext` field of `POST /v1/turns` (FAG-5):
  *
- * ```
- * Which students need attention before the renal exam?
- *
- * <dashboard_context>{"cohortId":"c_123","page":"cohort"}</dashboard_context>
- * ```
- *
- * - **After the question**, so the thread title (the opening message,
- *   truncated) still starts with what the dean typed.
- * - **Tagged JSON**, so the model reads it unambiguously and this file can
- *   split it back off a transcript exactly ({@link splitFoldedContext}). `<` is
- *   escaped inside the JSON, so a value containing `</dashboard_context>` cannot
- *   end the block early.
- * - **Identifiers only, no display names.** The shape is the one the typed
- *   field below will have, and a free-text name is prompt text a dean did not
- *   type; the agent resolves the cohort from its id.
- * - **A hint, never an authorisation.** The dean could type the same text.
+ * - **Identifiers only, no display names.** A free-text name is prompt text a
+ *   dean did not type; the agent resolves the cohort from its id.
+ * - **A hint, never an authorisation.** The dean could type the same thing.
  *   Tenancy is enforced by the database views and the signed tenant token
  *   (plan §3.2), not by anything a client says.
  *
- * **Temporary.** The wave 1 review recommends a typed
- * `facultyContext: { cohortId?, page? }` on the create-turn body (FAG-5, wave
- * 2). When agent-v2 accepts it, {@link foldContextIntoMessage} stops being
- * called and the client sends the field; {@link splitFoldedContext} stays, for
- * threads written before the switch.
+ * It used to be folded into `message` as a `<dashboard_context>` trailer after
+ * the dean's words. {@link splitFoldedContext} stays, to read threads written
+ * that way.
  */
 
 import { MAX_IDENTIFIER_CHARS } from './facultyChatWire';
 
-/**
- * Where on the dashboard a question was asked from. Every field is optional.
- * The shape of the planned typed `facultyContext` field.
- */
+/** Where on the dashboard a question was asked from. Every field is optional. */
 export interface FacultyPageContext {
   /** The cohort the dean was looking at. */
   readonly cohortId?: string;
@@ -48,6 +27,7 @@ export interface FacultyPageContext {
 /** Only these keys are sent, and only these are read back (an older trailer's other keys are dropped). */
 const CONTEXT_KEYS = ['cohortId', 'page'] as const;
 
+/** The retired trailer: `\n\n<dashboard_context>{json}</dashboard_context>`. */
 const OPEN_TAG = '<dashboard_context>';
 const CLOSE_TAG = '</dashboard_context>';
 const SEPARATOR = '\n\n';
@@ -65,18 +45,10 @@ export const normalizeContext = (context: FacultyPageContext | null | undefined)
   return Object.keys(cleaned).length > 0 ? (cleaned as FacultyPageContext) : null;
 };
 
-/** The message agent-v2 receives: the dean's text, then the context trailer if there is any context. */
-export const foldContextIntoMessage = (text: string, context?: FacultyPageContext | null): string => {
-  const normalized = normalizeContext(context);
-  if (normalized === null) return text;
-  const json = JSON.stringify(normalized).replace(/</g, '\\u003c');
-  return `${text}${SEPARATOR}${OPEN_TAG}${json}${CLOSE_TAG}`;
-};
-
 /**
  * The dean's text and the context, read back off a stored user message.
  *
- * Only an exact trailer this module wrote is split off; anything else is
+ * Only an exact trailer is split off; anything else is
  * returned whole as `text`, so a message the dean typed that merely mentions
  * the tag is never cut.
  */
@@ -96,4 +68,11 @@ export const splitFoldedContext = (message: string): { text: string; context: Fa
   } catch {
     return whole;
   }
+};
+
+/** A thread's title without a trailer, which truncation may have left half-written. */
+export const threadTitleOf = (title: string | null | undefined): string => {
+  const text = typeof title === 'string' ? title : '';
+  const cut = text.indexOf(OPEN_TAG);
+  return (cut === -1 ? text : text.slice(0, cut)).trim();
 };

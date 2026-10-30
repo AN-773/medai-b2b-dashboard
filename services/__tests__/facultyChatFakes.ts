@@ -8,7 +8,12 @@ import type {
   FacultyStreamItem,
   StreamTurnOptions,
 } from '../facultyChatClient';
-import type { FacultyStreamEvent } from '../facultyChatWire';
+import type {
+  FacultyFeedbackBody,
+  FacultyStreamEvent,
+  ListThreadsResponse,
+  ThreadMessagesResponse,
+} from '../facultyChatWire';
 
 export const OP = '11111111-1111-4111-8111-111111111111';
 export const THREAD = 'thread-1';
@@ -118,6 +123,8 @@ export const scriptedClient = () => {
     create: [] as CreateFacultyTurnInput[],
     cancel: [] as string[],
     messages: [] as string[],
+    threads: [] as (string | null)[],
+    feedback: [] as FacultyFeedbackBody[],
   };
   const replies = {
     create: async (input: CreateFacultyTurnInput) => ({
@@ -134,7 +141,13 @@ export const scriptedClient = () => {
       status: 'completed' as const,
       completionReason: 'cancelled' as const,
     }),
-    messages: async (threadId: string) => ({ threadId, messages: [] as never[] }),
+    messages: async (threadId: string): Promise<ThreadMessagesResponse> => ({ threadId, messages: [] }),
+    threads: async (_cursor: string | null): Promise<ListThreadsResponse> => ({
+      threads: [],
+      nextCursor: null,
+      watchCursor: '',
+    }),
+    feedback: async (_body: FacultyFeedbackBody): Promise<void> => undefined,
   };
 
   const client: FacultyChatClient = {
@@ -152,10 +165,17 @@ export const scriptedClient = () => {
       calls.cancel.push(operationId);
       return await replies.cancel(operationId);
     },
-    listFacultyThreads: async () => ({ threads: [], nextCursor: null, watchCursor: '' }),
+    listFacultyThreads: async ({ cursor = null } = {}) => {
+      calls.threads.push(cursor);
+      return await replies.threads(cursor);
+    },
     getThreadMessages: async (threadId) => {
       calls.messages.push(threadId);
       return await replies.messages(threadId);
+    },
+    submitFacultyFeedback: async (body) => {
+      calls.feedback.push(body);
+      await replies.feedback(body);
     },
   };
 

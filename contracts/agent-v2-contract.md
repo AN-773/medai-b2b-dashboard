@@ -4,9 +4,10 @@ Service: **AGENT_V2** (`VITE_AGENT_V2_API_URL`)
 Consumers:
 - course resources: `services/agentV2Service.ts`, `components/academy/course-workbench/CourseResourcesPanel.tsx`
 - Sina skills (superadmin): `services/tutorSkillsService.ts` (`/v1/admin/skills`)
-- **faculty Ask** (Dean Inquire, DSH-1): `services/facultyChatClient.ts` and its modules
+- **faculty Ask** (Dean Inquire, DSH-1/2/3): `services/facultyChatClient.ts` and its modules
   (`facultyChatWire.ts`, `facultyChatSse.ts`, `facultyChatErrors.ts`, `facultyChatContext.ts`,
-  `facultyChatReducer.ts`, `facultyChatController.ts`), `hooks/useFacultyChat.ts`
+  `facultyChatReducer.ts`, `facultyChatController.ts`), `hooks/useFacultyChat.ts`,
+  `hooks/useFacultyThreads.ts`, `views/AskView.tsx`, `components/ask/*`
 
 The tutor agent. It holds **knowledge bases** — collections of ingested documents
 that a learner's tutor can search — and the ingestion pipeline behind them is
@@ -133,7 +134,7 @@ taken, and the upload's `413` remains the real answer.
 ## Faculty Ask (`surface: "faculty"`)
 
 Dean Inquire v1 (`PLAN_dean-inquire-v1.md` at the workspace root, §3.1, §3.6,
-DSH-1). A **tenant admin or owner** (IAM `tenant_role` `admin` | `owner`, whose
+DSH-1 to DSH-3). A **tenant admin or owner** (IAM `tenant_role` `admin` | `owner`, whose
 tenant is on the agent's `FACULTY_TENANTS`) asks questions about their own
 institution; the agent answers from tenant-scoped database views. The tenant is
 taken from the bearer and enforced in the database; nothing the dashboard sends
@@ -147,13 +148,22 @@ refusals (see [Errors](#errors)) and `threads.surface`. Before FAG-1 is deployed
 answers `400 invalid_surface` and `GET /v1/threads` ignores `surface` and lists
 the caller's learner threads too.
 
+**Pending agent-v2 work (FAG-5, wave 2):** `facultyContext` on `POST /v1/turns`,
+the `faculty.table` and `faculty.chart` events, `facultyResults` on transcript
+rows and `POST /v1/faculty/feedback`. Those shapes were pinned with the agent-v2
+stream before its contract bump landed, so this section is ahead of
+`@medai/contracts`: mirror any change there into `facultyChatWire.ts`. The
+dashboard and FAG-5 ship together. A dashboard ahead of FAG-5 may have its
+`facultyContext` refused.
+
 ### `POST /v1/turns` — ask
 
 ```jsonc
 // request
 {
-  "message": "Which Year 2 students need attention?\n\n<dashboard_context>{\"cohortId\":\"c_123\"}</dashboard_context>",
+  "message": "Which Year 2 students need attention?",
   "surface": "faculty",
+  "facultyContext": { "cohortId": "c_123", "page": "cohort" },  // only when asked from a page
   "threadId": "…",        // omitted for a new conversation; ≤ 200 chars
   "operationId": "uuid"   // chosen by the client so a retried POST is the same turn
 }
@@ -168,26 +178,20 @@ the caller's learner threads too.
 }
 ```
 
-- `message` is at most 32,000 characters and must not be blank.
+- `message` is at most 32,000 characters and must not be blank. It holds the
+  dean's words and nothing else.
 - **Never sent:** `userId`, `origin`, `voiceSessionId` (refused on presence under a
   user token), attachments, `research`, `clinicalContext`.
-- **Page context has no field** on this route yet (`clinicalContext` is the
-  clinic's patient identifier only). "Ask about this cohort" therefore folds it
-  into `message` as a trailer after the question:
-  `\n\n<dashboard_context>{"cohortId":…,"page":…}</dashboard_context>`.
-  Both keys are optional strings of at most 200 characters; `<` is escaped as
-  `<` inside the JSON. **Identifiers only:** no display name (`cohortName`)
-  is sent, because free text there is prompt text the dean did not type; the agent
-  resolves the cohort from its id. The trailer sits after the question so the
-  thread title still starts with the dean's words, and `facultyChatContext.ts`
-  splits it back off a transcript. It is a hint, never an authorisation. The
-  faculty prompt (FAG-6) should say what the block is.
-- **The trailer is temporary.** The wave 1 review recommends that FAG-5 (wave 2)
-  add a typed field to this body, `facultyContext: { cohortId?, page? }`
-  (`FacultyPageContext` already has that shape). When agent-v2 accepts it, the
-  dashboard sends the field and stops folding; `splitFoldedContext` stays, to read
-  threads written before the switch (it already drops any key other than these two,
-  such as an older `cohortName`).
+- **`facultyContext`** says where the question was asked from ("Ask about this
+  cohort"). Both keys are optional strings of at most 200 characters; the field is
+  omitted when neither is set. `cohortId` is the cohort's `id` as the Tests service
+  returns it, `page` is `cohort` or `mastery`.
+  **Identifiers only:** no display name is sent, because free text there is prompt
+  text the dean did not type; the agent resolves the cohort from its id. It is a
+  hint, never an authorisation: the dean could type the same thing.
+- **The `<dashboard_context>` trailer is retired.** DSH-1 folded this context into
+  `message`; since FAG-5 nothing writes it. `splitFoldedContext` and `threadTitleOf`
+  stay, to read a thread written that way.
 - `202` means queued, not answered: the answer is on the stream.
 
 ### `GET /v1/turns/:operationId/stream` — the answer, as SSE
@@ -223,7 +227,52 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
 | `suggestions.offered` | follow-up questions (FAG-1 turns them off for faculty) |
 | `turn.completed` / `turn.failed` | the ending; anything still open is closed `interrupted` |
 | `step.*`, `reasoning.delta`, `usage.updated`, `stream.heartbeat`, `tool.progress` | cursor only |
-| `faculty.table`, `faculty.chart` | **TODO(wave 2, FAG-5):** full query rows and a validated chart spec, UI-only. Shapes not on the wire yet; folded as no-ops |
+| `faculty.table` | adds one query's full result to the turn; a query step still running takes its `purpose` as its label |
+| `faculty.chart` | adds one chart to the turn |
+
+**`faculty.table`**, one per query, UI-only (the model sees a preview):
+
+```jsonc
+{
+  "type": "faculty.table", "seq": 7, "operationId": "uuid", "at": "…",
+  "queryId": "q_1",
+  "purpose": "Checking readiness snapshot",  // the question as the agent understood it
+  "sql": "SELECT …",
+  "columns": [{ "name": "name", "dataType": "text" }],
+  "rows": [{ "name": "Sara", "readiness": 0.31 }],  // full rows, at most 500
+  "rowCount": 42,
+  "truncated": false,
+  "durationMs": 118,
+  "asOf": [{ "kind": "readiness", "computedAt": "2026-10-29T02:00:00Z" }]  // [] when every source is live
+}
+```
+
+**`faculty.chart`**, one per `showChart`. No code, only a spec and its rows:
+
+```jsonc
+{
+  "type": "faculty.chart", "seq": 9, "operationId": "uuid", "at": "…",
+  "chartId": "c_1",
+  "queryId": "q_1",
+  "chartType": "bar",   // bar | line | area | pie | kpi
+  "x": "topic",
+  "y": ["pct_correct"],
+  "takeaway": "Renal is the weakest topic",
+  "rows": [{ "topic": "Renal", "pct_correct": 41 }]
+}
+```
+
+**`chartType` is this dashboard's reading, to confirm with FAG-5.** The shape as
+pinned says `type`, but on the stream `type` is the event's own name and one JSON
+key cannot hold both. `parseFacultyChart` reads `chartType`, a spec nested under
+`chart`, or `type` (the stored form), so either choice works.
+
+The bodies are read defensively (`parseFacultyTable`, `parseFacultyChart`): a body
+that does not fit is ignored like an unknown event. A table or chart re-sent under
+the same id replaces the first. **Every value in `rows`, `columns`, `purpose`,
+`takeaway` and `sql` is untrusted text**: database content or model output. It is
+rendered as text, never as HTML, and a CSV export neutralises spreadsheet formulas
+(`neutralizeCsvCell`).
 
 Client behaviour (`facultyChatClient.ts` `streamTurn`):
 
@@ -281,6 +330,34 @@ returns only `faculty` threads, and the learner app's list excludes them.
 (not shown). `404 thread_not_found` for a thread that is not the caller's. The
 reducer rebuilds one turn per `operationId`; for a turn still running it keeps
 only the question and replays the answer from the stream.
+
+From FAG-5 an assistant row may carry what its step's stream events did, so a
+reopened answer has its table and chart:
+
+```jsonc
+{ "facultyResults": { "tables": [ /* faculty.table bodies */ ], "charts": [ /* faculty.chart bodies, with `type` */ ] } }
+```
+
+### `POST /v1/faculty/feedback` — rate an answer or a flag
+
+```jsonc
+// request
+{
+  "operationId": "uuid",            // the turn being rated
+  "queryId": "q_1",                 // optional: which result
+  "learnerId": "…",                 // optional: which student
+  "rating": "up",                   // up | down: the answer as a whole
+  "flag": "incorrectly_flagged"     // useful | not_useful | incorrectly_flagged | fixed: one student
+}
+```
+
+Every field but `operationId` is optional; the dashboard refuses to send a body
+with neither `rating` nor `flag`. It sends `{ operationId, rating }` for the thumbs
+under an answer, and `{ operationId, queryId, learnerId, flag }` on a student a
+result marks as needing attention (`needs_attention` true, or `readiness` under the
+dashboard's 0.4 when the query did not select it). It does not offer `fixed` yet.
+The response body is not read, and a thread's history does not say what was rated,
+so a reopened answer shows its buttons unset.
 
 ### Errors
 
