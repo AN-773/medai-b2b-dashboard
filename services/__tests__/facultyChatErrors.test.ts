@@ -212,8 +212,9 @@ describe('page context', () => {
     expect(splitFoldedContext(broken)).toEqual({ text: broken, context: null });
   });
 
-  it('caps each value at 200 characters', () => {
-    const context = normalizeContext({ cohortId: 'n'.repeat(500) });
-    expect(context?.cohortId).toHaveLength(200);
+  it('drops a value over 200 characters, because a cut id is a wrong id', () => {
+    expect(normalizeContext({ cohortId: 'n'.repeat(201) })).toBeNull();
+    expect(normalizeContext({ cohortId: 'n'.repeat(201), page: 'cohort' })).toEqual({ page: 'cohort' });
+    expect(normalizeContext({ cohortId: 'n'.repeat(200) })?.cohortId).toHaveLength(200);
   });
 });

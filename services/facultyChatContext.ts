@@ -32,7 +32,10 @@ const OPEN_TAG = '<dashboard_context>';
 const CLOSE_TAG = '</dashboard_context>';
 const SEPARATOR = '\n\n';
 
-/** The context with blank and non-string fields dropped and each value capped. `null` when nothing is left. */
+/**
+ * The context with blank, non-string and over-long fields dropped. `null` when
+ * nothing is left. Dropped rather than cut: a cut id is a wrong id.
+ */
 export const normalizeContext = (context: FacultyPageContext | null | undefined): FacultyPageContext | null => {
   if (!context || typeof context !== 'object') return null;
   const cleaned: Record<string, string> = {};
@@ -40,7 +43,7 @@ export const normalizeContext = (context: FacultyPageContext | null | undefined)
     const value = (context as Record<string, unknown>)[key];
     if (typeof value !== 'string') continue;
     const trimmed = value.trim();
-    if (trimmed) cleaned[key] = trimmed.slice(0, MAX_IDENTIFIER_CHARS);
+    if (trimmed && trimmed.length <= MAX_IDENTIFIER_CHARS) cleaned[key] = trimmed;
   }
   return Object.keys(cleaned).length > 0 ? (cleaned as FacultyPageContext) : null;
 };

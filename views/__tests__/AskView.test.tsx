@@ -496,6 +496,10 @@ describe('pageContextFrom', () => {
     expect(pageContextFrom(new URLSearchParams(''))).toBeNull();
   });
 
+  it('drops an id too long to be whole', () => {
+    expect(pageContextFrom(new URLSearchParams({ cohortId: 'c'.repeat(201), page: 'cohort' }))).toEqual({ page: 'cohort' });
+  });
+
   it('keeps the part that is fine', () => {
     expect(pageContextFrom(new URLSearchParams({ cohortId: 'c_1', page: 'nonsense' }))).toEqual({ cohortId: 'c_1' });
   });

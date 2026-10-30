@@ -182,7 +182,8 @@ refuses a field it does not know, so a dashboard ahead of FAG-5 would have its
 - **Never sent:** `userId`, `origin`, `voiceSessionId` (refused on presence under a
   user token), attachments, `research`, `clinicalContext`.
 - **`facultyContext`** says where the question was asked from ("Ask about this
-  cohort"). Both keys are optional strings of at most 200 characters; the field is
+  cohort"). Both keys are optional strings of at most 200 characters, and a longer
+  value is dropped rather than cut, because a cut id is a wrong id. The field is
   omitted when neither is set. `cohortId` is the cohort's `id` as the Tests service
   returns it, `page` is `cohort` or `mastery`.
   **Identifiers only:** no display name is sent, because free text there is prompt
