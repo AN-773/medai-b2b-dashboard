@@ -14,7 +14,7 @@ pnpm test           # Unit tests (Vitest, node environment)
 pnpm run test:progressive-files # Compile focused tests and run Node's test runner
 ```
 
-Vitest runs `**/__tests__/*.test.ts`. Progressive-file tests (`tests/`) use the existing TypeScript compiler and Node's test runner instead. No linter is configured. A PostToolUse hook in `.claude/settings.json` type-checks edited `.ts`/`.tsx` files and reports errors belonging to the edited file. `pnpm-workspace.yaml` approves only the existing esbuild install script for project-local pnpm startup.
+Vitest runs `**/__tests__/*.test.{ts,tsx}`, in node by default; a component test starts with `// @vitest-environment jsdom` and uses `@testing-library/react`. Progressive-file tests (`tests/`) use the existing TypeScript compiler and Node's test runner instead. No linter is configured. A PostToolUse hook in `.claude/settings.json` type-checks edited `.ts`/`.tsx` files and reports errors belonging to the edited file. `pnpm-workspace.yaml` approves only the existing esbuild install script for project-local pnpm startup.
 
 ## Architecture
 

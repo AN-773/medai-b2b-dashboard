@@ -38,7 +38,7 @@ export default defineConfig(({ command, mode }) => {
       },
       // tests/ holds node:test suites run by scripts/test-progressive-files.mjs, not Vitest.
       test: {
-        include: ['**/__tests__/*.test.ts'],
+        include: ['**/__tests__/*.test.{ts,tsx}'],
       }
     };
 });
