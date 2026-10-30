@@ -21,7 +21,7 @@ import {
   type TestEnvStatus,
 } from '../services/testEnvService';
 
-const TEST_APP_URL = 'https://testapp.medicalstudent.ai';
+const TEST_APP_URL = 'https://test.djobuqft2lzci.amplifyapp.com';
 const TEST_DASHBOARD_URL = 'https://dashboard.medicalstudent.ai';
 
 /** Set only on the site that runs on the test environment. */
