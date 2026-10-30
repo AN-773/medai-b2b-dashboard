@@ -19,6 +19,19 @@ const getIamLoginUrl = () => {
   return loginUrl.toString();
 };
 
+/** Where the test environment is started from. Set only on the site that runs on it. */
+const TEST_ENV_PAGE_URL = import.meta.env.VITE_TEST_ENV_PAGE_URL;
+
+/**
+ * On that site an IAM that cannot be reached usually means the test environment
+ * is asleep. Its load balancer answers 503 with no CORS header, which the
+ * browser reports as no response at all.
+ */
+const looksLikeTestEnvIsOff = (err: unknown): boolean =>
+  Boolean(TEST_ENV_PAGE_URL) &&
+  axios.isAxiosError(err) &&
+  (!err.response || [502, 503, 504].includes(err.response.status));
+
 /** The green mark, cropped from the horizontal logo (whose wordmark is white). */
 const LogoMark: React.FC = () => (
   <span className="block h-10 w-[44px] flex-shrink-0 overflow-hidden" aria-hidden="true">
@@ -70,6 +83,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [testEnvOff, setTestEnvOff] = useState(false);
 
   useEffect(() => {
     const authError = window.sessionStorage.getItem(AUTH_ERROR_STORAGE_KEY);
@@ -85,6 +99,7 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setTestEnvOff(false);
     setIsLoading(true);
 
     try {
@@ -129,7 +144,9 @@ const Login: React.FC = () => {
     } catch (err: any) {
       console.error("Login error", err);
       // specific error handling if possible
-      if (err.response) {
+      if (looksLikeTestEnvIsOff(err)) {
+        setTestEnvOff(true);
+      } else if (err.response) {
           setError(`Login failed: ${err.response.data?.message || err.response.statusText}`);
       } else if (err instanceof Error && err.message) {
         setError(err.message);
@@ -176,6 +193,16 @@ const Login: React.FC = () => {
             {error && (
               <InlineAlert className="mt-5" onDismiss={() => setError('')}>
                 {error}
+              </InlineAlert>
+            )}
+
+            {testEnvOff && (
+              <InlineAlert className="mt-5" tone="info" title="The test environment looks to be off">
+                You can&apos;t sign in here until it is on. A superadmin can start it from the{' '}
+                <a href={TEST_ENV_PAGE_URL} className="font-medium underline">
+                  main dashboard
+                </a>
+                . It takes about 15 minutes.
               </InlineAlert>
             )}
 

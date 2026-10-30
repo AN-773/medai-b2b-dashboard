@@ -8,6 +8,7 @@ export type View =
   | 'NOTIFICATIONS'
   | 'STUDY_PLAN_AUDIT'
   | 'TUTOR_SKILLS'
+  | 'TEST_ENV'
   | 'WORKBENCH'
   | 'BANK_EXPLORER'
   | 'QB_HEALTH'
