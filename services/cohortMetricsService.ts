@@ -14,7 +14,7 @@ export interface CohortLearnersQuery {
 const stripLeadingSlash = (value: string) =>
   value.startsWith('/') ? value.slice(1) : value;
 
-const toIdentifier = (value: string) =>
+export const toIdentifier = (value: string) =>
   encodeURIComponent(stripLeadingSlash(value).split('/').pop()!);
 
 const toUserPath = (userId: string) => encodeURIComponent(userId);
