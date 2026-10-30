@@ -34,6 +34,7 @@ import AttachCoursesDrawer from '@/components/cohorts/AttachCoursesDrawer';
 import CourseDeliveryDrawer from '@/components/cohorts/CourseDeliveryDrawer';
 import CohortDetailsDialog from '@/components/cohorts/CohortDetailsDialog';
 import CohortToasts from '@/components/cohorts/CohortToasts';
+import { ImportExamResultsButton } from '@/components/cohorts/ImportExamResultsButton';
 import {
   PUBLISH_STATE_META,
   cohortToForm,
@@ -1017,6 +1018,7 @@ const CohortsView: React.FC = () => {
           actions={
             <>
               <AskAboutCohortButton cohortId={cohort.id} cohortTitle={cohort.title} page="cohort" />
+              <ImportExamResultsButton cohortId={cohort.id} cohortTitle={cohort.title} />
               <Button variant="secondary" icon={Pencil} onClick={() => setEditCohortId(cohort.id)}>
                 Edit details
               </Button>
