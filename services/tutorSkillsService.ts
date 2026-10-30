@@ -9,11 +9,12 @@ import { isAgentV2Configured } from './agentV2Service';
 
 export const ADMIN_SKILLS_PATH = '/v1/admin/skills';
 
-/** The tutor's three modes, in the order the editor shows them. */
+/** The modes a skill can be listed in, in the order the editor shows them. `faculty` is the deans' Ask. */
 export const SKILL_MODES = [
   { value: 'study', label: 'Study' },
   { value: 'clinical', label: 'Clinical' },
   { value: 'general', label: 'General' },
+  { value: 'faculty', label: 'Faculty' },
 ] as const;
 
 export const SKILL_DESCRIPTION_MAX = 500;
