@@ -18,6 +18,12 @@
  *   unknown   a snapshot with no as-of
  *
  * Anything else gets the "needs attention" answer.
+ *
+ * On a cohort page, Import exam results reads the CSV you choose. The mock knows
+ * sara@example.com, omar@example.com, layla@example.com and nour@example.com,
+ * and any other email is a row error. A word in the file's name picks a refusal:
+ *
+ *   forbidden 403    gone 404    toolarge 413    broken 400    boom 500
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -343,6 +349,91 @@ const COHORTS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Exam results import
+// ---------------------------------------------------------------------------
+
+const EXAM_LEARNERS = new Map([
+  ['sara@example.com', { id: '/users/mock-1', name: 'Sara Haddad' }],
+  ['omar@example.com', { id: '/users/mock-2', name: 'Omar Nabil' }],
+  ['layla@example.com', { id: '/users/mock-3', name: 'Layla Mansour' }],
+  ['nour@example.com', { id: '/users/mock-5', name: 'نور الدين سالم' }],
+]);
+
+const EXAM_COLUMNS = ['email', 'exam_name', 'exam_date', 'score', 'passed'];
+
+const EXAM_REFUSALS = [
+  ['forbidden', 403, 'tenant admin or owner role required'],
+  ['gone', 404, 'cohort not found'],
+  ['toolarge', 413, 'the file has more than 20000 rows'],
+  ['broken', 400, 'the header is missing exam_date'],
+  ['boom', 500, 'the results could not be saved, nothing was saved'],
+];
+
+const EXAM_PASSED = new Map([
+  ['true', true], ['pass', true], ['yes', true], ['1', true],
+  ['false', false], ['fail', false], ['no', false], ['0', false],
+]);
+
+const examRowProblems = ({ email, examName, examDate, score, maxScore, passed }) =>
+  [
+    !EXAM_LEARNERS.has(email) && 'this email is not a learner in this cohort',
+    !examName && 'exam_name is required',
+    !/^\d{4}-\d{2}-\d{2}$/.test(examDate) && 'exam_date must be a date written YYYY-MM-DD',
+    !(score >= 0) && 'score must be a number, 0 or more',
+    maxScore !== null && score > maxScore && 'score is above max_score',
+    !EXAM_PASSED.has(passed) && 'passed must be true/false, pass/fail, yes/no or 1/0',
+  ].filter(Boolean);
+
+const examRow = (cells, header, line) => {
+  const cell = (name) => (cells[header.indexOf(name)] ?? '').trim();
+  const fields = {
+    email: cell('email').toLowerCase(),
+    examName: cell('exam_name'),
+    examDate: cell('exam_date'),
+    score: Number(cell('score') || NaN),
+    maxScore: cell('max_score') ? Number(cell('max_score')) : null,
+    passed: cell('passed').toLowerCase(),
+  };
+  const learner = EXAM_LEARNERS.get(fields.email);
+  const problems = examRowProblems(fields);
+  return {
+    ...fields,
+    line,
+    learnerId: learner?.id ?? '',
+    learnerName: learner?.name ?? '',
+    score: Number.isFinite(fields.score) ? fields.score : 0,
+    passed: EXAM_PASSED.get(fields.passed) ?? false,
+    error: problems.length > 0 ? problems.join('; ') : null,
+  };
+};
+
+const handleExamImport = async (req, res, url) => {
+  const { csv = '', source = '' } = await readBody(req);
+  await sleep(500);
+  const refusal = EXAM_REFUSALS.find(([word]) => source.toLowerCase().includes(word));
+  if (refusal) return json(res, refusal[1], { error: refusal[2] });
+
+  const lines = csv.split(/\r?\n/).map((text, index) => ({ text, line: index + 1 })).filter(({ text }) => text.trim());
+  const header = (lines[0]?.text ?? '').split(',').map((name) => name.trim().toLowerCase());
+  const missing = EXAM_COLUMNS.find((name) => !header.includes(name));
+  if (missing) return json(res, 400, { error: `the header is missing ${missing}` });
+
+  if (lines.length === 1) return json(res, 400, { error: 'the file has no data rows' });
+
+  const rows = lines.slice(1).map(({ text, line }) => examRow(text.split(','), header, line));
+  const valid = rows.filter((row) => !row.error).length;
+  const dryRun = url.searchParams.get('dryRun') !== 'false';
+  const failed = !dryRun && valid < rows.length;
+  return json(res, failed ? 422 : 200, {
+    dryRun,
+    total: rows.length,
+    valid,
+    saved: dryRun || failed ? 0 : rows.length,
+    rows,
+  });
+};
+
+// ---------------------------------------------------------------------------
 // HTTP
 // ---------------------------------------------------------------------------
 
@@ -505,6 +596,9 @@ const server = createServer(async (req, res) => {
     console.log('feedback', JSON.stringify(await readBody(req)));
     return json(res, 200, { ok: true });
   }
+
+  const examImport = /^\/cohorts\/[^/]+\/exam-results\/import$/.exec(path);
+  if (examImport && req.method === 'POST') return handleExamImport(req, res, url);
 
   // The dashboard's other services, just enough for the pages around Ask.
   if (path === '/cohorts') return json(res, 200, { items: COHORTS, total: COHORTS.length });
