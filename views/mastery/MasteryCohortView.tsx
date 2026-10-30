@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { ChevronLeft, ChevronRight, SearchX, UsersRound } from 'lucide-react';
+import { AskAboutCohortButton } from '@/components/ask/AskAboutCohortButton';
 import { ReadinessGauge } from '@/components/student_mastery/ReadinessGauge';
 import { cohortMetricsService } from '@/services/cohortMetricsService';
 import type {
@@ -503,7 +504,16 @@ const MasteryCohortView: React.FC = () => {
             </>
           }
           description={selectedCohort.description || undefined}
-          actions={cohortSwitcher}
+          actions={
+            <>
+              <AskAboutCohortButton
+                cohortId={selectedCohort.id}
+                cohortTitle={selectedCohort.title}
+                page="mastery"
+              />
+              {cohortSwitcher}
+            </>
+          }
         />
 
         {catalogAlert}

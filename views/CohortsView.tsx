@@ -24,6 +24,7 @@ import {
   PageHeader,
   Spinner,
 } from '@/components/ui';
+import { AskAboutCohortButton } from '@/components/ask/AskAboutCohortButton';
 import CohortsIndex from '@/components/cohorts/CohortsIndex';
 import CohortTabs, { type CohortTab, type CohortTabItem } from '@/components/cohorts/CohortTabs';
 import CohortOverviewPanel from '@/components/cohorts/CohortOverviewPanel';
@@ -1015,6 +1016,7 @@ const CohortsView: React.FC = () => {
           }
           actions={
             <>
+              <AskAboutCohortButton cohortId={cohort.id} cohortTitle={cohort.title} page="cohort" />
               <Button variant="secondary" icon={Pencil} onClick={() => setEditCohortId(cohort.id)}>
                 Edit details
               </Button>
