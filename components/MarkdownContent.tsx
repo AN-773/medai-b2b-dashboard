@@ -3,6 +3,8 @@ import React, { useMemo } from 'react';
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  /** `compact` for previews inside a card, `reading` when the text is what the page is for. */
+  variant?: 'compact' | 'reading';
 }
 
 type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
@@ -18,6 +20,7 @@ type BlockNode =
   | { type: 'heading'; level: HeadingLevel; children: InlineNode[] }
   | { type: 'blockquote'; children: InlineNode[] }
   | { type: 'ul' | 'ol'; items: InlineNode[][] }
+  | { type: 'table'; header: InlineNode[][]; rows: InlineNode[][][] }
   | { type: 'code'; code: string; language?: string }
   | { type: 'hr' };
 
@@ -35,6 +38,31 @@ const isSafeHref = (href: string) => {
     return false;
   }
 };
+
+const TABLE_DELIMITER = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
+
+/** `| a | b |` as cells. A `\\|` stays in its cell. Scanned, not a lookbehind: old Safari cannot parse one. */
+const tableCells = (line: string): string[] => {
+  const body = line.trim().replace(/^\|/, '');
+  const cells: string[] = [];
+  let cell = '';
+  for (let index = 0; index < body.length; index += 1) {
+    if (body[index] === '\\' && body[index + 1] === '|') {
+      cell += '|';
+      index += 1;
+    } else if (body[index] === '|') {
+      cells.push(cell.trim());
+      cell = '';
+    } else {
+      cell += body[index];
+    }
+  }
+  if (cell.trim()) cells.push(cell.trim());
+  return cells;
+};
+
+const isTableStart = (line: string, next: string | undefined) =>
+  line.includes('|') && next !== undefined && next.includes('|') && TABLE_DELIMITER.test(next.trim());
 
 const parseInline = (text: string): InlineNode[] => {
   const nodes: InlineNode[] = [];
@@ -170,6 +198,19 @@ const parseBlocks = (content: string): BlockNode[] => {
       continue;
     }
 
+    if (isTableStart(trimmed, lines[index + 1])) {
+      flushParagraph();
+      const header = tableCells(trimmed).map(parseInline);
+      index += 2;
+      const rows: InlineNode[][][] = [];
+      while (index < lines.length && lines[index].trim() && lines[index].includes('|')) {
+        rows.push(tableCells(lines[index]).map(parseInline));
+        index += 1;
+      }
+      blocks.push({ type: 'table', header, rows });
+      continue;
+    }
+
     if (/^\d+\.\s+/.test(trimmed)) {
       flushParagraph();
       const items: InlineNode[][] = [];
@@ -242,7 +283,15 @@ const renderInlineNodes = (nodes: InlineNode[], keyPrefix: string): React.ReactN
     }
   });
 
-const headingClassName = (level: HeadingLevel) => {
+const ROOT_CLASS_NAMES = {
+  compact: 'space-y-3 text-xs leading-relaxed text-slate-600',
+  reading: 'space-y-3 text-sm leading-6 text-stone-700',
+};
+
+const headingClassName = (level: HeadingLevel, variant: 'compact' | 'reading') => {
+  if (variant === 'reading') {
+    return level <= 2 ? 'text-[15px] font-semibold text-stone-900' : 'text-sm font-semibold text-stone-900';
+  }
   switch (level) {
     case 1:
       return 'text-sm font-bold text-slate-900';
@@ -255,18 +304,18 @@ const headingClassName = (level: HeadingLevel) => {
   }
 };
 
-const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, className }) => {
+const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, className, variant = 'compact' }) => {
   const blocks = useMemo(() => parseBlocks(content), [content]);
 
   if (blocks.length === 0) return null;
 
   return (
-    <div className={joinClassNames('space-y-3 text-xs leading-relaxed text-slate-600', className)}>
+    <div className={joinClassNames(ROOT_CLASS_NAMES[variant], className)}>
       {blocks.map((block, index) => {
         switch (block.type) {
           case 'heading':
             return (
-              <h4 key={index} className={headingClassName(block.level)}>
+              <h4 key={index} className={headingClassName(block.level, variant)}>
                 {renderInlineNodes(block.children, `heading-${index}`)}
               </h4>
             );
@@ -300,6 +349,33 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, className })
                   <li key={itemIndex}>{renderInlineNodes(item, `ol-${index}-${itemIndex}`)}</li>
                 ))}
               </ol>
+            );
+          case 'table':
+            return (
+              <div key={index} className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left">
+                  <thead className="border-b border-slate-200 bg-slate-50">
+                    <tr>
+                      {block.header.map((cell, cellIndex) => (
+                        <th key={cellIndex} scope="col" className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">
+                          {renderInlineNodes(cell, `th-${index}-${cellIndex}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {block.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {row.map((cell, cellIndex) => (
+                          <td key={cellIndex} className="px-3 py-2 align-top">
+                            {renderInlineNodes(cell, `td-${index}-${rowIndex}-${cellIndex}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             );
           case 'code':
             return (
