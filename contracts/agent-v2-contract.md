@@ -287,7 +287,8 @@ that does not fit is ignored like an unknown event. A table or chart re-sent und
 the same id replaces the first. **Every value in `rows`, `columns`, `purpose`,
 `explanation`, `takeaway` and `sql` is untrusted text**: database content or model output. It is
 rendered as text, never as HTML, and a CSV export neutralises spreadsheet formulas
-(`neutralizeCsvCell`).
+(`neutralizeCsvCell`). A link in the written answer shows its real host beside it, so
+an injected link cannot hide where it goes.
 
 Client behaviour (`facultyChatClient.ts` `streamTurn`):
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useContext, useMemo } from 'react';
 
 interface MarkdownContentProps {
   content: string;
@@ -37,6 +37,25 @@ const isSafeHref = (href: string) => {
   } catch {
     return false;
   }
+};
+
+/** On for text a model wrote: words in a link can say anything, so the link also says where it goes. */
+const ShowLinkHost = React.createContext(false);
+
+/** Where a link goes, as the browser will read it. `null` for one that stays on this site. */
+const linkHost = (href: string): string | null => {
+  const url = new URL(href, window.location.href);
+  if (url.protocol === 'mailto:') return url.pathname;
+  return url.host === window.location.host ? null : url.hostname;
+};
+
+const LinkHost: React.FC<{ href: string }> = ({ href }) => {
+  const host = useContext(ShowLinkHost) ? linkHost(href) : null;
+  return host ? (
+    <span dir="ltr" className="ml-1 text-xs text-stone-500">
+      ({host})
+    </span>
+  ) : null;
 };
 
 const TABLE_DELIMITER = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
@@ -268,15 +287,17 @@ const renderInlineNodes = (nodes: InlineNode[], keyPrefix: string): React.ReactN
           return <React.Fragment key={key}>{renderInlineNodes(node.children, key)}</React.Fragment>;
         }
         return (
-          <a
-            key={key}
-            href={node.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
-          >
-            {renderInlineNodes(node.children, key)}
-          </a>
+          <React.Fragment key={key}>
+            <a
+              href={node.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
+            >
+              {renderInlineNodes(node.children, key)}
+            </a>
+            <LinkHost href={node.href} />
+          </React.Fragment>
         );
       default:
         return null;
@@ -304,7 +325,7 @@ const headingClassName = (level: HeadingLevel, variant: 'compact' | 'reading') =
   }
 };
 
-const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, className, variant = 'compact' }) => {
+const MarkdownBlocks: React.FC<MarkdownContentProps> = ({ content, className, variant = 'compact' }) => {
   const blocks = useMemo(() => parseBlocks(content), [content]);
 
   if (blocks.length === 0) return null;
@@ -402,5 +423,11 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, className, v
     </div>
   );
 };
+
+const MarkdownContent: React.FC<MarkdownContentProps> = (props) => (
+  <ShowLinkHost.Provider value={props.variant === 'reading'}>
+    <MarkdownBlocks {...props} />
+  </ShowLinkHost.Provider>
+);
 
 export default MarkdownContent;

