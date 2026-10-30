@@ -11,7 +11,7 @@ import type { FacultyColumn, FacultyRow, FacultyTable, JsonValue } from '@/servi
 
 /** A row's value for a column. Own keys only: a column called `constructor` is not a function. */
 export const cellOf = (row: FacultyRow, name: string): JsonValue =>
-  Object.hasOwn(row, name) ? row[name] : null;
+  Object.prototype.hasOwnProperty.call(row, name) ? row[name] : null;
 
 const NUMERIC_TYPE = /^(int|smallint|bigint|numeric|decimal|real|double|float|money)/i;
 const TEMPORAL_TYPE = /^(date|time)/i;
@@ -37,6 +37,18 @@ export const humanizeColumn = (name: string): string => {
     .replace(/\bpct\b/g, '%')
     .replace(/\bid\b/g, 'ID');
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+};
+
+const ID_COLUMN = /(^|_)id$/i;
+
+/**
+ * The columns worth a dean's screen: an id means nothing next to a name, so it
+ * is left out when another text column can say which row this is. The CSV and
+ * the SQL keep every column.
+ */
+export const displayColumnsOf = (columns: readonly FacultyColumn[]): readonly FacultyColumn[] => {
+  const shown = columns.filter((column) => !ID_COLUMN.test(column.name));
+  return shown.some((column) => !isNumericColumn(column)) ? shown : columns;
 };
 
 const numberFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 3 });

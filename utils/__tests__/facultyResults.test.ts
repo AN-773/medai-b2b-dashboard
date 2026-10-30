@@ -5,6 +5,7 @@ import {
   asOfLine,
   cellOf,
   csvFileName,
+  displayColumnsOf,
   flaggedLearnerOf,
   formatCell,
   formatUtcMoment,
@@ -53,6 +54,23 @@ describe('cells', () => {
     expect(humanizeColumn('learner_id')).toBe('Learner ID');
     expect(humanizeColumn('cohortMedianMastery')).toBe('Cohort median mastery');
     expect(humanizeColumn('___')).toBe('___');
+  });
+});
+
+describe('displayColumnsOf', () => {
+  const id: FacultyColumn = { name: 'learner_id', dataType: 'text' };
+
+  it('leaves out an id when a name says which row this is', () => {
+    expect(displayColumnsOf([id, text, numeric])).toEqual([text, numeric]);
+  });
+
+  it('keeps an id when nothing else could', () => {
+    expect(displayColumnsOf([id, numeric])).toEqual([id, numeric]);
+  });
+
+  it('does not mistake a word ending in id', () => {
+    const fluid: FacultyColumn = { name: 'fluid', dataType: 'text' };
+    expect(displayColumnsOf([fluid, text])).toEqual([fluid, text]);
   });
 });
 
