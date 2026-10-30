@@ -201,17 +201,9 @@ describe('protocol rules', () => {
       expect(state.turns[0].tables.map((entry) => entry.rows)).toEqual([[{ name: 'Omar' }]]);
     });
 
-    it('reads a chart’s type from chartType, or from a nested spec', () => {
-      const state = run([
-        submitted,
-        accepted,
-        item(ev(0, 'faculty.chart', { ...chart, chartType: 'bar' })),
-        item(ev(1, 'faculty.chart', { chart: { ...chart, chartId: 'c2', type: 'kpi' } })),
-      ]);
-      expect(state.turns[0].charts.map(({ chartId, type }) => ({ chartId, type }))).toEqual([
-        { chartId: 'c1', type: 'bar' },
-        { chartId: 'c2', type: 'kpi' },
-      ]);
+    it('reads a chart’s type from chartType, since `type` is the event’s own name', () => {
+      const state = run([submitted, accepted, item(ev(0, 'faculty.chart', { ...chart, chartType: 'kpi' }))]);
+      expect(state.turns[0].charts).toEqual([{ ...chart, type: 'kpi' }]);
     });
 
     it('keeps the rows on a replay without double-appending', () => {

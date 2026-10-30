@@ -163,8 +163,8 @@ describe('the table', () => {
   });
 
   it('says when it holds only the first rows', () => {
-    renderCard(turnWith({ tables: [{ ...attentionTable, rowCount: 1204, truncated: true }] }));
-    expect(screen.getAllByText('Showing the first 2 of 1,204 rows').length).toBeGreaterThan(0);
+    renderCard(turnWith({ tables: [{ ...attentionTable, truncated: true }] }));
+    expect(screen.getByText('Showing the first 2 rows. There are more.')).toBeTruthy();
   });
 
   it('says when no row matched, and offers nothing to download', () => {
@@ -258,7 +258,7 @@ describe('the CSV download', () => {
 
 describe('how this was computed', () => {
   it('is collapsed, and opens to the question, the SQL, the rows, the as-of and the sample sizes', () => {
-    renderCard(turnWith({ tables: [{ ...attentionTable, rowCount: 900, truncated: true }] }));
+    renderCard(turnWith({ tables: [{ ...attentionTable, truncated: true }] }));
     const toggle = screen.getByRole('button', { name: 'How this was computed' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('The question as understood')).toBeNull();
@@ -269,7 +269,7 @@ describe('how this was computed', () => {
     const fact = (label: string) => screen.getByText(label).parentElement?.textContent;
     expect(fact('The question as understood')).toContain('Checking readiness snapshot');
     expect(fact('The query')).toContain('SELECT name, readiness FROM faculty.student_readiness');
-    expect(fact('Rows')).toContain('Showing the first 2 of 900 rows');
+    expect(fact('Rows')).toContain('Showing the first 2 rows. There are more.');
     expect(fact('Data as of')).toContain('Readiness: 29 Oct, 02:00 UTC');
     expect(fact('Sample sizes')).toContain('Items answered: 41 to 120');
   });

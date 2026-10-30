@@ -19,8 +19,8 @@
  *   {@link parseFacultyTable} and {@link parseFacultyChart} read them
  *   defensively, and a body that does not fit is dropped rather than rendered.
  *
- * The faculty shapes (FAG-5) were pinned with the agent-v2 stream before its
- * contract bump landed, so this file is ahead of `@medai/contracts`.
+ * The faculty shapes mirror FAG-5's `packages/contracts/src/faculty/results.ts`,
+ * which was still uncommitted on `dean/w2-query` when this was written.
  */
 
 import type { FacultyPageContext } from './facultyChatContext';
@@ -292,7 +292,9 @@ export interface FacultyTable {
   readonly columns: readonly FacultyColumn[];
   /** At most {@link MAX_FACULTY_RESULT_ROWS}. */
   readonly rows: readonly FacultyRow[];
+  /** How many rows are in `rows`, not how many the query matched. */
   readonly rowCount: number;
+  /** The query matched more rows than `rows` holds. */
   readonly truncated: boolean;
   readonly durationMs: number;
   /** Empty when every source is live. */
@@ -330,7 +332,7 @@ export interface FacultyChartEvent extends StreamEventEnvelope, Omit<FacultyChar
 export const FACULTY_EXTENSION_EVENT_TYPES = ['faculty.table', 'faculty.chart'] as const;
 export type FacultyExtensionEvent = FacultyTableEvent | FacultyChartEvent;
 
-/** On an assistant transcript row: what its turn's `faculty.*` events carried. */
+/** On a turn's last assistant transcript row: what its `faculty.*` events carried. */
 export interface FacultyResults {
   readonly tables: readonly FacultyTable[];
   readonly charts: readonly FacultyChart[];
@@ -381,25 +383,21 @@ export const parseFacultyTable = (value: unknown): FacultyTable | null => {
 
 /**
  * A `faculty.chart` body (or a stored one), or `null` when it cannot be drawn.
- *
- * A stored chart says `type`. An event cannot, because `type` is the event's
- * name there, so it says `chartType`, or nests the spec under `chart`.
+ * A stored chart says `type`; an event says `chartType`.
  */
 export const parseFacultyChart = (value: unknown): FacultyChart | null => {
-  if (!isPlainObject(value)) return null;
-  const body = isPlainObject(value.chart) ? { ...value, ...value.chart } : value;
-  if (typeof body.chartId !== 'string' || !body.chartId) return null;
-  const type = FACULTY_CHART_TYPES.find((known) => known === (body.chartType ?? body.type));
-  const y = Array.isArray(body.y) ? body.y.filter((key): key is string => typeof key === 'string' && key !== '') : [];
-  const rows = readRows(body.rows);
+  if (!isPlainObject(value) || typeof value.chartId !== 'string' || !value.chartId) return null;
+  const type = FACULTY_CHART_TYPES.find((known) => known === (value.chartType ?? value.type));
+  const y = Array.isArray(value.y) ? value.y.filter((key): key is string => typeof key === 'string' && key !== '') : [];
+  const rows = readRows(value.rows);
   if (!type || y.length === 0 || rows === null) return null;
   return {
-    chartId: body.chartId,
-    queryId: typeof body.queryId === 'string' ? body.queryId : '',
+    chartId: value.chartId,
+    queryId: typeof value.queryId === 'string' ? value.queryId : '',
     type,
-    x: typeof body.x === 'string' ? body.x : '',
+    x: typeof value.x === 'string' ? value.x : '',
     y,
-    takeaway: typeof body.takeaway === 'string' ? body.takeaway.trim() : '',
+    takeaway: typeof value.takeaway === 'string' ? value.takeaway.trim() : '',
     rows,
   };
 };
@@ -491,7 +489,7 @@ export interface TranscriptMessageView {
   readonly toolCallId: string | null;
   readonly anchorMessageId: string | null;
   readonly createdAt: string;
-  /** Assistant rows only, on the faculty surface: the tables and charts of this row's step. */
+  /** A faculty turn's last assistant row only: its tables and charts, once the stream is gone. */
   readonly facultyResults?: FacultyResults;
 }
 

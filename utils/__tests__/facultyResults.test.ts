@@ -195,7 +195,6 @@ describe('the lines under an answer', () => {
   it('counts rows, and says when there are more than it holds', () => {
     expect(rowCountLine(table({ rows: [{}], rowCount: 1 }))).toBe('1 row');
     expect(rowCountLine(table({ rows: [{}, {}], rowCount: 2 }))).toBe('2 rows');
-    expect(rowCountLine(table({ rows: [{}], rowCount: 1204, truncated: true }))).toBe('Showing the first 1 of 1,204 rows');
     expect(rowCountLine(table({ rows: [{}, {}], rowCount: 2, truncated: true }))).toBe('Showing the first 2 rows. There are more.');
   });
 

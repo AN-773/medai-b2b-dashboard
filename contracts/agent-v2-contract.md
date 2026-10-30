@@ -150,10 +150,11 @@ the caller's learner threads too.
 
 **Pending agent-v2 work (FAG-5, wave 2):** `facultyContext` on `POST /v1/turns`,
 the `faculty.table` and `faculty.chart` events, `facultyResults` on transcript
-rows and `POST /v1/faculty/feedback`. Those shapes were pinned with the agent-v2
-stream before its contract bump landed, so this section is ahead of
-`@medai/contracts`: mirror any change there into `facultyChatWire.ts`. The
-dashboard and FAG-5 ship together. A dashboard ahead of FAG-5 may have its
+rows and `POST /v1/faculty/feedback`. These mirror
+`packages/contracts/src/faculty/results.ts` as it stood uncommitted on
+`dean/w2-query`, so this section is ahead of `@medai/contracts`: mirror any change
+there into `facultyChatWire.ts`. The dashboard and FAG-5 ship together: the agent
+refuses a field it does not know, so a dashboard ahead of FAG-5 would have its
 `facultyContext` refused.
 
 ### `POST /v1/turns` — ask
@@ -243,8 +244,8 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
   "sql": "SELECT …",
   "columns": [{ "name": "name", "dataType": "text" }],
   "rows": [{ "name": "Sara", "readiness": 0.31 }],  // full rows, at most 500
-  "rowCount": 42,
-  "truncated": false,
+  "rowCount": 42,   // how many rows are in `rows`, not how many the query matched
+  "truncated": false,  // true: the query matched more rows than `rows` holds
   "durationMs": 118,
   "asOf": [{ "kind": "readiness", "computedAt": "2026-10-29T02:00:00Z" }]  // [] when every source is live
 }
@@ -265,10 +266,9 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
 }
 ```
 
-**`chartType` is this dashboard's reading, to confirm with FAG-5.** The shape as
-pinned says `type`, but on the stream `type` is the event's own name and one JSON
-key cannot hold both. `parseFacultyChart` reads `chartType`, a spec nested under
-`chart`, or `type` (the stored form), so either choice works.
+On the stream `type` is the event's own name, so the chart's type rides as
+`chartType`. Everywhere else it is `type`: a stored chart in `facultyResults` says
+`type`, and `parseFacultyChart` reads either.
 
 The bodies are read defensively (`parseFacultyTable`, `parseFacultyChart`): a body
 that does not fit is ignored like an unknown event. A table or chart re-sent under
@@ -334,8 +334,8 @@ returns only `faculty` threads, and the learner app's list excludes them.
 reducer rebuilds one turn per `operationId`; for a turn still running it keeps
 only the question and replays the answer from the stream.
 
-From FAG-5 an assistant row may carry what its step's stream events did, so a
-reopened answer has its table and chart:
+From FAG-5 the last assistant row of a faculty turn carries what the turn's stream
+events did, so a reopened answer has its table and chart:
 
 ```jsonc
 { "facultyResults": { "tables": [ /* faculty.table bodies */ ], "charts": [ /* faculty.chart bodies, with `type` */ ] } }
@@ -354,13 +354,14 @@ reopened answer has its table and chart:
 }
 ```
 
-Every field but `operationId` is optional; the dashboard refuses to send a body
-with neither `rating` nor `flag`. It sends `{ operationId, rating }` for the thumbs
+`200 { "recorded": true }`. Every field but `operationId` is optional, a body needs
+a `rating` or a `flag`, an unknown key is refused, and `operationId` and `queryId`
+are UUIDs (`400 invalid_faculty_feedback`). The dashboard sends `{ operationId, rating }` for the thumbs
 under an answer, and `{ operationId, queryId, learnerId, flag }` on a student a
 result marks as needing attention (`needs_attention` true, or `readiness` under the
-dashboard's 0.4 when the query did not select it). It does not offer `fixed` yet.
-The response body is not read, and a thread's history does not say what was rated,
-so a reopened answer shows its buttons unset.
+dashboard's 0.4 when the query did not select it), which needs the query to have
+selected `learner_id`. It does not offer `fixed` yet. A thread's history does not
+say what was rated, so a reopened answer shows its buttons unset.
 
 ### Errors
 
@@ -381,6 +382,8 @@ By code (`FACULTY_ERROR_CODE_KINDS`):
 | `faculty_daily_limit_reached` | 429 | `daily_cap` | the tenant's `FACULTY_DAILY_TURN_CAP` (default 200/day, D12) |
 | `faculty_attachments_unavailable` (FAG-1 fix round) | 400 | `invalid_request` | the dashboard sends no attachments, so only a client bug reaches it |
 | `faculty_voice_unavailable` | 400 | `invalid_request` | voice; not used here |
+| `invalid_faculty_context` | 400 | `invalid_request` | a `facultyContext` the agent would not read: not a faculty turn, an unknown key, or a value that is not printable ASCII of at most 200 characters |
+| `invalid_faculty_feedback` | 400 | `invalid_request` | a feedback body the agent would not read |
 | `invalid_surface` | 400 | `not_configured` | this agent has no faculty surface yet (before FAG-1 is deployed) |
 | `prompt_limit_reached` | 402 | `daily_cap` | a learner prompt limit; faculty turns should never meet one (D12) |
 | `prompt_limit_unauthorized` / `unauthorized` | 401 | `unauthorized` | the agent rejects the token. **Not a logout** (AGENT_V2 is not session-owning) |

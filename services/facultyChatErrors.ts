@@ -23,6 +23,7 @@
  * | `faculty_daily_limit_reached` | 429 | `daily_cap`: the tenant's `FACULTY_DAILY_TURN_CAP` (D12) |
  * | `prompt_limit_reached` | 402 | `daily_cap`: a learner limit; faculty turns should never meet one (D12) |
  * | `faculty_attachments_unavailable`, `faculty_voice_unavailable` | 400 | `invalid_request` |
+ * | `invalid_faculty_context`, `invalid_faculty_feedback` | 400 | `invalid_request` |
  * | `invalid_surface` | 400 | `not_configured`: this agent has no faculty surface yet (before FAG-1) |
  *
  * | Status, no known code | kind |
@@ -137,6 +138,9 @@ export const FACULTY_ERROR_CODE_KINDS: Readonly<Record<string, FacultyChatErrorK
   faculty_daily_limit_reached: 'daily_cap',
   faculty_attachments_unavailable: 'invalid_request',
   faculty_voice_unavailable: 'invalid_request',
+  // FAG-5, a body the API would not read.
+  invalid_faculty_context: 'invalid_request',
+  invalid_faculty_feedback: 'invalid_request',
   // An agent that does not know the faculty surface yet (`parseSurface`).
   invalid_surface: 'not_configured',
   // Learner prompt limits (`apps/api/src/prompt-limits.ts`); faculty turns should never meet them (D12).

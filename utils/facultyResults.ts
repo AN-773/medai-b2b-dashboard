@@ -190,16 +190,11 @@ export const downloadTableCsv = (table: FacultyTable): void => {
 // The lines under an answer
 // ---------------------------------------------------------------------------
 
-/** "Showing the first 500 of 1,204 rows", or "3 rows". */
-export const rowCountLine = (table: Pick<FacultyTable, 'rows' | 'rowCount' | 'truncated'>): string => {
+/** "3 rows", or "Showing the first 500 rows. There are more." Only the server knows how many more. */
+export const rowCountLine = (table: Pick<FacultyTable, 'rows' | 'truncated'>): string => {
   const shown = table.rows.length;
-  const total = Math.max(table.rowCount, shown);
-  if (table.truncated) {
-    return total > shown
-      ? `Showing the first ${formatNumber(shown)} of ${formatNumber(total)} rows`
-      : `Showing the first ${formatNumber(shown)} rows. There are more.`;
-  }
-  return `${formatNumber(total)} ${total === 1 ? 'row' : 'rows'}`;
+  if (table.truncated) return `Showing the first ${formatNumber(shown)} rows. There are more.`;
+  return `${formatNumber(shown)} ${shown === 1 ? 'row' : 'rows'}`;
 };
 
 /**
