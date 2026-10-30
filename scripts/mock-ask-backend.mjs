@@ -15,6 +15,7 @@
  *   growth    an area chart                forbidden 403 faculty gate
  *   share     a pie chart                  fail      the turn fails
  *   count     a single number              slow      a long answer, to try Stop
+ *   unknown   a snapshot with no as-of
  *
  * Anything else gets the "needs attention" answer.
  */
@@ -73,6 +74,7 @@ LIMIT 500;`,
   truncated: false,
   durationMs: 84,
   asOf: [{ kind: 'readiness', computedAt: '2026-10-29T18:00:00Z' }],
+  asOfUnknown: false,
 });
 
 const topicsTable = (queryId) => ({
@@ -103,6 +105,7 @@ LIMIT 500;`,
   truncated: true,
   durationMs: 41,
   asOf: [{ kind: 'item_stats', computedAt: '2026-10-29T02:00:00Z' }],
+  asOfUnknown: false,
 });
 
 const hostileTable = (queryId) => ({
@@ -123,6 +126,7 @@ const hostileTable = (queryId) => ({
   truncated: false,
   durationMs: 7,
   asOf: [],
+  asOfUnknown: false,
 });
 
 const topicsChart = (queryId, rows) => ({
@@ -178,6 +182,7 @@ const weeklyTable = (queryId) => ({
   rowCount: 7,
   truncated: false,
   asOf: [],
+  asOfUnknown: false,
 });
 
 const sharesTable = (queryId) => ({
@@ -200,6 +205,7 @@ const sharesTable = (queryId) => ({
   rowCount: 6,
   truncated: false,
   asOf: [],
+  asOfUnknown: false,
 });
 
 const countTable = (queryId) => ({
@@ -215,6 +221,7 @@ const countTable = (queryId) => ({
   rowCount: 1,
   truncated: false,
   asOf: [],
+  asOfUnknown: false,
 });
 
 const charted = (table, type, x, y, takeaway) => ({
@@ -232,6 +239,13 @@ const scriptFor = (question) => {
   if (q.includes('growth')) return charted(weeklyTable(queryId), 'area', 'week', ['answers'], 'Answers almost doubled since September');
   if (q.includes('share')) return charted(sharesTable(queryId), 'pie', 'organ_system', ['answers'], 'Renal and cardiovascular take most of the practice');
   if (q.includes('count')) return charted(countTable(queryId), 'kpi', 'active_learners', ['active_learners', 'all_learners'], '133 learners were active this week');
+  if (q.includes('unknown')) {
+    return {
+      steps: ['runFacultyQuery'],
+      table: { ...attentionTable(queryId), asOf: [], asOfUnknown: true },
+      answer: 'Three students need attention, but the date of this snapshot could not be read.',
+    };
+  }
   if (q.includes('inject')) {
     return { steps: ['runFacultyQuery'], table: hostileTable(queryId), answer: 'The values below are shown as text. **<b>This is not bold HTML.</b>**' };
   }

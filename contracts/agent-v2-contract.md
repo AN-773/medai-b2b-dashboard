@@ -246,9 +246,16 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
   "rowCount": 42,   // how many rows are in `rows`, not how many the query matched
   "truncated": false,  // true: the query matched more rows than `rows` holds
   "durationMs": 118,
-  "asOf": [{ "kind": "readiness", "computedAt": "2026-10-29T02:00:00Z" }]  // [] when every source is live
+  "asOf": [{ "kind": "readiness", "computedAt": "2026-10-29T02:00:00Z" }],
+  "asOfUnknown": false  // true: a snapshot view was read but its as-of could not be established
 }
 ```
+
+**Freshness.** `asOf: []` with `asOfUnknown: false` means every source was live, and
+that is the only thing that reads "Live data". With `asOfUnknown: true` the card says
+"Data as of unknown", also over a known `asOf`, because the oldest part of the answer
+cannot be dated. The dashboard fails the same way: a missing flag, or an `asOf` entry
+it cannot read, counts as unknown (`parseFacultyTable`).
 
 `explanation` is required and is the model's own account of the query: the metrics
 it used and what the query does, in plain words. The "How this was computed" panel

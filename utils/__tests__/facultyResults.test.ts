@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { FacultyColumn, FacultyRow, FacultyTable } from '@/services/facultyChatWire';
 import {
+  asOfDetail,
   asOfLine,
   cellOf,
   csvFileName,
@@ -166,8 +167,11 @@ describe('CSV', () => {
 });
 
 describe('the lines under an answer', () => {
-  const table = (fields: Partial<FacultyTable>): Pick<FacultyTable, 'asOf' | 'rows' | 'rowCount' | 'truncated' | 'columns'> => ({
+  const table = (
+    fields: Partial<FacultyTable>,
+  ): Pick<FacultyTable, 'asOf' | 'asOfUnknown' | 'rows' | 'rowCount' | 'truncated' | 'columns'> => ({
     asOf: [],
+    asOfUnknown: false,
     rows: [],
     rowCount: 0,
     truncated: false,
@@ -190,6 +194,40 @@ describe('the lines under an answer', () => {
         table({ asOf: [{ kind: 'item_stats', computedAt: '2026-10-29T02:00:00Z' }] }),
       ]),
     ).toBe('Data as of 29 Oct, 02:00 UTC');
+  });
+
+  it('never calls a snapshot with no as-of live', () => {
+    const unknown = table({ asOfUnknown: true });
+    expect(asOfLine([unknown])).toBe('Data as of unknown');
+    expect(asOfLine([table({}), unknown])).toBe('Data as of unknown');
+  });
+
+  it('says unknown over a known as-of, since the oldest part of the answer cannot be dated', () => {
+    const known = table({ asOf: [{ kind: 'readiness', computedAt: '2026-10-29T08:00:00Z' }] });
+    expect(asOfLine([known, table({ asOfUnknown: true })])).toBe('Data as of unknown');
+    expect(asOfLine([{ ...known, asOfUnknown: true }])).toBe('Data as of unknown');
+  });
+
+  it('dates a mix of live and snapshot reads by the snapshot', () => {
+    const known = table({ asOf: [{ kind: 'readiness', computedAt: '2026-10-29T08:00:00Z' }] });
+    expect(asOfLine([table({}), known])).toBe('Data as of 29 Oct, 08:00 UTC');
+  });
+
+  it('does not take an unreadable date for live', () => {
+    const garbled = table({ asOf: [{ kind: 'readiness', computedAt: 'not a date' }] });
+    expect(asOfLine([garbled])).toBe('Data as of unknown');
+    expect(asOfDetail(garbled)).toEqual(['As of unknown']);
+  });
+
+  it('gives a table’s freshness line by line', () => {
+    const readiness = { kind: 'readiness', computedAt: '2026-10-29T08:00:00Z' };
+    expect(asOfDetail(table({}))).toEqual(['Live data']);
+    expect(asOfDetail(table({ asOfUnknown: true }))).toEqual(['As of unknown']);
+    expect(asOfDetail(table({ asOf: [readiness] }))).toEqual(['Readiness: 29 Oct, 08:00 UTC']);
+    expect(asOfDetail(table({ asOf: [readiness], asOfUnknown: true }))).toEqual([
+      'Readiness: 29 Oct, 08:00 UTC',
+      'As of unknown',
+    ]);
   });
 
   it('counts rows, and says when there are more than it holds', () => {

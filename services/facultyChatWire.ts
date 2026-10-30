@@ -296,8 +296,10 @@ export interface FacultyTable {
   /** The query matched more rows than `rows` holds. */
   readonly truncated: boolean;
   readonly durationMs: number;
-  /** Empty when every source is live. */
+  /** One entry per snapshot kind read. Empty says nothing alone: see {@link FacultyTable.asOfUnknown}. */
   readonly asOf: readonly FacultyAsOf[];
+  /** A snapshot view was read but its as-of could not be established. Only `false` with no `asOf` means live. */
+  readonly asOfUnknown: boolean;
 }
 
 export const FACULTY_CHART_TYPES = ['bar', 'line', 'area', 'pie', 'kpi'] as const;
@@ -353,7 +355,10 @@ const readColumns = (value: unknown): FacultyColumn[] | null => {
 
 const readAsOf = (value: unknown): FacultyAsOf[] =>
   (Array.isArray(value) ? value : []).flatMap((entry) =>
-    isPlainObject(entry) && typeof entry.kind === 'string' && typeof entry.computedAt === 'string'
+    isPlainObject(entry) &&
+    typeof entry.kind === 'string' &&
+    typeof entry.computedAt === 'string' &&
+    !Number.isNaN(Date.parse(entry.computedAt))
       ? [{ kind: entry.kind, computedAt: entry.computedAt }]
       : [],
   );
@@ -367,6 +372,7 @@ export const parseFacultyTable = (value: unknown): FacultyTable | null => {
   const columns = readColumns(value.columns);
   const rows = readRows(value.rows);
   if (columns === null || rows === null) return null;
+  const asOf = readAsOf(value.asOf);
   return {
     queryId: value.queryId,
     purpose: typeof value.purpose === 'string' ? value.purpose.trim() : '',
@@ -377,7 +383,10 @@ export const parseFacultyTable = (value: unknown): FacultyTable | null => {
     rowCount: readCount(value.rowCount, rows.length),
     truncated: value.truncated === true,
     durationMs: readCount(value.durationMs, 0),
-    asOf: readAsOf(value.asOf),
+    asOf,
+    // Fails towards "unknown": a false "live" is worse than an honest shrug, so
+    // only an explicit `false` over a fully readable list may read as known.
+    asOfUnknown: value.asOfUnknown !== false || !Array.isArray(value.asOf) || asOf.length !== value.asOf.length,
   };
 };
 

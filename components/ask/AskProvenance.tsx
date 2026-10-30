@@ -2,7 +2,7 @@ import React, { useId, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/components/ui';
 import type { FacultyTable } from '@/services/facultyChatWire';
-import { formatUtcMoment, humanizeColumn, rowCountLine, sampleSizesOf } from '@/utils/facultyResults';
+import { asOfDetail, rowCountLine, sampleSizesOf } from '@/utils/facultyResults';
 
 const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
@@ -10,14 +10,6 @@ const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, c
     <dd className="mt-0.5 text-sm text-stone-700">{children}</dd>
   </div>
 );
-
-const asOfText = (table: FacultyTable): string[] => {
-  const stamped = table.asOf.flatMap((entry) => {
-    const moment = formatUtcMoment(entry.computedAt);
-    return moment ? [`${humanizeColumn(entry.kind)}: ${moment}`] : [];
-  });
-  return stamped.length > 0 ? stamped : ['Live data'];
-};
 
 const QueryProvenance: React.FC<{ table: FacultyTable }> = ({ table }) => {
   const samples = sampleSizesOf(table);
@@ -28,7 +20,7 @@ const QueryProvenance: React.FC<{ table: FacultyTable }> = ({ table }) => {
       </Fact>
       <Fact label="Rows">{rowCountLine(table)}</Fact>
       <Fact label="Data as of">
-        {asOfText(table).map((line) => (
+        {asOfDetail(table).map((line) => (
           <span key={line} className="block">
             {line}
           </span>

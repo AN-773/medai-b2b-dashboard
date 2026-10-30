@@ -16,7 +16,7 @@ import {
   type FacultyChatAction,
   type FacultyChatState,
 } from '../facultyChatReducer';
-import type { FacultyStreamEvent, TranscriptMessageView } from '../facultyChatWire';
+import { parseFacultyTable, type FacultyStreamEvent, type TranscriptMessageView } from '../facultyChatWire';
 
 const run = (actions: FacultyChatAction[], from: FacultyChatState = initialFacultyChatState()) =>
   actions.reduce(facultyChatReducer, from);
@@ -181,6 +181,7 @@ describe('protocol rules', () => {
       truncated: false,
       durationMs: 12,
       asOf: [{ kind: 'readiness', computedAt: '2026-10-29T02:00:00.000Z' }],
+      asOfUnknown: false,
     };
     const chart = { chartId: 'c1', queryId: 'q1', x: 'name', y: ['n'], takeaway: 'Few', rows: [{ name: 'Sara', n: 3 }] };
     const querying = ev(0, 'tool.started', { messageId: 'm1', toolCallId: 'call-1', toolName: 'runFacultyQuery' });
@@ -200,6 +201,28 @@ describe('protocol rules', () => {
         item(ev(1, 'faculty.table', { ...table, rows: [{ name: 'Omar' }] })),
       ]);
       expect(state.turns[0].tables.map((entry) => entry.rows)).toEqual([[{ name: 'Omar' }]]);
+    });
+
+    it('carries a snapshot whose as-of is unknown', () => {
+      const state = run([submitted, accepted, item(ev(0, 'faculty.table', { ...table, asOf: [], asOfUnknown: true }))]);
+      expect(state.turns[0].tables[0]).toMatchObject({ asOf: [], asOfUnknown: true });
+    });
+
+    it('reads as unknown, never live, when the server does not plainly say', () => {
+      const parsed = (fields: Record<string, unknown>) => parseFacultyTable({ ...table, ...fields });
+      expect(parsed({ asOf: [], asOfUnknown: false })?.asOfUnknown).toBe(false);
+      expect(parsed({ asOf: [], asOfUnknown: undefined })?.asOfUnknown).toBe(true);
+      expect(parsed({ asOf: [], asOfUnknown: 'no' })?.asOfUnknown).toBe(true);
+      expect(parsed({ asOf: undefined, asOfUnknown: false })?.asOfUnknown).toBe(true);
+    });
+
+    it('reads as unknown when an as-of entry cannot be read, rather than losing it', () => {
+      const parsed = parseFacultyTable({
+        ...table,
+        asOf: [{ kind: 'readiness', computedAt: 'not a date' }, { kind: 'item_stats' }],
+        asOfUnknown: false,
+      });
+      expect(parsed).toMatchObject({ asOf: [], asOfUnknown: true });
     });
 
     it('still shows a table whose explanation is missing', () => {
@@ -426,6 +449,7 @@ describe('transcripts', () => {
       truncated: false,
       durationMs: 3,
       asOf: [],
+      asOfUnknown: false,
     };
     const chart = { chartId: 'c1', queryId: 'q1', type: 'bar', x: 'topic', y: ['n'], takeaway: 'Renal', rows: [{ topic: 'Renal', n: 2 }] };
     const stored = {

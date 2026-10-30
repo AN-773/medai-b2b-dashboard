@@ -110,6 +110,15 @@ describe('the answer', () => {
     expect(screen.queryByText('Live data')).toBeNull();
   });
 
+  it('says "as of unknown", never "Live data", for a snapshot it cannot date', () => {
+    const { container } = renderCard(turnWith({ tables: [{ ...attentionTable, asOf: [], asOfUnknown: true }] }));
+    fireEvent.click(screen.getByRole('button', { name: 'How this was computed' }));
+
+    expect(screen.getByText('Data as of unknown')).toBeTruthy();
+    expect(screen.getByText('As of unknown')).toBeTruthy();
+    expect(container.textContent).not.toContain('Live data');
+  });
+
   it('says so when a prefix is all there is', () => {
     renderCard(turnWith({ outcome: 'unknown', messages: [{ messageId: 'm1', text: 'Sara', finishReason: 'interrupted', streaming: false }] }));
     expect(screen.getByText('This answer was cut off before it finished.')).toBeTruthy();

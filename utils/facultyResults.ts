@@ -197,19 +197,38 @@ export const rowCountLine = (table: Pick<FacultyTable, 'rows' | 'truncated'>): s
   return `${formatNumber(shown)} ${shown === 1 ? 'row' : 'rows'}`;
 };
 
+export const AS_OF_UNKNOWN = 'As of unknown';
+export const LIVE_DATA = 'Live data';
+
+type TableFreshness = Pick<FacultyTable, 'asOf' | 'asOfUnknown'>;
+
+const isLive = (table: TableFreshness) => !table.asOfUnknown && table.asOf.length === 0;
+
 /**
- * The "as of" line for a whole answer: the oldest snapshot behind it, or
- * "Live data" when every source is live. `null` when no data was read.
+ * The "as of" line for a whole answer: the oldest snapshot behind it, "Live
+ * data" when every source is live, and "Data as of unknown" when any part of
+ * it cannot say. An empty `asOf` alone never means live. `null` when no data
+ * was read.
  */
-export const asOfLine = (tables: readonly Pick<FacultyTable, 'asOf'>[]): string | null => {
+export const asOfLine = (tables: readonly TableFreshness[]): string | null => {
   if (tables.length === 0) return null;
-  const moments = tables
-    .flatMap((table) => table.asOf)
-    .map((entry) => entry.computedAt)
-    .filter((value) => parseDate(value) !== null)
-    .sort((left, right) => (parseDate(left)?.getTime() ?? 0) - (parseDate(right)?.getTime() ?? 0));
-  const oldest = moments.length > 0 ? formatUtcMoment(moments[0]) : null;
-  return oldest ? `Data as of ${oldest}` : 'Live data';
+  if (tables.every(isLive)) return LIVE_DATA;
+  if (tables.some((table) => table.asOfUnknown)) return 'Data as of unknown';
+
+  const moments = tables.flatMap((table) => table.asOf).map((entry) => entry.computedAt);
+  const times = moments.map((value) => parseDate(value)?.getTime() ?? Number.NaN);
+  if (times.some(Number.isNaN)) return 'Data as of unknown';
+  return `Data as of ${String(formatUtcMoment(moments[times.indexOf(Math.min(...times))]))}`;
+};
+
+/** One table's freshness, a line per snapshot kind. */
+export const asOfDetail = (table: TableFreshness): string[] => {
+  if (isLive(table)) return [LIVE_DATA];
+  const stamped = table.asOf.flatMap((entry) => {
+    const moment = formatUtcMoment(entry.computedAt);
+    return moment ? [`${humanizeColumn(entry.kind)}: ${moment}`] : [];
+  });
+  return table.asOfUnknown || stamped.length < table.asOf.length ? [...stamped, AS_OF_UNKNOWN] : stamped;
 };
 
 const SAMPLE_COLUMN =

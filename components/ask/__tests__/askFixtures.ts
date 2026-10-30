@@ -24,6 +24,7 @@ export const attentionTable: FacultyTable = {
   truncated: false,
   durationMs: 12,
   asOf: [{ kind: 'readiness', computedAt: '2026-10-29T02:00:00Z' }],
+  asOfUnknown: false,
 };
 
 export const topicChart: FacultyChart = {
