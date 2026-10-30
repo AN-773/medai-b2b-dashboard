@@ -43,6 +43,13 @@ const QueryProvenance: React.FC<{ table: FacultyTable }> = ({ table }) => {
             ))
           : 'Not part of this result.'}
       </Fact>
+      {table.explanation && (
+        <Fact label="In plain words">
+          <span dir="auto" className="whitespace-pre-wrap">
+            {table.explanation}
+          </span>
+        </Fact>
+      )}
       <Fact label="The query">
         <pre className="mt-1 overflow-x-auto rounded-lg bg-stone-100 px-3 py-2 font-mono text-xs leading-5 text-stone-800 custom-scrollbar">
           <code>{table.sql || 'Not recorded for this query.'}</code>

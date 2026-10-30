@@ -1,8 +1,8 @@
 /**
  * The agent-v2 wire, as far as the faculty "Ask" chat reads it.
  *
- * Mirrored by hand from agent-v2's `@medai/contracts` (0.108.0, `origin/test`
- * af0de254): `stream/events.ts`, `turns/*`, `threads/list.ts` and
+ * Mirrored by hand from agent-v2's `@medai/contracts` (0.112.0): `stream/events.ts`,
+ * `faculty/results.ts`, `turns/*`, `threads/list.ts` and
  * `threads/transcript.ts`, plus the 202 body `apps/api/src/server.ts` answers
  * `POST /v1/turns` with. That package is a private workspace package this repo
  * cannot import, so the copy lives here, in one file, and holds only the fields
@@ -18,9 +18,6 @@
  *   database, so nothing in them is trusted to have the shape it should:
  *   {@link parseFacultyTable} and {@link parseFacultyChart} read them
  *   defensively, and a body that does not fit is dropped rather than rendered.
- *
- * The faculty shapes mirror FAG-5's `packages/contracts/src/faculty/results.ts`,
- * which was still uncommitted on `dean/w2-query` when this was written.
  */
 
 import type { FacultyPageContext } from './facultyChatContext';
@@ -288,6 +285,8 @@ export interface FacultyTable {
   readonly queryId: string;
   /** What the agent understood this query to be for, in its own words. */
   readonly purpose: string;
+  /** The metrics used and what the query does, in plain words. By the model, about 600 characters at most. */
+  readonly explanation: string;
   readonly sql: string;
   readonly columns: readonly FacultyColumn[];
   /** At most {@link MAX_FACULTY_RESULT_ROWS}. */
@@ -371,6 +370,7 @@ export const parseFacultyTable = (value: unknown): FacultyTable | null => {
   return {
     queryId: value.queryId,
     purpose: typeof value.purpose === 'string' ? value.purpose.trim() : '',
+    explanation: typeof value.explanation === 'string' ? value.explanation.trim() : '',
     sql: typeof value.sql === 'string' ? value.sql : '',
     columns,
     rows,

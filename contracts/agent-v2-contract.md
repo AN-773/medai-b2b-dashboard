@@ -140,9 +140,8 @@ institution; the agent answers from tenant-scoped database views. The tenant is
 taken from the bearer and enforced in the database; nothing the dashboard sends
 can widen it.
 
-**Wire shapes** are mirrored from agent-v2's `@medai/contracts` 0.108.0
-(`origin/test` af0de254) in `services/facultyChatWire.ts`, which holds only the
-fields this dashboard reads. **Pending agent-v2 work (FAG-1, wave 1):** the
+**Wire shapes** are mirrored from agent-v2's `@medai/contracts` 0.112.0 in
+`services/facultyChatWire.ts`, which holds only the fields this dashboard reads. **Pending agent-v2 work (FAG-1, wave 1):** the
 `faculty` value of `surface`, the `?surface=faculty` filter, the faculty
 refusals (see [Errors](#errors)) and `threads.surface`. Before FAG-1 is deployed, `POST /v1/turns`
 answers `400 invalid_surface` and `GET /v1/threads` ignores `surface` and lists
@@ -151,8 +150,7 @@ the caller's learner threads too.
 **Pending agent-v2 work (FAG-5, wave 2):** `facultyContext` on `POST /v1/turns`,
 the `faculty.table` and `faculty.chart` events, `facultyResults` on transcript
 rows and `POST /v1/faculty/feedback`. These mirror
-`packages/contracts/src/faculty/results.ts` as it stood uncommitted on
-`dean/w2-query`, so this section is ahead of `@medai/contracts`: mirror any change
+`packages/contracts/src/faculty/results.ts` on `dean/w2-query`: mirror any change
 there into `facultyChatWire.ts`. The dashboard and FAG-5 ship together: the agent
 refuses a field it does not know, so a dashboard ahead of FAG-5 would have its
 `facultyContext` refused.
@@ -241,6 +239,7 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
   "type": "faculty.table", "seq": 7, "operationId": "uuid", "at": "…",
   "queryId": "q_1",
   "purpose": "Checking readiness snapshot",  // the question as the agent understood it
+  "explanation": "Readiness multiplies mastery, coverage and pacing. …",  // by the model, ~600 characters at most
   "sql": "SELECT …",
   "columns": [{ "name": "name", "dataType": "text" }],
   "rows": [{ "name": "Sara", "readiness": 0.31 }],  // full rows, at most 500
@@ -250,6 +249,11 @@ Events the faculty reducer folds (`facultyChatReducer.ts`):
   "asOf": [{ "kind": "readiness", "computedAt": "2026-10-29T02:00:00Z" }]  // [] when every source is live
 }
 ```
+
+`explanation` is required and is the model's own account of the query: the metrics
+it used and what the query does, in plain words. The "How this was computed" panel
+shows it above the SQL. It is the only place for this, because the model no longer
+writes a closing section into the answer.
 
 **`faculty.chart`**, one per `showChart`. No code, only a spec and its rows:
 
@@ -273,7 +277,7 @@ On the stream `type` is the event's own name, so the chart's type rides as
 The bodies are read defensively (`parseFacultyTable`, `parseFacultyChart`): a body
 that does not fit is ignored like an unknown event. A table or chart re-sent under
 the same id replaces the first. **Every value in `rows`, `columns`, `purpose`,
-`takeaway` and `sql` is untrusted text**: database content or model output. It is
+`explanation`, `takeaway` and `sql` is untrusted text**: database content or model output. It is
 rendered as text, never as HTML, and a CSV export neutralises spreadsheet formulas
 (`neutralizeCsvCell`).
 

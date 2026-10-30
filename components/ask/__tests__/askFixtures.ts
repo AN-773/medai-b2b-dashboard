@@ -7,6 +7,7 @@ export const OPERATION = 'op-1';
 export const attentionTable: FacultyTable = {
   queryId: 'q-attention',
   purpose: 'Checking readiness snapshot',
+  explanation: 'Readiness is mastery times coverage times pacing. This lists each student’s latest score.',
   sql: 'SELECT name, readiness FROM faculty.student_readiness',
   columns: [
     { name: 'learner_id', dataType: 'text' },

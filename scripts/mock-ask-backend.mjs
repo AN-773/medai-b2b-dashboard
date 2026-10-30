@@ -33,6 +33,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const attentionTable = (queryId) => ({
   queryId,
   purpose: 'Checking readiness snapshot',
+  explanation:
+    'Readiness multiplies mastery, coverage and pacing, so low coverage alone can bring it down. Needs attention means readiness under 40%. This lists each student at cohort level, lowest first, from the latest snapshot.',
   sql: `SELECT l.learner_id, l.name, r.readiness, r.mastery, r.coverage, r.pacing,
        r.items_answered, r.needs_attention
 FROM faculty.student_readiness r
@@ -76,6 +78,8 @@ LIMIT 500;`,
 const topicsTable = (queryId) => ({
   queryId,
   purpose: 'Ranking topics by percent correct',
+  explanation:
+    'Percent correct is the share of latest answers per student and item that were right, with auto-filled answers left out. This ranks each topic, hardest first, and marks those with under 30 answers.',
   sql: `SELECT key AS topic, n_items, n_responses, pct_correct, insufficient_data
 FROM faculty.topic_difficulty
 WHERE level = 'topic'
@@ -104,6 +108,7 @@ LIMIT 500;`,
 const hostileTable = (queryId) => ({
   queryId,
   purpose: '<img src=x onerror=alert(1)>',
+  explanation: '<b>Not bold.</b> <script>alert(1)</script>',
   sql: "SELECT '<script>alert(1)</script>' AS name",
   columns: [
     { name: 'name', dataType: 'text' },
@@ -154,6 +159,7 @@ Hepatobiliary pathology has too few answers to rely on.`;
 const weeklyTable = (queryId) => ({
   ...topicsTable(queryId),
   purpose: 'Counting answers per week',
+  explanation: 'Counts every answer and every student who answered, for each week, oldest first.',
   sql: 'SELECT date_trunc(\'week\', answered_at) AS week, count(*) AS answers, count(DISTINCT learner_id) AS learners\nFROM faculty.answers\nGROUP BY 1\nORDER BY 1;',
   columns: [
     { name: 'week', dataType: 'timestamptz' },
@@ -177,6 +183,7 @@ const weeklyTable = (queryId) => ({
 const sharesTable = (queryId) => ({
   ...topicsTable(queryId),
   purpose: 'Sharing answers out by organ system',
+  explanation: 'Counts answers per organ system, largest first.',
   sql: 'SELECT organ_system, count(*) AS answers FROM faculty.answers GROUP BY 1 ORDER BY 2 DESC;',
   columns: [
     { name: 'organ_system', dataType: 'text' },
@@ -198,6 +205,7 @@ const sharesTable = (queryId) => ({
 const countTable = (queryId) => ({
   ...topicsTable(queryId),
   purpose: 'Counting active learners',
+  explanation: 'Active means at least one answer in the last 7 days.',
   sql: 'SELECT count(*) FILTER (WHERE answers_7d > 0) AS active_learners, count(*) AS all_learners FROM faculty.learner_activity;',
   columns: [
     { name: 'active_learners', dataType: 'int8' },

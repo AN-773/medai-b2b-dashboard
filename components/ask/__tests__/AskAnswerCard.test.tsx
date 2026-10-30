@@ -274,6 +274,30 @@ describe('how this was computed', () => {
     expect(fact('Sample sizes')).toContain('Items answered: 41 to 120');
   });
 
+  it('puts the model’s plain words above the SQL', () => {
+    renderCard(turnWith({ tables: [attentionTable] }));
+    fireEvent.click(screen.getByRole('button', { name: 'How this was computed' }));
+
+    const words = screen.getByText('In plain words');
+    expect(words.parentElement?.textContent).toContain(attentionTable.explanation);
+    const query = screen.getByText('The query');
+    expect(words.compareDocumentPosition(query) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows the explanation as text, and leaves its place out when there is none', () => {
+    const { container, unmount } = renderCard(
+      turnWith({ tables: [{ ...attentionTable, explanation: '<img src=x onerror=alert(1)> **not bold**' }] }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'How this was computed' }));
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('<img src=x onerror=alert(1)> **not bold**')).toBeTruthy();
+    unmount();
+
+    renderCard(turnWith({ tables: [{ ...attentionTable, explanation: '' }] }));
+    fireEvent.click(screen.getByRole('button', { name: 'How this was computed' }));
+    expect(screen.queryByText('In plain words')).toBeNull();
+  });
+
   it('has a block per query', () => {
     const other: FacultyTable = { ...attentionTable, queryId: 'q-2', purpose: 'A second query', asOf: [] };
     renderCard(turnWith({ tables: [other, attentionTable] }));

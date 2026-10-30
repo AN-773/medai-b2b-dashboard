@@ -173,6 +173,7 @@ describe('protocol rules', () => {
     const table = {
       queryId: 'q1',
       purpose: 'Checking readiness snapshot',
+      explanation: 'Reads each student’s latest readiness.',
       sql: 'SELECT 1',
       columns: [{ name: 'name', dataType: 'text' }],
       rows: [{ name: 'Sara' }],
@@ -199,6 +200,12 @@ describe('protocol rules', () => {
         item(ev(1, 'faculty.table', { ...table, rows: [{ name: 'Omar' }] })),
       ]);
       expect(state.turns[0].tables.map((entry) => entry.rows)).toEqual([[{ name: 'Omar' }]]);
+    });
+
+    it('still shows a table whose explanation is missing', () => {
+      const { explanation: _explanation, ...older } = table;
+      const state = run([submitted, accepted, item(ev(0, 'faculty.table', older))]);
+      expect(state.turns[0].tables[0].explanation).toBe('');
     });
 
     it('reads a chart’s type from chartType, since `type` is the event’s own name', () => {
@@ -411,6 +418,7 @@ describe('transcripts', () => {
     const table = {
       queryId: 'q1',
       purpose: 'Topics',
+      explanation: 'Ranks topics by percent correct.',
       sql: 'SELECT 1',
       columns: [{ name: 'topic', dataType: 'text' }],
       rows: [{ topic: 'Renal' }],
