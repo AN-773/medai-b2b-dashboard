@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
-export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS' | 'NOTIFICATIONS' | 'AGENT_V2';
+export type ServiceType = 'IAM' | 'TUTOR' | 'TESTS' | 'NOTIFICATIONS' | 'AGENT_V2' | 'TEST_ENV';
 
 const getBaseUrl = (service: ServiceType): string => {
   switch (service) {
@@ -19,6 +19,9 @@ const getBaseUrl = (service: ServiceType): string => {
     // request time instead of at the feature check.
     case 'AGENT_V2':
       return import.meta.env.VITE_AGENT_V2_API_URL || '';
+    // Optional too, for the same reason: `isTestEnvConfigured()` reads it.
+    case 'TEST_ENV':
+      return import.meta.env.VITE_TEST_ENV_API_URL || '';
     default:
       return '';
   }
@@ -87,6 +90,9 @@ const backendMessageOf = (body: unknown): string => {
  * is perfectly valid here. Signing the teacher out because the tutor backend is
  * misconfigured would make one service's deployment error look like an expired
  * session.
+ *
+ * The test environment switch is excluded because it can refuse a session that
+ * the rest of the dashboard still accepts, and its page says so itself.
  */
 const SESSION_OWNING_SERVICES: ServiceType[] = ['IAM', 'TUTOR', 'TESTS'];
 

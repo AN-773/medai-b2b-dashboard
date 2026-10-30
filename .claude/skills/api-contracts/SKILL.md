@@ -19,6 +19,7 @@ This repo keeps frontend-facing API contracts in `contracts/`. They are the **so
 | `contracts/curriculum-api-contract.md` | Curriculum grouping and curriculum links on organ systems, learning objectives, courses | `services/curriculumService.ts` |
 | `contracts/prompts-contract.md` | Prompt management endpoints | prompt-related service code |
 | `contracts/study-plan-audit-contract.md` | Study plan audit endpoints | `services/studyPlanAuditService.ts` |
+| `contracts/test-env-contract.md` | Test environment switch (TEST_ENV): status and start for superadmins, and the decision that it cannot stop. Optional service — gated on `isTestEnvConfigured()` | `services/testEnvService.ts`, `views/TestEnvironmentView.tsx` |
 
 ## Rules
 

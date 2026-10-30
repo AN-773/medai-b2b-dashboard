@@ -34,6 +34,7 @@ import DisciplinesView from './views/DisciplinesView';
 import StudyPlanAuditView from './views/StudyPlanAuditView';
 import TutorSkillsView, { TutorSkillCreateView, TutorSkillView } from './views/TutorSkillsView';
 import { AskRoute } from './views/AskView';
+import TestEnvironmentView from './views/TestEnvironmentView';
 
 interface LegacyCurriculumViewProps {
   homePath: string;
@@ -97,6 +98,7 @@ const DashboardLayout: React.FC = () => {
     if (path.startsWith('/notifications')) return 'NOTIFICATIONS';
     if (path.startsWith('/study-plan-audit')) return 'STUDY_PLAN_AUDIT';
     if (path.startsWith('/tutor-skills')) return 'TUTOR_SKILLS';
+    if (path.startsWith('/test-environment')) return 'TEST_ENV';
     // if (path === '/' || path === '/dashboard') return 'DASHBOARD';
     if (path.startsWith('/workbench')) return 'WORKBENCH';
     if (path.startsWith('/bank-explorer')) return 'BANK_EXPLORER';
@@ -133,6 +135,7 @@ const DashboardLayout: React.FC = () => {
       NOTIFICATIONS: '/notifications',
       STUDY_PLAN_AUDIT: '/study-plan-audit',
       TUTOR_SKILLS: '/tutor-skills',
+      TEST_ENV: '/test-environment',
       WORKBENCH: '/workbench',
       BANK_EXPLORER: '/bank-explorer',
       QB_HEALTH: '/qb-health',
@@ -265,6 +268,7 @@ const DashboardLayout: React.FC = () => {
               <Route path="/tutor-skills" element={isSuperadmin ? <TutorSkillsView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/tutor-skills/new" element={isSuperadmin ? <TutorSkillCreateView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/tutor-skills/:name" element={isSuperadmin ? <TutorSkillView /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/test-environment" element={isSuperadmin ? <TestEnvironmentView /> : <Navigate to="/dashboard" replace />} />
               <Route path="/faculty" element={<FacultyDashboard />} />
               <Route path="/ask/:threadId?" element={<AskRoute />} />
               <Route path="/workbench" element={<QuestionWorkbenchView />} />
